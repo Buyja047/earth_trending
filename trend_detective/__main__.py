@@ -4,6 +4,7 @@
   series     trend report for one variable averaged over a lon/lat box
   vars       list the monthly variables of a product, optionally filtered
   furniture  rebuild coastlines (world-atlas) and searchable places (GeoNames)
+  catalog    rebuild the variable catalog the viewer uses for live analysis
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from . import analysis, catalog, power
 from .geo import build_geo, build_places
+from .livecat import build_catalog
 from .scenes import _breaks, _stats_json, build_all
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +48,8 @@ def main(argv=None):
     f.add_argument("--world-atlas", type=Path, help="extracted `npm pack world-atlas@2.0.2` package/ dir")
     f.add_argument("--geonames", type=Path, help="dir with GeoNames MN.txt and cities15000.txt")
 
+    sub.add_parser("catalog", help="rebuild web/data/power-catalog.js (live analysis)")
+
     a = ap.parse_args(argv)
     if a.cmd == "build":
         idx = build_all(a.out, a.geo, a.only, screen=not a.no_screen, screen_limit=a.screen_limit)
@@ -64,6 +68,10 @@ def main(argv=None):
             if a.grep.lower() in text.lower():
                 flag = "" if catalog.screenable(r["var"]) else "  (not screened)"
                 print(text + flag)
+    elif a.cmd == "catalog":
+        cat = build_catalog(ROOT / "web" / "data" / "power-catalog.js")
+        for p, e in cat["products"].items():
+            print(p, len(e["vars"]), "variables,", len(e["skipped_vars"]), "skipped,", e["chunk_mb"], "MB/chunk")
     elif a.cmd == "furniture":
         data = ROOT / "web" / "data"
         if a.world_atlas:

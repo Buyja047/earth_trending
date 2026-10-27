@@ -106,6 +106,38 @@ underestimated, so n̂* runs 3–13 % low and the range slightly under-covers
 at φ = 0.6. The year assumes a straight-line trend and unchanged noise; it is
 a statement about detectability, not a forecast of the climate.
 
+## Live analysis in the browser
+
+*Analyse any variable* reads monthly NASA POWER values for a box straight from
+the public Zarr stores (`s3://nasa-power`, anonymous HTTPS; CORS allows any
+origin, including pages opened from disk) and runs the same per-cell tests,
+FDR and detectability as the precomputed scenes.
+
+- **Catalog.** `python -m trend_detective catalog` writes
+  `web/data/power-catalog.js` from each store's own metadata: 472 MERRA-2 and
+  848 CERES SYN1deg variables, the regular grid (checked), the monthly time
+  axis (checked consecutive), the chunk layout and each variable's
+  fixedscaleoffset scale (10 to 10000). One CERES variable stored as int16 is
+  left out. The latest month comes from the bucket's `last_available.json`.
+- **Decoding.** Chunks are Blosc containers compressed with zstd, byte-
+  (MERRA-2) or bit-shuffled (CERES). `web/js/zarr.js` follows c-blosc 1.x
+  (block, split and unshuffle rules) and uses the vendored fzstd decoder.
+  Tests compare it with numcodecs over every shuffle mode, block layouts with
+  leftovers, uncompressed buffers, forced split blocks and the full filter
+  chain, bit for bit. Four real chunks (MERRA-2 T2M, PRECTOTCORR_00, TO3;
+  CERES ALLSKY_SFC_SW_DWN; 2.3 million values) decode bit-identically to
+  xarray.
+- **Equivalence.** Read live for the Mongolia box, MERRA-2 T2M gives the same
+  53 × 24 grid and cell validity as the Python scene, per-cell Sen slopes
+  within 0.04 % (the Python values are stored to four significant digits),
+  the same 585-cell country mask, and the same country mean: +0.1942 °C per
+  decade, p = 0.00239.
+- **Limits.** At most 5,000 cells and 40 chunks per run (about 25 MB). Step
+  tests at documented source changes are not run live; those changes are
+  listed with the result instead. IMERG (0.1°) is not offered: a useful box
+  holds tens of thousands of cells. The claude.ai preview of the page may not
+  be allowed to reach AWS; the downloaded `TrendDetective.html` is.
+
 ## Recomputing for chosen years in the viewer
 
 When the reader picks a start and end year, the browser reruns the same

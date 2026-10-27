@@ -31,7 +31,8 @@
   const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
   const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
-    focus: "Монгол (улсын хилээр)" };
+    focus: "Монгол (улсын хилээр)", focus_part: "Хайрцаг доторх Монголын хэсэг",
+    box: "Хайрцгийн дундаж (өргөргийн косинусаар жигнэсэн)" };
   const SCENE_REGION_MN = { Globe: "Дэлхий", Mongolia: "Монгол", "Synthetic globe": "Синтетик бөмбөрцөг" };
   const NOTE_MN = {
     "Observation-corrected": "Ажиглалтаар засварласан хур тунадас: бага ба дунд өргөрөгт борооны хэмжүүрээр (CPCU), Африкт CMAP-аар засварладаг; 42.5–62.5° өргөрөгт загварын хур тунадас руу аажмаар шилжиж, 62.5°-аас хойш зөвхөн загварынх (Reichle нар 2017). Монгол (41–52°N) энэ шилжилтийн бүсэд оршдог тул энд гарах чиг хэсэгчлэн загвараас хамаарна.",
@@ -279,7 +280,7 @@
 
   async function computeResults() {
     const sc = state.sc, entry = state.entry, years = state.y1 - state.y0 + 1;
-    if (isFull()) {
+    if (isFull() && !sc.live) {
       const cells = sc.cells;
       const exact = Math.abs(state.alpha - 0.05) < 1e-9;
       const cl = exact ? { status: Int8Array.from(cells.status), counts: Object.assign({}, sc.counts), pstar: sc.p_star }
@@ -527,7 +528,7 @@
     if (state.ov.coast) drawLines(state.geo.land, pal.coast, 0.8);
     if (sc.region !== "global") {
       if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
-      drawLines(state.geo.focus.rings, pal.ink, 1.6);
+      if (sc.region === "mongolia" || sc.focus) drawLines(state.geo.focus.rings, pal.ink, 1.6);
     }
     drawPlaces(pl);
     drawSelection();
@@ -581,7 +582,8 @@
   function placeLayout() {
     const ctx = map.ctx, sc = state.sc, z = map.view.z, list = [];
     if (state.ov.places) {
-      if (sc.region !== "global") list.push(...state.places.filter((p) => p.cc === "MN"));
+      if (sc.region === "mongolia") list.push(...state.places.filter((p) => p.cc === "MN"));
+      else if (sc.region === "box") list.push(...state.places.filter((p) => p.cc === "MN" || p.kind === "capital"));
       else if (z >= 2) list.push(...state.places.filter((p) => p.kind === "capital"));
     }
     if (state.searched && !list.includes(state.searched)) list.push(state.searched);
@@ -1005,7 +1007,7 @@
     const cols = verdictColors();
     return `<span class="pill"><i style="background:${cols[st] ? rgb(cols[st]) : "transparent"}"></i>${esc(t("v" + (st || 0)))}</span>`;
   }
-  const periodText = () => t(isFull() ? "period_full" : "period_custom",
+  const periodText = () => t(state.sc.live ? "period_live" : isFull() ? "period_full" : "period_custom",
     { y0: state.y0, y1: state.y1, kind: t(state.sc.series.kind === "monthly" ? "kind_monthly" : "kind_annual") });
   function renderSummary() {
     const sc = state.sc, r = state.res, k = r.counts, el = $("#summary");
@@ -1024,13 +1026,19 @@
     if (k.gappy) chips.push([k.gappy, "c_gappy"]);
     if (sc.steps.length) chips.push([k.step_flagged, "c_steps"]);
     const warns = [];
-    if (sc.counts.gappy) {
+    if (sc.live) {
+      const li = sc.live_info;
+      warns.push({ sev: "", w: t("live_read", { mb: li.mb, n: li.chunks, when: li.read.slice(0, 16).replace("T", " ") }) });
+      if (li.trimmed) warns.push({ sev: "", w: t("live_trim", { a: li.trimmed.from, b: li.trimmed.to }) });
+      if (sc.counts.gappy) warns.push({ sev: "critical", w: t("live_gappy", { n: nf(sc.counts.gappy) }) });
+      sc.transitions.forEach((tr) => warns.push({ sev: "", w: t("live_tr", { d: tr.date || "?", l: tr.label }) }));
+    } else if (sc.counts.gappy) {
       warns.push({ sev: "critical", w: mn()
         ? `${nf(sc.counts.gappy)} нүдэнд зарим сар дутуу тул нөхөж тооцолгүй хассан. Нийлүүлэгч [${sc.valid_min}, ${sc.valid_max}] мужаас гадуурх утгыг хасдаг тул дутуу сарууд нь бодит туйлын утга байж болно; тэдгээрийг хасаад тооцсон чиг цензурдсан болно.`
         : (sc.data_warnings || [])[0] || "" });
     }
     (sc.notes || []).forEach((w) => warns.push({ sev: "", w: noteText(w) }));
-    (sc.transitions || []).filter((tr) => !tr.verified).forEach((tr) => warns.push({ sev: "", w: mn() ? noteText(tr.label) : `${tr.label}. Not tested: date unconfirmed.` }));
+    (sc.live ? [] : sc.transitions || []).filter((tr) => !tr.verified).forEach((tr) => warns.push({ sev: "", w: mn() ? noteText(tr.label) : `${tr.label}. Not tested: date unconfirmed.` }));
     el.innerHTML = `<p class="eyebrow">${esc(t("d_dataset"))}</p><h3>${esc(title)}</h3>
       <p class="small muted">${esc(sc.product_name)} · ${esc(periodText())}</p>
       <p class="headline">${head}</p>
@@ -1354,7 +1362,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>Бүх хүчинтэй нүдэнд Benjamini-Hochberg-ийн худал илрэлтийн хувь (FDR), орон зайн хамааралтай талбарт α<sub>FDR</sub> = 2 × α (Wilks 2016).</li>
           <li>Дутуу сартай нүдийг нөхөхгүй, хасна, шалтгааныг нь хэлнэ.</li>
           <li>Сонгосон онуудаар бүх тест, FDR, тоог таны хөтөч дээр дахин тооцно: сарын утга хадгалсан өгөгдөлд (Монгол) сарын утгаас, бусад (дэлхий) жилийн дунджаас.</li>
-          <li>Хараат бус бүртгэлтэй хөндлөн шалгалт: MERRA-2 ба IMERG хур тунадас; MERRA-2 ба NSIDC далайн мөс.</li></ul></div>
+          <li>Хараат бус бүртгэлтэй хөндлөн шалгалт: MERRA-2 ба IMERG хур тунадас; MERRA-2 ба NSIDC далайн мөс.</li>
+          <li>Шууд шинжилгээ: MERRA-2-ын 472, CERES-ийн 848 хувьсагчийг AWS дээрх NASA POWER-ээс хөтөч шууд уншина. Задлагчийг numcodecs ба xarray-тай бит тус бүрээр тулгасан; Монгол дээр урьдчилан тооцсон Python-ы үр дүнг давтдаг (T2M +0.1942 °C/арван жил, p 0.00239). Шууд горимд алхамын тест хийхгүй.</li></ul></div>
       </div>
       <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${truth}${emergeCard}
       <div class="card"><h3>Өөрийн шинжилгээг ажиллуулах</h3><p class="prose">Python 3.10+ суулгаад агуулахын хавтсанд суулгах скриптийг ажиллуулна (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), дараа нь:</p>${run}</div>
@@ -1373,7 +1382,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>Benjamini-Hochberg false discovery rate over all valid cells, with α<sub>FDR</sub> = 2 × α for spatially correlated fields (Wilks 2016).</li>
           <li>Cells with missing months are excluded, never gap-filled, and the tool says why.</li>
           <li>For chosen years, every test, the FDR and every count are recomputed in your browser, from monthly values where the dataset stores them (Mongolia) and from annual means otherwise (globe).</li>
-          <li>Cross-checks against independent records: MERRA-2 vs IMERG precipitation; MERRA-2 vs NSIDC sea ice.</li></ul></div>
+          <li>Cross-checks against independent records: MERRA-2 vs IMERG precipitation; MERRA-2 vs NSIDC sea ice.</li>
+          <li>Live analysis: the browser reads any of 472 MERRA-2 or 848 CERES variables straight from NASA POWER on AWS. The decoder matches numcodecs and xarray bit for bit, and over Mongolia it reproduces the precomputed Python results (T2M +0.1942 °C/decade, p 0.00239). Step tests are not run live.</li></ul></div>
       </div>
       <h3>Monte Carlo check of the local tests</h3>${table}${truth}${emergeCard}
       <div class="card"><h3>Run your own analysis</h3><p class="prose">Install Python 3.10+, then run the install script in the repository folder (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), then:</p>${run}</div>
@@ -1387,7 +1397,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     return [
       { id: "file", label: t("m_file"), items: [
         { label: t("file_repo"), href: REPO }, { label: t("file_zip"), href: REPO + "/archive/refs/heads/main.zip" },
-        { label: t("file_run"), act: () => setTab("method") }] },
+        { label: t("file_live"), act: openLive }, { label: t("file_run"), act: () => setTab("method") }] },
       { id: "view", label: t("m_view"), items: [
         { label: t("view_map"), cls: ck(v === "map"), act: () => setView("map") }, { label: t("view_surf"), cls: ck(v === "surf"), act: () => setView("surf") }, "-",
         { label: t("theme_system"), cls: ck(th === "system"), act: () => setTheme("system") }, { label: t("theme_light"), cls: ck(th === "light"), act: () => setTheme("light") },
@@ -1422,7 +1432,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     const groups = new Map();
     for (const s of state.index.scenes) { if (!groups.has(s.group)) groups.set(s.group, []); groups.get(s.group).push(s); }
     $("#tree-scenes").innerHTML = [...groups].map(([g, list]) => `<details open><summary>${esc(I.group(g))}</summary>${list.map((s) =>
-      `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
+      `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${s.live ? "LIVE" : s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
   }
   function fillYears() {
     const [a, b] = fullRange();
@@ -1534,6 +1544,95 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     }
   }
 
+  // ------------------------------------------------------------ live analysis of any NASA POWER variable
+  const live = { cat: null, product: "merra2", busy: false, n: 0 };
+  // a box to start from: the box selection, else the visible part of a zoomed map, else Mongolia
+  function liveDefaultBox() {
+    if (state.sel && state.sel.type === "box") return state.sel.bounds.map((v) => +v.toFixed(2));
+    if (state.sc && map.g && map.view.z > 1 && state.view === "map") {
+      const g = map.g, cl = (v, a, b) => Math.max(a, Math.min(b, v));
+      return [cl(LON(0), g.lon0, g.lon1), cl(LAT(map.H), g.lat0, g.lat1), cl(LON(map.W), g.lon0, g.lon1), cl(LAT(0), g.lat0, g.lat1)].map((v) => +v.toFixed(2));
+    }
+    return [87.5, 41, 120.5, 52.5];
+  }
+  async function openLive() {
+    if (!live.cat) {
+      try { live.cat = await loadPayload("power-catalog"); } catch (e) { modal(`<p>${esc(t("live_fail", { e: e.message }))}</p>`); return; }
+    }
+    const cat = live.cat, cur = state.sc && !state.sc.live && cat.products[state.sc.product] ? state.sc : null;
+    if (cur) live.product = state.sc.product;
+    const box = liveDefaultBox(), ph = (k) => esc(t(k));
+    modal(`<h2>${ph("live_title")}</h2><p class="small muted">${ph("live_intro")}</p>
+      <div class="liveform">
+        <label>${ph("live_source")} <select id="lv-prod">${Object.entries(cat.products).map(([k, p]) => `<option value="${k}"${k === live.product ? " selected" : ""}>${esc(p.name)} · ${esc(p.res)}</option>`).join("")}</select></label>
+        <label>${ph("live_var")} <input id="lv-var" list="lv-vars" autocomplete="off" spellcheck="false" placeholder="${ph("live_var_ph")}" value="${esc(cur && cat.products[live.product].vars.some((r) => r[0] === cur.var) ? cur.var : "T2M")}"></label>
+        <datalist id="lv-vars"></datalist>
+        <p class="small muted" id="lv-varinfo"></p>
+        <fieldset><legend>${ph("live_region")}</legend>
+          ${["live_w", "live_s", "live_e", "live_n"].map((k, i) => `<label>${ph(k)} <input type="number" step="0.5" id="lv-b${i}" value="${box[i]}"></label>`).join("")}
+          <span class="lvbtns"><button type="button" class="btn" id="lv-view">${ph("live_use_view")}</button>
+          <button type="button" class="btn" id="lv-sel"${state.sel && state.sel.type === "box" ? "" : " disabled"}>${ph("live_use_box")}</button></span>
+        </fieldset>
+        <label>${ph("live_years")} <select id="lv-y0"></select> – <select id="lv-y1"></select></label>
+        <p class="num small" id="lv-est" aria-live="polite"></p>
+        <div><button type="button" class="btn primary" id="lv-run">${ph("live_run")}</button></div>
+        <p class="small" id="lv-status" aria-live="polite"></p>
+      </div>`);
+    liveFillProduct(true);
+  }
+  function liveFillProduct(first) {
+    const cat = live.cat, prod = $("#lv-prod").value, p = cat.products[prod];
+    live.product = prod;
+    $("#lv-vars").innerHTML = p.vars.map((r) => `<option value="${esc(r[0])}">${esc(r[1])} (${esc(r[2])})</option>`).join("");
+    const a = +p.t0.slice(0, 4), b = TDLive.lastFullYear(cat, prod);
+    const y0 = first && state.sc ? Math.max(a, Math.min(state.y0, b - 9)) : a, y1 = first && state.sc ? Math.min(b, Math.max(state.y1, y0 + 9)) : b;
+    const opts = (sel) => Array.from({ length: b - a + 1 }, (_, k) => a + k).map((y) => `<option${y === sel ? " selected" : ""}>${y}</option>`).join("");
+    $("#lv-y0").innerHTML = opts(y0); $("#lv-y1").innerHTML = opts(y1);
+    if (!TDLive.findVar(cat, prod, $("#lv-var").value)) $("#lv-var").value = prod === "merra2" ? "T2M" : "ALLSKY_SFC_SW_DWN";
+    liveEstimate();
+  }
+  function livePlan() {
+    return TDLive.plan(live.cat, live.product, $("#lv-var").value, [0, 1, 2, 3].map((i) => +$("#lv-b" + i).value), +$("#lv-y0").value, +$("#lv-y1").value);
+  }
+  function liveEstimate() {
+    if (!$("#lv-est")) return null;
+    const pl = livePlan();
+    $("#lv-varinfo").textContent = pl.v ? `${pl.v.name}: ${pl.v.long_name} (${unitLabel(pl.v.units) || "–"})${pl.v.screenable ? "" : " · " + t("live_odd")}` : "";
+    const err = pl.error && t("live_err_" + pl.error, { cells: nf(pl.cells || 0), max: nf(pl.error === "cells" ? TDLive.MAX_CELLS : TDLive.MAX_CHUNKS), chunks: (pl.chunks || []).length });
+    $("#lv-est").textContent = pl.error === "var" || pl.error === "box" ? "" : t("live_est", { cells: nf(pl.cells), chunks: pl.chunks.length, mb: fmt(pl.mb, 2), s: Math.max(1, Math.round(pl.seconds)) });
+    $("#lv-status").textContent = err || "";
+    $("#lv-status").className = "small" + (err ? " lverr" : "");
+    $("#lv-run").disabled = !!pl.error || live.busy;
+    return pl;
+  }
+  async function liveRun() {
+    const pl = liveEstimate();
+    if (!pl || pl.error || live.busy) return;
+    live.busy = true;
+    $("#lv-run").disabled = true;
+    const say = (msg) => { const el = $("#lv-status"); if (el) { el.textContent = msg; el.className = "small"; } };
+    try {
+      const entry = await TDLive.read(live.cat, pl, {
+        id: `live-${++live.n}`, focusRings: state.geo && state.geo.focus.rings,
+        onProgress: (e) => say(e.phase === "download" ? t("live_dl", { done: e.done, total: e.total, mb: fmt(e.mb, 2) }) : t("live_decode")),
+      });
+      const sc = entry.sc;
+      state.cache[sc.id] = entry;
+      state.index.scenes.push({ id: sc.id, title: `${sc.var} · ${sc.region_name}`, group: sc.group, kind: sc.kind, live: true });
+      sc.title = `${sc.long_name} (${sc.var})`;
+      live.busy = false;
+      $("#modal").hidden = true;
+      await showScene(sc.id);
+      setTab("map");
+    } catch (err) {
+      live.busy = false;
+      const code = err && err.code;
+      say(code === "nodata" ? t("live_nodata") : code === "short" ? t("live_err_years") : t("live_fail", { e: err.message || err }));
+      const st = $("#lv-status"); if (st) st.className = "small lverr";
+      if ($("#lv-run")) $("#lv-run").disabled = false;
+    }
+  }
+
   // ------------------------------------------------------------ boot
   async function boot() {
     const saved = store.get("lang");
@@ -1593,6 +1692,13 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         state.unit = { decade: "year", year: "total", total: "decade" }[state.unit];
         drawMap(); renderInspector(); return;
       }
+      if (e.target.id === "lv-run") { liveRun(); return; }
+      if (e.target.id === "lv-view" || e.target.id === "lv-sel") {
+        const b = e.target.id === "lv-sel" && state.sel && state.sel.type === "box" ? state.sel.bounds.map((v) => +v.toFixed(2)) : liveDefaultBox();
+        b.forEach((v, i) => { $("#lv-b" + i).value = v; });
+        liveEstimate(); return;
+      }
+      if (e.target.closest("#livebtn")) { openLive(); return; }
       if (e.target.id === "modalclose" || e.target.id === "modal") $("#modal").hidden = true;
     });
     document.addEventListener("keydown", (e) => {
@@ -1608,6 +1714,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       }
     });
     $("#apply").addEventListener("click", applyYears);
+    $("#modal").addEventListener("input", (e) => { if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
+    $("#modal").addEventListener("change", (e) => { if (e.target.id === "lv-prod") liveFillProduct(false); else if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
     $("#search").addEventListener("change", (e) => doSearch(e.target.value));
     $("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(e.target.value); });

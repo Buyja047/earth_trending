@@ -42,6 +42,12 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   (1981–2025); Mongolia temperature, precipitation, soil wetness, wind, snow
   (1981–2025), CERES aerosol and IMERG precipitation (2001–2025); a
   known-truth test field.
+- **Live analysis of any variable** (*+ Analyse any variable* in the layer
+  manager, or File menu): pick any of 472 MERRA-2 or 848 CERES monthly
+  variables and a box anywhere on Earth; the page reads the data straight
+  from NASA POWER on AWS (needs internet; about 0.6 MB per 30 × 30-cell
+  tile) and runs every test in the browser. Over Mongolia it reproduces the
+  precomputed Python results (country-mean T2M +0.1942 °C/decade, p 0.00239).
 - **Layers** (the *Layer ▾* button at the end of the tab row, so nothing
   covers the map): FDR-tested trend, naive trend, verdict, smallest detectable
   trend, year-by-year anomaly, data-source steps, each with a one-line
@@ -108,6 +114,7 @@ python -m trend_detective build --only mn-t2m --no-screen
 python -m trend_detective series merra2 T2M --bbox 104 43 107 45
 python -m trend_detective vars merra2 --grep soil
 python -m trend_detective furniture --geonames DIR --world-atlas DIR
+python -m trend_detective catalog         # variable catalog for live analysis
 ```
 
 Scenes are defined in `trend_detective/scenes.py`; add a `SceneSpec` to
@@ -118,12 +125,14 @@ analyse another variable or region.
 ```
 TrendDetective.html   double-click to open the viewer
 web/                  viewer (index.html, css/, js/, data/*.js)
+  js/zarr.js, live.js live reading of NASA POWER Zarr chunks (Blosc/zstd) in the browser
 trend_detective/
   stats.py            per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
   analysis.py         field analysis, verdicts, region means
   scenes.py           scene definitions, variable screen, cross-checks
   power.py, nsidc.py  data access (NASA POWER Zarr, NSIDC Sea Ice Index)
   catalog.py          products and documented data-source transitions
+  livecat.py          variable catalog for live analysis (web/data/power-catalog.js)
   payload.py          data files the viewer reads from disk or HTTP
   geo.py              coastlines (Natural Earth) and places (GeoNames)
   grid.py, synthetic.py, validation.py
@@ -159,4 +168,5 @@ allowed, list this repository under References.
 - NSIDC Sea Ice Index, G02135 v4, doi:10.7265/a98x-0f50.
 - Places: GeoNames, CC BY 4.0. Coastlines and borders: Natural Earth via
   `world-atlas` 2.0.2 (ISC).
+- zstd decoding in the browser: fzstd 0.1.1 (MIT, `web/js/vendor/`).
 - Statistical references are listed in `docs/METHODS.md`.

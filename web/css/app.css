@@ -114,6 +114,7 @@ p { margin: 0; }
 .tree .item { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 22px; cursor: pointer; border: 0; background: none; width: 100%; text-align: left; }
 .tree .item:hover { background: var(--hover); }
 .tree .item[aria-current="true"] { background: var(--sel-bg); color: var(--sel-ink); }
+.tree .livebtn { padding-left: 8px; margin: 2px 0 6px; font-weight: 600; border: 1px dashed var(--line-strong); width: calc(100% - 4px); }
 .tree .item .tag { margin-left: auto; font-size: 10px; border: 1px solid currentColor; padding: 0 4px; opacity: 0.85; }
 
 .center { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--bg); }
@@ -227,6 +228,18 @@ pre { font-family: var(--font-data); font-size: 12px; background: var(--panel); 
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0, 0, 0, 0.5); padding: 16px; }
 .modal .box { background: var(--bg); border: 2px solid var(--line-strong); max-width: 640px; width: 100%; max-height: 85vh; overflow: auto; padding: 16px 18px; display: grid; gap: 10px; }
 .modal ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+.liveform { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.liveform > * { min-width: 0; }
+.liveform label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.liveform select, .liveform input { border: 1px solid var(--line-strong); background: var(--bg); padding: 4px 6px; min-width: 0; }
+.liveform #lv-var { flex: 1 1 220px; font-family: var(--font-data); }
+.liveform #lv-prod { flex: 1 1 260px; width: 100%; max-width: 100%; text-overflow: ellipsis; }
+.liveform fieldset { border: 1px solid var(--line); padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 0; min-width: 0; }
+.liveform legend { font-weight: 600; padding: 0 4px; }
+.liveform fieldset input { width: 6.5em; font-family: var(--font-data); }
+.liveform .lvbtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.liveform .btn:disabled { opacity: 0.45; cursor: default; }
+.lverr { font-weight: 600; border-left: 3px solid var(--critical); padding-left: 8px; }
 
 @media (max-width: 1100px) {
   .app { height: auto; min-height: 100%; }
