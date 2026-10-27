@@ -35,6 +35,7 @@
       <button type="button" data-view="surf">3D</button>
     </div>
     <button type="button" class="btn" id="boxmode" aria-pressed="false" data-i18n="tb_box">Box select</button>
+    <button type="button" class="btn" data-cmp aria-pressed="false" data-i18n="tb_cmp">Compare</button>
     <span class="tsep" aria-hidden="true"></span>
     <label class="search"><input type="search" id="search" list="placelist" data-i18n-ph="tb_search" placeholder="Search a place…" aria-label="Search a place"></label>
     <datalist id="placelist"></datalist>
@@ -84,6 +85,14 @@
       </div>
 
       <section class="doc" id="doc-map" role="tabpanel">
+        <div class="cmpbar" id="cmpbar" hidden>
+          <b data-i18n="cmp_right">Right half</b>
+          <select id="cmp-scene" aria-label="Dataset on the right"></select>
+          <select id="cmp-y0" aria-label="Start year, right"></select> – <select id="cmp-y1" aria-label="End year, right"></select>
+          <button type="button" class="btn primary" id="cmp-apply" data-i18n="tb_apply">Apply</button>
+          <span class="small muted" id="cmp-note"></span>
+          <button type="button" class="btn" data-cmp-close data-i18n="cmp_close">Close</button>
+        </div>
         <div class="mapwrap" id="mapwrap">
           <canvas id="map" tabindex="0" aria-label="Trend map"></canvas>
           <canvas id="surf" aria-label="3D surface of the trend field" hidden></canvas>
@@ -98,6 +107,8 @@
             <button type="button" class="btn" id="surfreset" data-i18n="sf_reset">Reset view</button>
             <span class="muted" data-i18n="sf_hint">Drag to rotate · scroll to zoom</span>
           </div>
+          <div class="cmplabels" id="cmplabels" hidden><span id="cmp-l"></span><span id="cmp-r"></span></div>
+          <div class="cmphandle" id="cmphandle" role="slider" tabindex="0" aria-label="Divider" aria-valuemin="5" aria-valuemax="95" hidden><span aria-hidden="true">⇔</span></div>
           <div class="tip" id="tip" hidden></div>
           <div class="busy" id="busy" hidden></div>
         </div>

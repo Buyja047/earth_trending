@@ -280,20 +280,21 @@
     return { ys, vs };
   }
 
-  async function computeResults() {
-    const sc = state.sc, entry = state.entry, years = state.y1 - state.y0 + 1;
-    if (isFull() && !sc.live) {
+  async function computeResults() { state.res = await computeFor(state.sc, state.entry, state.y0, state.y1, state.alpha); }
+  // every per-cell statistic for one scene and window; precomputed values when the window is the full record
+  async function computeFor(sc, entry, y0, y1, alpha) {
+    const years = y1 - y0 + 1, full = y0 === +sc.period.start.slice(0, 4) && y1 === +sc.period.end.slice(0, 4);
+    if (full && !sc.live) {
       const cells = sc.cells;
-      const exact = Math.abs(state.alpha - 0.05) < 1e-9;
+      const exact = Math.abs(alpha - 0.05) < 1e-9;
       const cl = exact ? { status: Int8Array.from(cells.status), counts: Object.assign({}, sc.counts), pstar: sc.p_star }
-        : classify(cells, cells.status, state.alpha, sc.period.years);
+        : classify(cells, cells.status, alpha, sc.period.years);
       cl.counts.step_flagged = sc.counts.step_flagged;
-      state.res = { custom: false, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years: sc.period.years,
+      return { custom: false, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years: sc.period.years,
         regionStats: sc.region_means.map((rm) => rm.stats) };
-      return;
     }
-    const cube = annualCube(entry), i0 = cube.years.indexOf(state.y0);
-    const tt = Array.from({ length: years }, (_, k) => state.y0 + k + 0.5);
+    const cube = annualCube(entry), i0 = cube.years.indexOf(y0);
+    const tt = Array.from({ length: years }, (_, k) => y0 + k + 0.5);
     const ncell = sc.grid.nx * sc.grid.ny, monthly = sc.series.kind === "monthly", n = sc.series.n;
     const cells = {};
     ["sen", "sen_lo", "sen_hi", "p_naive", "p_mk", "p_ols", "phi", "sigma", "mdt", "nstar", "ols", "p_hr_empirical"].forEach((k) => { cells[k] = new Array(ncell).fill(null); });
@@ -306,7 +307,7 @@
       if (base[c] >= 1 && base[c] <= 5) {
         let r;
         if (monthly) {
-          const w = monthlyWindow(entry.vals.subarray(c * n, (c + 1) * n), sc.series.start, state.y0, state.y1);
+          const w = monthlyWindow(entry.vals.subarray(c * n, (c + 1) * n), sc.series.start, y0, y1);
           r = S.analyze(w.x, w.t);
         } else r = S.analyze(Array.from(cube.data.subarray(c * cube.ny + i0, c * cube.ny + i0 + years)), tt);
         if (r) {
@@ -323,13 +324,106 @@
     }
     busy.hidden = true;
     state.busy = false;
-    const cl = classify(cells, base, state.alpha, years);
+    const cl = classify(cells, base, alpha, years);
     cl.counts.step_flagged = sc.counts.step_flagged;
     const regionStats = sc.region_means.map((rm) => {
-      const w = monthlyWindow(rm.monthly, rm.monthly_start, state.y0, state.y1);
+      const w = monthlyWindow(rm.monthly, rm.monthly_start, y0, y1);
       return statsFromJS(S.analyze(w.x, w.t));
     });
-    state.res = { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly };
+    return { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly };
+  }
+
+  // ------------------------------------------------------------ split-view compare
+  // the right half of the map shows another dataset (same region) or the same one for other years
+  const cmp = { on: false, id: null, y0: null, y1: null, entry: null, res: null, x: 0.5, busy: false };
+  const cmpReady = () => cmp.on && cmp.res && state.view === "map";
+  // run fn with the compare side in place of the main one (single-threaded, restored afterwards)
+  function withSide(fn) {
+    const keep = { sc: state.sc, entry: state.entry, res: state.res, y0: state.y0, y1: state.y1, layer: state.layer, step: state.step };
+    Object.assign(state, { sc: cmp.entry.sc, entry: cmp.entry, res: cmp.res, y0: cmp.y0, y1: cmp.y1 });
+    if (!availLayers().includes(state.layer)) state.layer = "trend";
+    if (!state.sc.steps[state.step]) state.step = 0;
+    try { return fn(); } finally { Object.assign(state, keep); }
+  }
+  const sameUnits = () => cmp.entry && cmp.entry.sc.units === state.sc.units;
+  // datasets that can go on the right: same region (a live box only with itself)
+  function cmpChoices() {
+    const sc = state.sc;
+    return state.index.scenes.filter((s) => (sc.live ? s.id === sc.id : !s.live && s.region === sc.region));
+  }
+  function cmpDefault() {
+    const sc = state.sc, pair = (state.index.comparisons || []).find((c) => c.a === sc.id || c.b === sc.id);
+    if (pair) {
+      const id = pair.a === sc.id ? pair.b : pair.a, e = state.index.scenes.find((s) => s.id === id);
+      return { id, y0: +e.period.start.slice(0, 4), y1: +e.period.end.slice(0, 4) };
+    }
+    // otherwise the same dataset: the first and second half of the chosen years
+    const mid = state.y0 + Math.floor((state.y1 - state.y0 + 1) / 2);
+    return { id: sc.id, y0: Math.max(mid, state.y1 - 29), y1: state.y1, left: [state.y0, mid - 1] };
+  }
+  async function cmpLoad(id, y0, y1) {
+    const entry = await loadScene(id), sc = entry.sc, a = +sc.period.start.slice(0, 4), b = +sc.period.end.slice(0, 4);
+    y0 = Math.max(a, Math.min(y0, b - 9)); y1 = Math.min(b, Math.max(y1, y0 + 9));
+    cmp.busy = true;
+    const res = await computeFor(sc, entry, y0, y1, state.alpha);
+    Object.assign(cmp, { id, y0, y1, entry, res, busy: false });
+  }
+  async function setCompare(on) {
+    if (!on) {
+      cmp.on = false; cmp.res = null;
+      // give the left half back the years it had before the split
+      if (cmp.prev && cmp.prev.id === state.sc.id) { [state.y0, state.y1] = cmp.prev.years; cmp.prev = null; await computeResults(); }
+      renderAll();
+      return;
+    }
+    const d = cmpDefault();
+    cmp.on = true;
+    cmp.prev = null;
+    if (d.left && (state.y0 !== d.left[0] || state.y1 !== d.left[1]) && d.left[1] - d.left[0] >= 9) {
+      cmp.prev = { id: state.sc.id, years: [state.y0, state.y1] };
+      state.y0 = d.left[0]; state.y1 = d.left[1];
+      await computeResults();
+    }
+    await cmpLoad(d.id, d.y0, d.y1);
+    renderAll();
+  }
+  async function cmpApply() {
+    let y0 = +$("#cmp-y0").value, y1 = +$("#cmp-y1").value;
+    if (y1 < y0) [y0, y1] = [y1, y0];
+    await cmpLoad($("#cmp-scene").value, y0, y1);
+    renderAll();
+  }
+  function renderCmpBar() {
+    const bar = $("#cmpbar"), on = cmp.on && state.view === "map";
+    bar.hidden = !on;
+    $("#cmphandle").hidden = !cmpReady();
+    $("#cmplabels").hidden = !cmpReady();
+    $$("[data-cmp]").forEach((b) => { b.setAttribute("aria-pressed", cmp.on); b.classList.toggle("primary", cmp.on); });
+    if (!on || !cmp.entry) return;
+    const sc = cmp.entry.sc, a = +sc.period.start.slice(0, 4), b = +sc.period.end.slice(0, 4);
+    const opts = (sel) => Array.from({ length: b - a + 1 }, (_, k) => a + k).map((y) => `<option${y === sel ? " selected" : ""}>${y}</option>`).join("");
+    $("#cmp-scene").innerHTML = cmpChoices().map((s) => `<option value="${s.id}"${s.id === cmp.id ? " selected" : ""}>${esc(sceneTitle(s))}</option>`).join("");
+    $("#cmp-y0").innerHTML = opts(cmp.y0); $("#cmp-y1").innerHTML = opts(cmp.y1);
+    $("#cmp-note").textContent = sameUnits() ? t("cmp_shared") : t("cmp_own");
+  }
+  // side labels and the drag handle follow the divider
+  function placeCmp() {
+    if (!cmpReady()) return;
+    const x = Math.round(map.W * cmp.x), lbl = (sc, y0, y1) => `${sceneTitle(sc)} · ${y0}–${y1}`;
+    const h = $("#cmphandle");
+    h.style.left = x + "px";
+    h.setAttribute("aria-valuenow", Math.round(100 * cmp.x));
+    $("#cmp-l").textContent = lbl(state.sc, state.y0, state.y1);
+    $("#cmp-r").textContent = lbl(cmp.entry.sc, cmp.y0, cmp.y1);
+    $("#cmp-r").style.left = x + 8 + "px";
+    $("#cmp-l").style.maxWidth = Math.max(60, x - 16) + "px";
+    $("#cmp-r").style.maxWidth = Math.max(60, map.W - x - 56) + "px";
+  }
+  // the same location in the compare dataset's grid
+  function cmpCellAt(lon, lat) {
+    const g = cmp.entry.sc.grid;
+    const i = Math.round((lon - g.lon[0]) / g.dlon), j = Math.round((lat - g.lat[0]) / g.dlat);
+    return i < 0 || j < 0 || i >= g.nx || j >= g.ny ? -1 : j * g.nx + i;
   }
 
   // ------------------------------------------------------------ year detectable
@@ -418,7 +512,7 @@
         // early years strong, CAP_YEAR faint; trends not yet detected are faded
         const d = detectArr()[k];
         if (!d || d.y > CAP_YEAR) return { col: pal.grid, h: 0 };
-        const f = Math.max(0, Math.min(1, (CAP_YEAR - d.y) / (CAP_YEAR - state.y0))), col = pal.seq[Math.round(f * 255)];
+        const y0 = map.emergeY0 || state.y0, f = Math.max(0, Math.min(1, (CAP_YEAR - d.y) / (CAP_YEAR - y0))), col = pal.seq[Math.round(f * 255)];
         return { col: st === 1 || st === 2 ? col : fade(col, 0.45), h: f };
       }
       case "steps": {
@@ -444,7 +538,11 @@
   function drawMap() {
     const sc = state.sc;
     if (!sc || !state.res || !pal) return;
-    const lim = layerLimit();
+    // the year-detectable colours count from the earlier start year of the two halves
+    map.emergeY0 = cmpReady() ? Math.min(state.y0, cmp.y0) : state.y0;
+    let lim = layerLimit();
+    // with the same units on both sides, one colour scale makes the halves comparable
+    if (cmpReady()) { map.limR = withSide(layerLimit); if (sameUnits()) lim = map.limR = Math.max(lim, map.limR); }
     map.lim = lim;
     renderLegend(lim);
     if (state.view === "surf") { drawSurface(lim); return; }
@@ -490,12 +588,34 @@
     ctx.strokeStyle = pal.line;
     ctx.lineWidth = 1;
     ctx.strokeRect(G.ox - 0.5, G.oy - 0.5, G.w + 1, G.h + 1);
-    const g = sc.grid, cw = G.w / (G.lon1 - G.lon0) * g.dlon, ch = G.h / (G.lat1 - G.lat0) * g.dlat;
     const imagery = state.base !== "none" && window.TDBasemap;
     if (imagery) {
       TDBasemap.draw(ctx, state.base, { X, Y, lon0: LON(0), lon1: LON(W), lat0: LAT(H), lat1: LAT(0),
         sx: G.w / (G.lon1 - G.lon0), sy: G.h / (G.lat1 - G.lat0), dpr }, { grey: state.baseGrey, date: state.baseDate, onload: schedulePaint });
     }
+    const pl = placeLayout(), divX = cmpReady() ? Math.round(W * cmp.x) : W;
+    drawField(0, divX, lim, pl, imagery, dpr, cwPx, chPx);
+    if (divX < W) withSide(() => drawField(divX, W, map.limR, pl, imagery, dpr, cwPx, chPx));
+    if (state.ov.coast) drawLines(state.geo.land, pal.coast, 0.8);
+    if (sc.region !== "global") {
+      if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
+      if (sc.region === "mongolia" || sc.focus) drawLines(state.geo.focus.rings, pal.ink, 1.6);
+    }
+    drawPlaces(pl);
+    drawSelection();
+    if (divX < W) {
+      ctx.fillStyle = pal.ink;
+      ctx.fillRect(divX - 1, 0, 2, H);
+      placeCmp();
+    }
+    if (imagery) drawCredit();
+  }
+  // cells, values and dots of the current dataset (state.sc) inside the strip x0..x1 of the canvas
+  function drawField(x0, x1, lim, pl, imagery, dpr, cwPx, chPx) {
+    const ctx = map.ctx, G = map.g, H = map.H, sc = state.sc, g = sc.grid;
+    const cw = G.w / (G.lon1 - G.lon0) * g.dlon, ch = G.h / (G.lat1 - G.lat0) * g.dlat;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, 0, x1 - x0, H); ctx.clip();
     // over imagery the cells go to an offscreen layer first, so one opacity applies to the whole
     // field and the slight overlap between neighbouring cells does not show as a darker grid
     let cctx = ctx;
@@ -508,14 +628,14 @@
       cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     // zoomed in far enough, each cell also shows its value, except where a place is labelled
-    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", pl = placeLayout(), marks = [];
+    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", marks = [];
     ctx.font = `10px ${cssVar("--font-data")}`;
     for (let j = 0; j < g.ny; j++) {
       const ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
       if (yb < 0 || ya > H) continue;
       for (let i = 0; i < g.nx; i++) {
         const xa = X(g.lon[i] - g.dlon / 2), xb = X(g.lon[i] + g.dlon / 2);
-        if (xb < 0 || xa > W) continue;
+        if (xb < x0 || xa > x1) continue;
         const k = j * g.nx + i, look = cellLook(k, lim);
         if (!look) continue;
         cctx.fillStyle = rgb(look.col);
@@ -550,18 +670,11 @@
         if (s !== 1 && s !== 2) continue;
         let x = X(g.lon[k % g.nx]), y = Y(g.lat[Math.floor(k / g.nx)]);
         if (labels) { x -= cw / 2 - 5; y -= ch / 2 - 5; }
-        if (x < -4 || y < -4 || x > W + 4 || y > H + 4) continue;
+        if (x < x0 - 4 || y < -4 || x > x1 + 4 || y > H + 4) continue;
         ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill();
       }
     }
-    if (state.ov.coast) drawLines(state.geo.land, pal.coast, 0.8);
-    if (sc.region !== "global") {
-      if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
-      if (sc.region === "mongolia" || sc.focus) drawLines(state.geo.focus.rings, pal.ink, 1.6);
-    }
-    drawPlaces(pl);
-    drawSelection();
-    if (imagery) drawCredit();
+    ctx.restore();
   }
   // short credit on the map; the full GIBS acknowledgement is in About and the Method tab
   function drawCredit() {
@@ -769,6 +882,10 @@
       if (map.drag.moved) { schedulePaint(); hideTip(); return; }
     }
     if (e.pointerType === "touch") return;
+    if (cmpReady() && p.x > map.W * cmp.x) { withSide(() => hover(p)); return; }
+    hover(p);
+  }
+  function hover(p) {
     const i = cellAt(p.x, p.y), tip = $("#tip"), st = i >= 0 ? state.res.status[i] : 0;
     if (i < 0 || st === 0) { tip.hidden = true; status({ cursor: null }); return; }
     const g = state.sc.grid, lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx], txt = cellText(i);
@@ -862,12 +979,13 @@
       return;
     }
     if (state.layer === "emerge") {
-      const det = detectArr(), span = CAP_YEAR - state.y0, pos = (y) => (100 * (y - state.y0) / span).toFixed(1);
+      const e0 = map.emergeY0 || state.y0, det = detectArr(), span = CAP_YEAR - e0, pos = (y) => (100 * (y - e0) / span).toFixed(1);
+      const pNow = +pos(state.y1), tick = (y, at) => `<span style="left:${at}%">${y}</span>`;
       let a = 0, b = 0, c = 0;
       det.forEach((d, k) => { const s = state.res.status[k]; if (s < 1 || s > 5) return; if (!d || d.y > CAP_YEAR) c++; else if (d.y <= state.y1) a++; else b++; });
       el.innerHTML = `<span><b>${esc(t("lg_emerge"))}</b></span>
         <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${rgb(pal.seq[255])},${rgb(pal.seq[128])},${rgb(pal.seq[0])})"><i class="now" style="left:${pos(state.y1)}%"></i></span>
-        <span class="ticks pos"><span style="left:0">${state.y0}</span><span style="left:${pos(state.y1)}%">${state.y1}</span><span style="left:100%">${CAP_YEAR}</span></span></span>
+        <span class="ticks pos">${pNow > 24 ? tick(e0, 0) : "<span></span>"}${tick(state.y1, pNow)}${pNow < 76 ? tick(CAP_YEAR, 100) : "<span></span>"}</span></span>
         <span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("ey_after", { y: CAP_YEAR }))} / ${esc(t("ey_none"))}</span>
         <span class="num muted">${esc(t("ey_counts", { a: nf(a), b: nf(b), c: nf(c), y1: state.y1, cap: CAP_YEAR }))}</span>
         <span class="muted">${esc(t("lg_emergenote"))}</span>`;
@@ -1093,7 +1211,8 @@
       <p class="small muted">${esc(sc.product_name)} · ${esc(periodText())}</p>
       <p class="headline">${head}</p>
       <div class="chips">${chips.map(([v, l]) => `<div class="chip"><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
-      ${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}`;
+      ${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}
+      ${cmpSummary()}`;
   }
   function statsList(st, sc, extra = "") {
     const f = unitFactor();
@@ -1143,6 +1262,7 @@
           (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
       seriesChart($("#cellchart"), { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
         trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept }, markers: markers(sc), window: chartWindow(), label: "cell series" });
+      if (cmpReady()) el.insertAdjacentHTML("beforeend", cmpCellBlock(lon, lat));
       return;
     }
     if (!sel.cells.length) { el.innerHTML = `<p class="eyebrow">${esc(t("d_selection"))}</p><p class="muted">${esc(t("box_empty"))}</p>`; return; }
@@ -1177,6 +1297,55 @@
       ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}`;
     seriesChart($("#cellchart"), { t: cube.years.map((v) => v + 0.5), y: annVals, annual: true, unit: unitLabel(sc.units),
       trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
+  }
+
+  // the right half's cell at the same place, for the details pane
+  function cmpCellBlock(lon, lat) {
+    const k = cmpCellAt(lon, lat);
+    return withSide(() => {
+      const sc = state.sc, c = state.res.cells, st = k < 0 ? 0 : state.res.status[k];
+      const head = `<div class="section cmpcell"><p class="eyebrow">${esc(t("cmp_right"))} · ${esc(sceneTitle(sc))} · ${state.y0}–${state.y1}</p>`;
+      if (k < 0 || !st || st === 6 || c.sen[k] === null) return head + `${pill(st)}</div>`;
+      return head + `${pill(st)}<div><span class="big">${signed(c.sen[k] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
+        <dl class="kv"><dt>${esc(t("s_ci"))}</dt><dd>[${fmt(c.sen_lo[k] * unitFactor())}, ${fmt(c.sen_hi[k] * unitFactor())}]</dd>
+        <dt>${esc(t("s_pmk"))}</dt><dd>${fmtP(c.p_mk[k])}</dd>
+        <dt>${esc(t("s_detect_year"))}</dt><dd>${esc(detectShort(detectArr()[k]))}</dd></dl></div>`;
+    });
+  }
+  // left against right: area means and, on a shared grid, cell by cell
+  function cmpSummary() {
+    if (!cmpReady()) return "";
+    const L = { sc: state.sc, res: state.res, y0: state.y0, y1: state.y1 };
+    const R = { sc: cmp.entry.sc, res: cmp.res, y0: cmp.y0, y1: cmp.y1 };
+    const col = (o) => {
+      const rm = o.sc.region_means[0], rs = o.res.regionStats[0], k = o.res.counts;
+      const d = rs ? (o === L ? detectYear(rs.nstar, rs.sen, rs.sen_lo, rs.sen_hi, rs.phi, rs.n) : withSide(() => detectYear(rs.nstar, rs.sen, rs.sen_lo, rs.sen_hi, rs.phi, rs.n))) : null;
+      return { head: `${esc(sceneTitle(o.sc))} <span class="muted">${o.y0}–${o.y1}</span>`, area: rm ? regionName(rm) : "",
+        vals: [rm && rs ? `<b>${signed(rs.sen)}</b><br>[${fmt(rs.sen_lo)}, ${fmt(rs.sen_hi)}]` : "–",
+          rs ? fmtP(rs.p_mk) : "–", `${nf(k.fdr)} / ${nf(k.valid)}`, esc(detectShort(d))] };
+    };
+    const ca = col(L), cb = col(R), rows = ["cmp_row_trend", "cmp_row_p", "cmp_row_fdr", "s_detect_year"];
+    const area = ca.area === cb.area ? ca.area : `${ca.area} / ${cb.area}`;
+    let cells = "";
+    const gl = L.sc.grid, gr = R.sc.grid;
+    const same = gl.nx === gr.nx && gl.ny === gr.ny && gl.lat.every((v, j) => Math.abs(v - gr.lat[j]) < 1e-6) && gl.lon.every((v, i) => Math.abs(v - gr.lon[i]) < 1e-6);
+    if (same) {
+      let n = 0, sign = 0, both = 0, opp = 0;
+      for (let k = 0; k < L.res.status.length; k++) {
+        const sl = L.res.status[k], sr = R.res.status[k];
+        if (sl < 1 || sl > 5 || sr < 1 || sr > 5 || L.res.cells.sen[k] === null || R.res.cells.sen[k] === null) continue;
+        n++;
+        const agree = Math.sign(L.res.cells.sen[k]) === Math.sign(R.res.cells.sen[k]);
+        if (agree) sign++;
+        if ((sl === 1 || sl === 2) && (sr === 1 || sr === 2)) { if (agree) both++; else opp++; }
+      }
+      cells = `<div class="cmp"><div class="chip"><b>${n ? Math.round(100 * sign / n) : 0}%</b><span>${esc(t("cmp_sign"))}</span></div>
+        <div class="chip"><b>${nf(both)} / ${nf(opp)}</b><span>${esc(t("cmp_both"))}</span></div></div>`;
+    }
+    return `<div class="section"><p class="eyebrow">${esc(t("cmp_title"))}</p>
+      <table class="cmptable"><thead><tr><th></th><th>${esc(t("cmp_left"))}<br>${ca.head}</th><th>${esc(t("cmp_right"))}<br>${cb.head}</th></tr></thead><tbody>
+      ${rows.map((r, q) => `<tr><th>${esc(t(r))}${q === 0 && area ? `<br><span class="muted">${esc(area)}</span>` : ""}</th><td class="num">${ca.vals[q]}</td><td class="num">${cb.vals[q]}</td></tr>`).join("")}</tbody></table>
+      ${cells}<p class="small muted">${esc(t("cmp_nodiff"))}</p></div>`;
   }
 
   // ------------------------------------------------------------ analysis document
@@ -1449,7 +1618,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         { label: t("file_repo"), href: REPO }, { label: t("file_zip"), href: REPO + "/archive/refs/heads/main.zip" },
         { label: t("file_live"), act: openLive }, { label: t("file_run"), act: () => setTab("method") }] },
       { id: "view", label: t("m_view"), items: [
-        { label: t("view_map"), cls: ck(v === "map"), act: () => setView("map") }, { label: t("view_surf"), cls: ck(v === "surf"), act: () => setView("surf") }, "-",
+        { label: t("view_map"), cls: ck(v === "map"), act: () => setView("map") }, { label: t("view_surf"), cls: ck(v === "surf"), act: () => setView("surf") },
+        { label: t("view_cmp"), cls: ck(cmp.on), act: () => { if (state.view !== "map") setView("map"); setCompare(!cmp.on); } }, "-",
         { label: t("theme_system"), cls: ck(th === "system"), act: () => setTheme("system") }, { label: t("theme_light"), cls: ck(th === "light"), act: () => setTheme("light") },
         { label: t("theme_dark"), cls: ck(th === "dark"), act: () => setTheme("dark") }, "-",
         { label: "English", cls: ck(L() === "en"), act: () => setLang("en") }, { label: "Монгол", cls: ck(L() === "mn"), act: () => setLang("mn") }, "-",
@@ -1501,7 +1671,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
 
   // ------------------------------------------------------------ actions
   function renderAll() {
-    renderMenus(); buildTree(); fillYears(); renderPicker(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
+    renderMenus(); buildTree(); fillYears(); renderPicker(); renderCmpBar(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
     renderAnalysis(); renderScreen(); renderMethod(); status();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
     $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
@@ -1518,6 +1688,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     }
     if (location.hash.slice(1) !== id) { try { history.replaceState(null, "", "#" + id); } catch (e) { /* file:// can refuse */ } }
     await computeResults();
+    // a compare side from another region cannot stay
+    if (cmp.on && !cmpChoices().some((c) => c.id === cmp.id)) { const d = cmpDefault(); await cmpLoad(d.id, d.y0, d.y1); }
     renderAll();
   }
   async function applyYears() {
@@ -1538,11 +1710,17 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     else { $("#y0").value = Math.max(a, b - p + 1); $("#y1").value = b; }
     applyYears();
   }
-  async function setAlpha(a) { state.alpha = a; await computeResults(); renderAll(); }
+  async function setAlpha(a) {
+    state.alpha = a;
+    await computeResults();
+    if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
+    renderAll();
+  }
   function setLayer(l) { state.layer = l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
   function setView(v) {
     state.view = v;
     $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf"; $("#zoomctl").hidden = v !== "map";
+    renderCmpBar();
     hideTip();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === v));
     renderMenus();
@@ -1747,6 +1925,9 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         state.unit = { decade: "year", year: "total", total: "decade" }[state.unit];
         drawMap(); renderInspector(); return;
       }
+      if (e.target.closest("[data-cmp]")) { if (state.view !== "map") setView("map"); setCompare(!cmp.on); return; }
+      if (e.target.closest("[data-cmp-close]")) { setCompare(false); return; }
+      if (e.target.id === "cmp-apply") { cmpApply(); return; }
       if (e.target.id === "lv-run") { liveRun(); return; }
       if (e.target.id === "lv-view" || e.target.id === "lv-sel") {
         const b = e.target.id === "lv-sel" && state.sel && state.sel.type === "box" ? state.sel.bounds.map((v) => +v.toFixed(2)) : liveDefaultBox();
@@ -1829,6 +2010,17 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       else if (k === "ArrowUp" || k === "ArrowDown") panBy(0, k === "ArrowUp" ? step : -step);
       else return;
       e.preventDefault();
+    });
+    const handle = $("#cmphandle");
+    let dragging = false;
+    const moveDivider = (fx) => { cmp.x = Math.max(0.05, Math.min(0.95, fx)); schedulePaint(); };
+    handle.addEventListener("pointerdown", (e) => { dragging = true; handle.setPointerCapture(e.pointerId); e.preventDefault(); });
+    handle.addEventListener("pointermove", (e) => { if (dragging) moveDivider((e.clientX - map.canvas.getBoundingClientRect().left) / map.W); });
+    const stopDrag = () => { if (dragging) { dragging = false; } };
+    handle.addEventListener("pointerup", stopDrag);
+    handle.addEventListener("pointercancel", stopDrag);
+    handle.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") { moveDivider(cmp.x + (e.key === "ArrowLeft" ? -0.05 : 0.05)); e.preventDefault(); }
     });
     $("#zin").addEventListener("click", () => zoomAt(map.W / 2, map.H / 2, 2));
     $("#zout").addEventListener("click", () => zoomAt(map.W / 2, map.H / 2, 0.5));

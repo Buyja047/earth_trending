@@ -8,6 +8,10 @@ record length and data-source changes are taken into account.
 
 English and Mongolian interface · works offline · no installation needed to view.
 
+**Open it online: https://buyja047.github.io/earth_trending/** (any modern
+browser, phones included; send the link to anyone). Онлайнаар нээх:
+https://buyja047.github.io/earth_trending/ — холбоосыг хэнд ч илгээж болно.
+
 ---
 
 ## Open it in one minute (no installation)
@@ -60,6 +64,13 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   ASTER terrain, 2016 night lights, or the MODIS Terra image of a day (most
   days since 24 February 2000; GIBS lists the gaps), under the data with adjustable opacity and an optional grey
   filter. Off by default, so the viewer stays fully offline until you pick one.
+- **Compare** (toolbar or View menu): split the map with a draggable
+  divider. By default a model is set against its satellite partner (MERRA-2
+  vs GPM IMERG precipitation, same grid), otherwise one dataset against
+  itself for two periods (first and second half of the years). One colour
+  scale when the units match; the details pane gives both halves' area
+  means, cell-by-cell sign agreement, and both values for a clicked cell. No
+  p-value is given for the difference: the halves are not independent.
 - **Zoom and pan**: mouse wheel, two-finger pinch, double-click or the + / −
   buttons; drag to move; ⤢ shows the whole map. Zoomed in, each cell prints its
   value and every town in Mongolia (or every capital on the globe) is

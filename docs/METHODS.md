@@ -138,6 +138,24 @@ FDR and detectability as the precomputed scenes.
   holds tens of thousands of cells. The claude.ai preview of the page may not
   be allowed to reach AWS; the downloaded `TrendDetective.html` is.
 
+## Comparing two halves of the map
+
+*Compare* draws a second dataset, or the same dataset for other years, on the
+right of a draggable divider, using the same statistics. With equal units both
+halves share one colour scale (the larger of the two limits), and the
+year-detectable colours count from the earlier start year, so a colour means
+the same thing on both sides. On a shared grid the details pane counts cells
+whose trends share a sign and cells significant on both sides with the same or
+opposite sign. Example (2001–2025, Mongolia): MERRA-2 precipitation trends
++0.065 mm/day per decade and GPM IMERG +0.018; 80 % of cells share a sign; 116
+cells are significant in both with the same sign and none with opposite signs.
+
+No test of the difference between the halves is offered. Two windows of one
+record share autocorrelated noise (and overlap when the windows overlap), and a
+model and a satellite product over the same place share the weather; a
+two-sample test that assumes independence would overstate the evidence.
+Overlapping confidence intervals are also not a test of equality.
+
 ## Background imagery
 
 Imagery comes from NASA GIBS (WMTS, EPSG:4326 "best" endpoint) and is only
