@@ -46,6 +46,8 @@
     entry: null, sc: null, res: null, layer: "trend", step: 0, view: "map", tab: "map",
     y0: null, y1: null, alpha: 0.05, sel: null, year: null, playing: null, unit: "decade",
     theme: "system", screenFilter: "all", searched: null, busy: false,
+    // background imagery (NASA GIBS); "none" keeps the viewer fully offline
+    base: "none", baseDate: new Date(Date.now() - 864e5).toISOString().slice(0, 10), baseGrey: true, baseAlpha: 0.75,
     ov: { coast: true, borders: true, places: true, stipple: false },
   };
 
@@ -489,10 +491,25 @@
     ctx.lineWidth = 1;
     ctx.strokeRect(G.ox - 0.5, G.oy - 0.5, G.w + 1, G.h + 1);
     const g = sc.grid, cw = G.w / (G.lon1 - G.lon0) * g.dlon, ch = G.h / (G.lat1 - G.lat0) * g.dlat;
+    const imagery = state.base !== "none" && window.TDBasemap;
+    if (imagery) {
+      TDBasemap.draw(ctx, state.base, { X, Y, lon0: LON(0), lon1: LON(W), lat0: LAT(H), lat1: LAT(0),
+        sx: G.w / (G.lon1 - G.lon0), sy: G.h / (G.lat1 - G.lat0), dpr }, { grey: state.baseGrey, date: state.baseDate, onload: schedulePaint });
+    }
+    // over imagery the cells go to an offscreen layer first, so one opacity applies to the whole
+    // field and the slight overlap between neighbouring cells does not show as a darker grid
+    let cctx = ctx;
+    if (imagery) {
+      if (!map.layer) map.layer = document.createElement("canvas");
+      if (map.layer.width !== cwPx || map.layer.height !== chPx) { map.layer.width = cwPx; map.layer.height = chPx; }
+      cctx = map.layer.getContext("2d");
+      cctx.setTransform(1, 0, 0, 1, 0, 0);
+      cctx.clearRect(0, 0, cwPx, chPx);
+      cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
     // zoomed in far enough, each cell also shows its value, except where a place is labelled
-    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", pl = placeLayout();
+    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", pl = placeLayout(), marks = [];
     ctx.font = `10px ${cssVar("--font-data")}`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (let j = 0; j < g.ny; j++) {
       const ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
       if (yb < 0 || ya > H) continue;
@@ -501,16 +518,28 @@
         if (xb < 0 || xa > W) continue;
         const k = j * g.nx + i, look = cellLook(k, lim);
         if (!look) continue;
-        ctx.fillStyle = rgb(look.col);
-        ctx.fillRect(xa, ya, xb - xa + 0.6, yb - ya + 0.6);
+        cctx.fillStyle = rgb(look.col);
+        cctx.fillRect(xa, ya, xb - xa + 0.6, yb - ya + 0.6);
         if (!labels) continue;
         const v = cellNumber(k);
         if (v === null || !Number.isFinite(v)) continue;
         const txt = state.layer === "emerge" ? String(v) : state.layer === "detect" ? fmt(v, 2) : signed(v, 2), tx = (xa + xb) / 2, ty = (ya + yb) / 2, hw = ctx.measureText(txt).width / 2 + 2;
         if (hits({ x0: tx - hw, x1: tx + hw, y0: ty - 7, y1: ty + 7 }, pl.taken)) continue;
-        ctx.fillStyle = inkOn(look.col);
-        ctx.fillText(txt, tx, ty);
+        marks.push([txt, tx, ty, inkOn(look.col)]);
       }
+    }
+    if (imagery) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = state.baseAlpha;
+      ctx.drawImage(map.layer, 0, 0);
+      ctx.restore();
+    }
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const [txt, tx, ty, ink] of marks) {
+      if (imagery) { ctx.lineWidth = 2.5; ctx.strokeStyle = ink === "#000" ? "#fff" : "#000"; ctx.strokeText(txt, tx, ty); }
+      ctx.fillStyle = ink;
+      ctx.fillText(txt, tx, ty);
     }
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
     if (state.ov.stipple && cw >= 3) {
@@ -532,6 +561,27 @@
     }
     drawPlaces(pl);
     drawSelection();
+    if (imagery) drawCredit();
+  }
+  // short credit on the map; the full GIBS acknowledgement is in About and the Method tab
+  function drawCredit() {
+    const L = TDBasemap.LAYERS[state.base], st = TDBasemap.status(), ctx = map.ctx;
+    const txt = `${t("base_credit")}: NASA GIBS · ${L.credit}${L.dated ? " · " + state.baseDate : ""}`;
+    ctx.font = `10px ${cssVar("--font-ui")}`;
+    const w = ctx.measureText(txt).width;
+    ctx.fillStyle = rgb(pal.bg);
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(0, map.H - 18, w + 14, 18);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = pal.ink;
+    ctx.fillText(txt, 7, map.H - 5);
+    if (st.failures && !st.loads && !map.baseWarned) {
+      map.baseWarned = true;
+      const note = $("#mapnote");
+      note.textContent = t("base_fail");
+      note.hidden = false;
+      setTimeout(() => { note.hidden = true; }, 5000);
+    }
   }
   function schedulePaint() {
     if (map.raf) return;
@@ -1521,7 +1571,9 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#modalclose").focus();
   }
   function showGuide() { modal(`<h2>${esc(t("guide_title"))}</h2><ol>${t("guide").map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`); }
-  function showAbout() { modal(`<h2>${esc(t("about_title"))}</h2><p>${esc(t("about"))}</p><p><a href="${REPO}" target="_blank" rel="noopener">${REPO}</a></p>`); }
+  function showAbout() { modal(`<h2>${esc(t("about_title"))}</h2><p>${esc(t("about"))}</p><p class="small">${esc(GIBS_ACK)}</p><p><a href="${REPO}" target="_blank" rel="noopener">${REPO}</a></p>`); }
+  // wording requested by NASA GIBS (GIBS API documentation, "Data Use Guidance and Acknowledgements")
+  const GIBS_ACK = "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS).";
   function doSearch(q) {
     q = q.trim().toLowerCase();
     if (!q || !state.sc) return;
@@ -1638,6 +1690,9 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     const saved = store.get("lang");
     I.setLang(saved || ((navigator.language || "").toLowerCase().startsWith("mn") ? "mn" : "en"));
     state.theme = store.get("theme") || "system";
+    state.base = window.TDBasemap && TDBasemap.LAYERS[store.get("base")] ? store.get("base") : "none";
+    state.baseGrey = store.get("basegrey") !== "0";
+    state.baseAlpha = Math.min(1, Math.max(0.2, +store.get("basealpha") || 0.75));
     if (state.theme !== "system") document.documentElement.dataset.theme = state.theme;
     map.canvas = $("#map"); map.ctx = map.canvas.getContext("2d");
     surface = new window.TDSurface($("#surf"));
@@ -1726,6 +1781,24 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       $("#mapwrap").classList.toggle("box-mode", map.boxMode);
     });
     ["coast", "borders", "places", "stipple"].forEach((k) => $("#ov-" + k).addEventListener("change", (e) => { state.ov[k] = e.target.checked; drawMap(); }));
+    const syncBase = () => {
+      $$("input[name=base]").forEach((r) => { r.checked = r.value === state.base; });
+      $("#base-date").value = state.baseDate;
+      $("#base-date").max = new Date().toISOString().slice(0, 10);
+      $("#base-dayrow").hidden = state.base !== "day";
+      $("#base-opts").hidden = state.base === "none";
+      $("#base-grey").checked = state.baseGrey;
+      $("#base-alpha").value = state.baseAlpha;
+    };
+    syncBase();
+    $("#leftpane").addEventListener("change", (e) => {
+      if (e.target.name === "base") { state.base = e.target.value; store.set("base", state.base); map.baseWarned = false; }
+      else if (e.target.id === "base-date" && e.target.value) state.baseDate = e.target.value;
+      else if (e.target.id === "base-grey") { state.baseGrey = e.target.checked; store.set("basegrey", state.baseGrey ? "1" : "0"); }
+      else return;
+      syncBase(); drawMap();
+    });
+    $("#base-alpha").addEventListener("input", (e) => { state.baseAlpha = +e.target.value; store.set("basealpha", e.target.value); schedulePaint(); });
     $("#play").addEventListener("click", togglePlay);
     $("#yearslider").addEventListener("input", (e) => {
       state.year = annualCube(state.entry).years[+e.target.value];

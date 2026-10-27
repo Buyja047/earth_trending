@@ -138,6 +138,19 @@ FDR and detectability as the precomputed scenes.
   holds tens of thousands of cells. The claude.ai preview of the page may not
   be allowed to reach AWS; the downloaded `TrendDetective.html` is.
 
+## Background imagery
+
+Imagery comes from NASA GIBS (WMTS, EPSG:4326 "best" endpoint) and is only
+for orientation; no statistic uses it. The tile grid is taken from GIBS's own
+WMTSCapabilities: top-left corner (−180°, 90°), 512 × 512-pixel tiles, one
+tile spanning 288°/2^level, deepest level 7 (500 m sets), 8 (250 m) or 11
+(31.25 m). Level-0 tiles extend past the globe; we checked on real tiles that
+the image content ends at column 127 and row 319 (180° E, 90° S), and drawing
+is clipped to the globe. The level is chosen so that one image pixel is no
+coarser than one screen pixel. Because both the map and the tiles are plain
+longitude-latitude grids, a tile maps onto the map by scaling alone. Tests
+check matrix sizes and URL templates against the capabilities document.
+
 ## Recomputing for chosen years in the viewer
 
 When the reader picks a start and end year, the browser reruns the same

@@ -56,6 +56,10 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   detected with 90 % probability if it continues (Weatherhead et al. 1998),
   with a range that our Monte Carlo shows covers the true value 92–99 % of
   the time; also shown for every cell, box and area mean.
+- **Background imagery** (NASA GIBS, left panel): Blue Marble relief, grey
+  ASTER terrain, 2016 night lights, or the MODIS Terra image of a day (most
+  days since 24 February 2000; GIBS lists the gaps), under the data with adjustable opacity and an optional grey
+  filter. Off by default, so the viewer stays fully offline until you pick one.
 - **Zoom and pan**: mouse wheel, two-finger pinch, double-click or the + / −
   buttons; drag to move; ⤢ shows the whole map. Zoomed in, each cell prints its
   value and every town in Mongolia (or every capital on the globe) is
@@ -126,6 +130,7 @@ analyse another variable or region.
 TrendDetective.html   double-click to open the viewer
 web/                  viewer (index.html, css/, js/, data/*.js)
   js/zarr.js, live.js live reading of NASA POWER Zarr chunks (Blosc/zstd) in the browser
+  js/basemap.js       NASA GIBS imagery tiles (WMTS, EPSG:4326)
 trend_detective/
   stats.py            per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
   analysis.py         field analysis, verdicts, region means
@@ -169,4 +174,9 @@ allowed, list this repository under References.
 - Places: GeoNames, CC BY 4.0. Coastlines and borders: Natural Earth via
   `world-atlas` 2.0.2 (ISC).
 - zstd decoding in the browser: fzstd 0.1.1 (MIT, `web/js/vendor/`).
+- Background imagery: "We acknowledge the use of imagery provided by services
+  from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth
+  Science Data and Information System (ESDIS)." Layers: Blue Marble shaded
+  relief and bathymetry, ASTER GDEM greyscale shaded relief (NASA/METI),
+  VIIRS Black Marble 2016, MODIS Terra corrected reflectance.
 - Statistical references are listed in `docs/METHODS.md`.
