@@ -4,6 +4,10 @@ For AR(1) noise of several strengths (45 years of monthly data) we count how
 often each test calls a trend significant at 5 % when there is no trend
 (size; should be ~0.05) and when the trend equals Weatherhead's minimum
 detectable trend (power; Weatherhead's formula targets 0.90).
+
+A second experiment checks the "year detectable" range: for trends that need
+a known number of years n* to detect, how often the range built from the Sen
+confidence interval and Weatherhead's uncertainty factor contains that n*.
 """
 
 from __future__ import annotations
@@ -51,12 +55,45 @@ def run(reps=400, years=45, phis=(0.0, 0.3, 0.6, 0.9), seed=2026) -> dict:
         })
     mc_se = round(float(np.sqrt(0.05 * 0.95 / reps)), 4)
     return {"reps": reps, "years": years, "seed": seed, "mc_standard_error_at_5pct": mc_se,
-            "tests": TESTS, "rows": rows}
+            "tests": TESTS, "rows": rows, "detection": run_detection(reps, years, seed + 1)}
+
+
+def run_detection(reps=400, years=45, seed=2027) -> dict:
+    """Coverage of the n* range for trends that need n_true years to detect.
+
+    Noise has sigma_N = 1, so the planted trend is K sqrt((1+phi)/(1-phi)) / n_true^1.5.
+    ``noise_part`` isolates the sigma_N/phi part: n* from the true trend but
+    estimated noise, inside e^+-B with m = samples (used) or m = years.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    for sampling, phis, ntrues in (("monthly", (0.0, 0.3, 0.6, 0.9), (20.0, 45.0, 90.0)),
+                                   ("annual", (0.0, 0.3, 0.6), (45.0,))):
+        step = 1.0 / 12.0 if sampling == "monthly" else 1.0
+        m = int(round(years / step))
+        t = 1981 + (np.arange(m) + 0.5) * step
+        for phi in phis:
+            noise = ar1(rng, m, phi, reps)
+            for n_true in ntrues:
+                omega = stats._weatherhead_k(step) * np.sqrt((1 + phi) / (1 - phi)) / n_true**1.5
+                r = stats.analyze_rows(noise + omega * (t - t[0]), t)
+                lo, hi = stats.detection_range(r["nstar"], r["sen"], r["sen_lo"], r["sen_hi"], r["phi"], m)
+                trend_lo, trend_hi = stats.detection_range(r["nstar"], r["sen"], r["sen_lo"], r["sen_hi"], r["phi"], np.inf)
+                log_err = np.abs(np.log(stats.weatherhead_nstar(r["sigma"], r["phi"], omega, step) / n_true))
+                rows.append({
+                    "sampling": sampling, "phi": phi, "n_true": n_true,
+                    "cover_range": round(float(np.mean((lo <= n_true) & (n_true <= hi))), 3),
+                    "cover_trend_ci_only": round(float(np.mean((trend_lo <= n_true) & (n_true <= trend_hi))), 3),
+                    "noise_part_b_samples": round(float(np.mean(log_err <= stats.weatherhead_b(r["phi"], m))), 3),
+                    "noise_part_b_years": round(float(np.mean(log_err <= stats.weatherhead_b(r["phi"], years))), 3),
+                    "median_ratio": round(float(np.median(r["nstar"] / n_true)), 3),
+                })
+    return {"reps": reps, "years": years, "seed": seed, "rows": rows}
 
 
 if __name__ == "__main__":
     out = Path(__file__).resolve().parent.parent / "web" / "data" / "validation.js"
     res = run()
     write_payload(out, "validation", res)
-    for r in res["rows"]:
+    for r in res["rows"] + res["detection"]["rows"]:
         print(r)

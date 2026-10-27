@@ -46,6 +46,10 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   covers the map): FDR-tested trend, naive trend, verdict, smallest detectable
   trend, year-by-year anomaly, data-source steps, each with a one-line
   explanation.
+- **Year detectable** layer: the year by which a trend of the measured size is
+  detected with 90 % probability if it continues (Weatherhead et al. 1998),
+  with a range that our Monte Carlo shows covers the true value 92–99 % of
+  the time; also shown for every cell, box and area mean.
 - **Zoom and pan**: mouse wheel, two-finger pinch, double-click or the + / −
   buttons; drag to move; ⤢ shows the whole map. Zoomed in, each cell prints its
   value and every town in Mongolia (or every capital on the globe) is

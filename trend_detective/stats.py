@@ -298,6 +298,37 @@ def weatherhead_nstar(sigma, phi, omega, step=1.0 / 12.0):
                 * np.sqrt((1 + phi) / (1 - phi))) ** (2.0 / 3.0)
 
 
+def weatherhead_b(phi, m):
+    """Uncertainty factor B for n*, which lies within [n* e^-B, n* e^B].
+
+    B = 4 / (3 sqrt(m)) * sqrt((1+phi)/(1-phi)) with m the number of samples
+    that sigma_N and phi were estimated from (months for monthly data), as
+    given by Sutton et al. (2019) after Weatherhead et al. (1998). It covers
+    only the uncertainty of sigma_N and phi, not of the trend itself.
+    """
+    phi = np.clip(phi, -0.95, 0.95)
+    return 4.0 / (3.0 * np.sqrt(m)) * np.sqrt((1 + phi) / (1 - phi))
+
+
+def detection_range(nstar, sen, sen_lo, sen_hi, phi, m):
+    """Range for the years needed to detect the trend.
+
+    n* is proportional to |omega|^(-2/3), so the Sen confidence interval of
+    the trend maps onto n* directly; the ends are then widened by e^B for
+    the estimated noise. An interval that includes zero trend has no upper
+    end (inf). Returns (low, high) in years.
+    """
+    nstar, sen, sen_lo, sen_hi = (np.asarray(v, dtype=float) for v in (nstar, sen, sen_lo, sen_hi))
+    same = ((sen_lo > 0) & (sen_hi > 0)) | ((sen_lo < 0) & (sen_hi < 0))
+    big = np.maximum(np.abs(sen_lo), np.abs(sen_hi))
+    small = np.minimum(np.abs(sen_lo), np.abs(sen_hi))
+    eb = np.exp(weatherhead_b(phi, m))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        lo = nstar * (np.abs(sen) / big) ** (2.0 / 3.0) / eb
+        hi = np.where(same, nstar * (np.abs(sen) / small) ** (2.0 / 3.0) * eb, np.inf)
+    return lo, hi
+
+
 def min_detectable_trend(sigma, phi, n_years, step=1.0 / 12.0):
     """Smallest |trend| (units/yr) detectable in ``n_years`` (inverse of n*)."""
     phi = np.clip(phi, -0.95, 0.95)

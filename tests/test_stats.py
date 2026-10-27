@@ -136,3 +136,24 @@ def test_weatherhead_scales_with_sampling_interval():
     assert mdt == pytest.approx(S.min_detectable_trend(1.0, phi, n) * np.sqrt(12))
     res = S.analyze_rows(ar1(rng, n, phi, reps) + mdt * (t - t[0]), t)
     assert 0.80 < np.mean(res["p_ols_ar1"] < 0.05) < 0.97
+
+
+def test_detection_range_covers_true_years():
+    """The n* range (Sen CI mapped through n* ~ |trend|^-2/3, widened by e^B) holds the true n*."""
+    rng = np.random.default_rng(21)
+    n, reps, phi, n_true = 540, 250, 0.6, 30.0
+    t = months(n)
+    omega = 3.3 * np.sqrt((1 + phi) / (1 - phi)) / n_true**1.5
+    res = S.analyze_rows(ar1(rng, n, phi, reps) + omega * (t - t[0]), t)
+    lo, hi = S.detection_range(res["nstar"], res["sen"], res["sen_lo"], res["sen_hi"], res["phi"], n)
+    assert np.all(lo <= res["nstar"]) and np.all(res["nstar"] <= hi)
+    assert np.mean((lo <= n_true) & (n_true <= hi)) > 0.9
+    assert np.median(res["nstar"] / n_true) == pytest.approx(1.0, abs=0.1)
+
+
+def test_detection_range_open_when_ci_includes_zero():
+    lo, hi = S.detection_range(np.array([50.0]), np.array([0.01]), np.array([-0.002]), np.array([0.02]), 0.3, 540)
+    assert np.isinf(hi[0]) and 0 < lo[0] < 50
+    # the trend part alone follows n* ~ |trend|^(-2/3): halving the trend multiplies n* by 2^(2/3)
+    lo, hi = S.detection_range(np.array([40.0]), np.array([0.02]), np.array([0.01]), np.array([0.04]), 0.0, np.inf)
+    assert hi[0] == pytest.approx(40 * 2 ** (2 / 3)) and lo[0] == pytest.approx(40 * 0.5 ** (2 / 3))

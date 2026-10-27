@@ -55,6 +55,57 @@ that keeping 3.3 for annual series gave only 10-20 % power at the claimed
 "90 %" detectable trend; with the scaled constant it is 87-90 %
 (`tests/test_stats.py::test_weatherhead_scales_with_sampling_interval`).
 
+## Year detectable
+
+The *Year detectable* layer answers "when?": the year by which a trend of the
+measured size is detected with 90 % probability at the 5 % level, if it
+continues at the measured rate.
+
+- **Years needed.** n* = [K σ_N / |ω| · sqrt((1+φ)/(1−φ))]^(2/3), with K = 3.3
+  for monthly data (scaled for other sampling as above). The same formula and
+  the same 90 %/95 % reading appear in Whiteman et al. (2011, co-authored by
+  Weatherhead), Henson et al. (2016) and Sutton et al. (2019). The map shows
+  start year + ⌈n*⌉ − 1.
+- **What it means for a detected trend.** With Weatherhead's standard error
+  for the trend, n*/n = (3.3 / z)^(2/3), where n is the record length and z is
+  the trend divided by its standard error. A year inside the record therefore
+  means z ≥ 3.3. A trend can pass the FDR test with z ≈ 2, so a detected cell
+  can still show a later year: it was found before detection became 90 %
+  likely. (Mongolia mean temperature, 1981–2025: p = 0.002, year 2029.)
+- **Range.** n* is proportional to |ω|^(−2/3), so the Sen 95 % confidence
+  interval maps onto n* directly. Its ends are then widened by e^±B for the
+  estimated σ_N and φ, B = 4 / (3 sqrt(m)) · sqrt((1+φ)/(1−φ)). If the trend
+  interval includes zero, the upper end is "maybe never".
+- **Which m.** Sutton et al. (2019) give m as the number of months. We could
+  not open the 1998 paper (publisher paywall; the Harvard copy refused
+  access). A first-order error propagation for σ_N and φ estimated from m
+  values gives a standard error of log n* proportional to 1/sqrt(m), so m is
+  the number of samples. The Monte Carlo below agrees: with m = samples the
+  noise part alone is covered 88–95 % of the time; reading m as years makes it
+  ~3.5 times too wide (100 %).
+- **Terminology.** Sutton et al. (2019) call n* the time of emergence. Others
+  define emergence as the first year a signal-to-noise ratio passes a
+  threshold such as 1 or 2 (Hawkins and Sutton 2012). Here the year always
+  means trend detection.
+
+Monte Carlo (`trend_detective.validation.run_detection`, 400 records of 45
+years per row, σ_N = 1, trend set so that the true n* is known). "Range
+covers" is how often the range contains the true n*:
+
+| Sampling | φ | true n* (years) | range covers | Sen CI only | e^±B, m = samples | e^±B, m = years | median n̂*/n* |
+|---|---|---|---|---|---|---|---|
+| monthly | 0.0 | 20 / 45 / 90 | 99.0 / 96.0 / 97.5 % | 89.5 / 92.7 / 96.3 % | 89.5 % | 100 % | 0.99 / 0.99 / 0.95 |
+| monthly | 0.3 | 20 / 45 / 90 | 99.0 / 98.3 / 98.0 % | 89.0 / 94.8 / 97.5 % | 93.0 % | 100 % | 1.00 / 1.02 / 1.05 |
+| monthly | 0.6 | 20 / 45 / 90 | 99.3 / 97.0 / 97.8 % | 83.0 / 92.2 / 97.3 % | 94.5 % | 100 % | 0.98 / 0.98 / 0.95 |
+| monthly | 0.9 | 20 / 45 / 90 | 95.0 / 97.5 / 98.0 % | 53.7 / 88.5 / 95.8 % | 88.0 % | 100 % | 0.94 / 0.92 / 0.90 |
+| annual | 0.0 / 0.3 / 0.6 | 45 | 98.3 / 95.5 / 92.5 % | 91.0 / 83.8 / 78.7 % | 84.5 / 83.0 / 77.0 % | same | 0.97 / 0.92 / 0.87 |
+
+The Sen interval alone is not enough when the trend is large and the noise
+estimate dominates (54 % at φ = 0.9, n* = 20). With 45 annual values φ is
+underestimated, so n̂* runs 3–13 % low and the range slightly under-covers
+at φ = 0.6. The year assumes a straight-line trend and unchanged noise; it is
+a statement about detectability, not a forecast of the climate.
+
 ## Recomputing for chosen years in the viewer
 
 When the reader picks a start and end year, the browser reruns the same
@@ -155,11 +206,15 @@ cells whose planted trend is below the detectable size.
 
 - Benjamini, Y., Hochberg, Y. (1995) JRSS-B 57:289-300.
 - Gilbert, R.O. (1987) Statistical Methods for Environmental Pollution Monitoring.
+- Hawkins, E., Sutton, R. (2012) GRL 39:L01702 (time of emergence by signal-to-noise).
+- Henson, S.A. et al. (2016) Global Change Biology 22:1561-1571, doi:10.1111/gcb.13152.
 - Hamed, K.H., Rao, A.R. (1998) J. Hydrol. 204:182-196.
 - Reichle, R.H. et al. (2017) J. Climate, doi:10.1175/JCLI-D-16-0570.1.
 - Santer, B.D. et al. (2000) JGR 105:7337-7356.
 - Sen, P.K. (1968) JASA 63:1379-1389.
+- Sutton, A.J. et al. (2019) Earth Syst. Sci. Data 11:421-439, doi:10.5194/essd-11-421-2019.
 - Weatherhead, E.C. et al. (1998) JGR 103:17149-17161.
+- Whiteman, D.N. et al. (2011) JGR 116:D21118.
 - Wilks, D.S. (2016) BAMS 97:2263-2273.
 - Wargan, K. et al. (2017) J. Climate (MERRA-2 ozone).
 - UCAR Climate Data Guide, "NASA's MERRA2 reanalysis".

@@ -16,17 +16,19 @@
 
   const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO"]);
   const REPO = "https://github.com/Buyja047/earth_trending";
-  const LAYERS = ["trend", "naive", "verdict", "detect", "anom", "steps", "truth"];
+  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "anom", "steps", "truth"];
+  const CAP_YEAR = 2100;
   const ICONS = {
     trend: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 4h3v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     naive: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/>',
     verdict: '<rect x="2" y="2" width="5" height="5" fill="currentColor"/><rect x="9" y="2" width="5" height="5" fill="none" stroke="currentColor"/><rect x="2" y="9" width="5" height="5" fill="none" stroke="currentColor"/><rect x="9" y="9" width="5" height="5" fill="currentColor" opacity=".5"/>',
     detect: '<circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/>',
+    emerge: '<path d="M4 15V1.5" stroke="currentColor" stroke-width="1.6"/><path d="M4.8 2h8.4l-2.2 3 2.2 3H4.8z" fill="currentColor"/>',
     anom: '<rect x="2" y="9" width="2.5" height="5" fill="currentColor"/><rect x="6.7" y="4" width="2.5" height="10" fill="currentColor"/><rect x="11.4" y="7" width="2.5" height="7" fill="currentColor"/>',
     steps: '<path d="M2 12h4V7h4V3h4" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     truth: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/>',
   };
-  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
+  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
   const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
     focus: "Монгол (улсын хилээр)" };
@@ -253,7 +255,7 @@
   function statsFromJS(r) {
     if (!r) return null;
     return { sen: r.sen * 10, sen_lo: r.senLo * 10, sen_hi: r.senHi * 10, p_naive: r.pNaive, p_mk: r.pMk, p_ols_ar1: r.pOls,
-      phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: Number.isFinite(r.nstar) ? r.nstar : null, years: r.years, steps: [] };
+      phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: Number.isFinite(r.nstar) ? r.nstar : null, years: r.years, n: r.n, steps: [] };
   }
   // monthly values inside [y0, y1], with the calendar-month means of that window removed
   function monthlyWindow(vals, start, y0, y1) {
@@ -327,6 +329,39 @@
     state.res = { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly };
   }
 
+  // ------------------------------------------------------------ year detectable
+  // samples behind sigma_N and phi: precomputed full-record statistics come from monthly data
+  function cellSamples() {
+    const r = state.res;
+    return !r.custom || r.monthly ? Math.round(r.years * 12) : Math.round(r.years);
+  }
+  // year by which a trend of the measured size is detected with 90 % probability (Weatherhead n*),
+  // assuming it continues; range from the Sen 95 % CI widened by e^B for the noise estimates
+  function detectYear(nstar, sen, lo, hi, phi, m) {
+    if (nstar === null || nstar === undefined || !Number.isFinite(nstar) || !sen || !m) return null;
+    const r = S.detectionRange(nstar, sen, lo, hi, phi, m);
+    const yr = (n) => (Number.isFinite(n) ? state.y0 + Math.max(1, Math.ceil(n)) - 1 : Infinity);
+    return { n: nstar, y: yr(nstar), lo: yr(r.lo), hi: yr(r.hi) };
+  }
+  function detectArr() {
+    const r = state.res;
+    if (r.det) return r.det;
+    const c = r.cells, m = cellSamples();
+    r.det = Array.from(r.status, (st, k) => (st >= 1 && st <= 5 ? detectYear(c.nstar[k], c.sen[k], c.sen_lo[k], c.sen_hi[k], c.phi[k], m) : null));
+    return r.det;
+  }
+  const yearText = (y) => (y === Infinity ? t("ey_never") : y > CAP_YEAR ? t("ey_after", { y: CAP_YEAR }) : String(y));
+  function detectShort(d) {
+    if (!d) return t("ey_none");
+    if (d.y > CAP_YEAR) return t("ey_after", { y: CAP_YEAR });
+    return `${d.y} (${d.lo}–${yearText(d.hi)})`;
+  }
+  function detectSentence(d) {
+    if (!d) return "";
+    if (d.y > CAP_YEAR) return t("ey_sent_late", { y: CAP_YEAR });
+    return t("ey_sent", { n: fmt(d.n, 2), y: d.y, lo: d.lo, hi: yearText(d.hi) });
+  }
+
   // ------------------------------------------------------------ 2D map
   // view = zoom factor and the lon/lat at the canvas centre; ptrs = active pointers (two of them pinch);
   // zmax lets one grid cell grow to about 160 px
@@ -348,6 +383,7 @@
   function layerLimit() {
     const sc = state.sc, c = state.res.cells, st = state.res.status;
     if (state.layer === "anom") return annualCube(state.entry).lim;
+    if (state.layer === "emerge") return 1;
     let arr;
     if (state.layer === "detect") arr = c.mdt;
     else if (state.layer === "steps") arr = sc.steps[state.step] ? sc.steps[state.step].step : [];
@@ -374,6 +410,13 @@
       case "anom": {
         const cube = annualCube(state.entry), v = cube.data[k * cube.ny + cube.years.indexOf(state.year)];
         return Number.isFinite(v) ? { col: divColor(v, lim, invert), h: v / lim } : null;
+      }
+      case "emerge": {
+        // early years strong, CAP_YEAR faint; trends not yet detected are faded
+        const d = detectArr()[k];
+        if (!d || d.y > CAP_YEAR) return { col: pal.grid, h: 0 };
+        const f = Math.max(0, Math.min(1, (CAP_YEAR - d.y) / (CAP_YEAR - state.y0))), col = pal.seq[Math.round(f * 255)];
+        return { col: st === 1 || st === 2 ? col : fade(col, 0.45), h: f };
       }
       case "steps": {
         const s = sc.steps[state.step];
@@ -462,7 +505,7 @@
         if (!labels) continue;
         const v = cellNumber(k);
         if (v === null || !Number.isFinite(v)) continue;
-        const txt = state.layer === "detect" ? fmt(v, 2) : signed(v, 2), tx = (xa + xb) / 2, ty = (ya + yb) / 2, hw = ctx.measureText(txt).width / 2 + 2;
+        const txt = state.layer === "emerge" ? String(v) : state.layer === "detect" ? fmt(v, 2) : signed(v, 2), tx = (xa + xb) / 2, ty = (ya + yb) / 2, hw = ctx.measureText(txt).width / 2 + 2;
         if (hits({ x0: tx - hw, x1: tx + hw, y0: ty - 7, y1: ty + 7 }, pl.taken)) continue;
         ctx.fillStyle = inkOn(look.col);
         ctx.fillText(txt, tx, ty);
@@ -627,6 +670,7 @@
     const sc = state.sc, c = state.res.cells, st = state.res.status[i];
     if (st === 6) return t("v6");
     if (state.layer === "detect") return `±${fmt(c.mdt[i] * unitFactor())} ${unitText(sc)}`;
+    if (state.layer === "emerge") return `${t("ey_by")} ${detectShort(detectArr()[i])}`;
     if (state.layer === "anom") {
       const cube = annualCube(state.entry);
       return `${state.year}: ${signed(cube.data[i * cube.ny + cube.years.indexOf(state.year)])} ${unitLabel(sc.units)}`;
@@ -642,6 +686,7 @@
     switch (state.layer) {
       case "verdict": return null;
       case "detect": return c.mdt[k] === null ? null : c.mdt[k] * unitFactor();
+      case "emerge": { const d = detectArr()[k]; return d && d.y <= CAP_YEAR ? d.y : null; }
       case "anom": { const cube = annualCube(state.entry); return cube.data[k * cube.ny + cube.years.indexOf(state.year)]; }
       case "steps": { const st = sc.steps[state.step]; return st && st.step[k] !== null ? st.step[k] : null; }
       case "truth": return sc.truth ? sc.truth.slope[k] * unitFactor() : null;
@@ -762,6 +807,18 @@
     if (state.layer === "verdict") {
       const cols = verdictColors();
       el.innerHTML = [1, 2, 3, 4, 5, 6].map((k) => `<span><i class="sw" style="background:${rgb(cols[k])}"></i>${esc(t("v" + k))} <span class="num muted">${nf(countStatus(k))}</span></span>`).join("");
+      return;
+    }
+    if (state.layer === "emerge") {
+      const det = detectArr(), span = CAP_YEAR - state.y0, pos = (y) => (100 * (y - state.y0) / span).toFixed(1);
+      let a = 0, b = 0, c = 0;
+      det.forEach((d, k) => { const s = state.res.status[k]; if (s < 1 || s > 5) return; if (!d || d.y > CAP_YEAR) c++; else if (d.y <= state.y1) a++; else b++; });
+      el.innerHTML = `<span><b>${esc(t("lg_emerge"))}</b></span>
+        <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${rgb(pal.seq[255])},${rgb(pal.seq[128])},${rgb(pal.seq[0])})"><i class="now" style="left:${pos(state.y1)}%"></i></span>
+        <span class="ticks pos"><span style="left:0">${state.y0}</span><span style="left:${pos(state.y1)}%">${state.y1}</span><span style="left:100%">${CAP_YEAR}</span></span></span>
+        <span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("ey_after", { y: CAP_YEAR }))} / ${esc(t("ey_none"))}</span>
+        <span class="num muted">${esc(t("ey_counts", { a: nf(a), b: nf(b), c: nf(c), y1: state.y1, cap: CAP_YEAR }))}</span>
+        <span class="muted">${esc(t("lg_emergenote"))}</span>`;
       return;
     }
     if (state.layer === "detect") {
@@ -957,9 +1014,11 @@
     if (mn()) {
       head = `<b>${esc(title)}</b>, ${esc(sceneRegion(sc))}, ${yrs}. ${nf(k.valid)} нүдний <strong>${nf(k.fdr)}</strong> нь FDR тестийг давсан чигтэй (${nf(k.fdr_up)} өсөлт, ${nf(k.fdr_down)} бууралт); энгийн тест <strong>${nf(k.naive)}</strong> нүдийг тэмдэглэх байсан.`;
       if (rm && rs) head += ` ${esc(regionName(rm))}: <strong>${signed(rs.sen)}</strong> ${esc(unitLabel(rm.units))} арван жилд (95% завсар ${fmt(rs.sen_lo)}–${fmt(rs.sen_hi)}, засварласан p ${fmtP(rs.p_mk)}).`;
+      if (rm && rs) head += " " + esc(detectSentence(detectYear(rs.nstar, rs.sen, rs.sen_lo, rs.sen_hi, rs.phi, rs.n)));
     } else {
       head = `<b>${esc(title)}</b>, ${esc(sceneRegion(sc))}, ${yrs}. <strong>${nf(k.fdr)}</strong> of ${nf(k.valid)} cells show a trend that survives the false discovery rate test (${nf(k.fdr_up)} up, ${nf(k.fdr_down)} down); a naive test would flag <strong>${nf(k.naive)}</strong>.`;
       if (rm && rs) head += ` ${esc(regionName(rm))}: <strong>${signed(rs.sen)}</strong> ${esc(unitLabel(rm.units))} per decade (95% CI ${fmt(rs.sen_lo)} to ${fmt(rs.sen_hi)}, corrected p ${fmtP(rs.p_mk)}).`;
+      if (rm && rs) head += " " + esc(detectSentence(detectYear(rs.nstar, rs.sen, rs.sen_lo, rs.sen_hi, rs.phi, rs.n)));
     }
     const chips = [[k.valid, "c_tested"], [k.naive, "c_naive"], [k.fdr, "c_fdr"], [k.robust, "c_robust"], [k.not_yet, "c_notyet"]];
     if (k.gappy) chips.push([k.gappy, "c_gappy"]);
@@ -990,6 +1049,7 @@
       <dt>${esc(t("s_sigma"))} (${esc(unitLabel(sc.units))})</dt><dd>${fmt(st.sigma)}</dd>
       <dt>${esc(t("s_mdt"))}</dt><dd>±${fmt(st.mdt * f)}</dd>
       <dt>${esc(t("s_nstar"))}</dt><dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
+      <dt>${esc(t("s_detect_year"))}</dt><dd>${esc(detectShort(detectYear(st.nstar, st.sen, st.lo, st.hi, st.phi, st.m)))}</dd>
       ${extra}</dl><p class="small muted">${esc(t("s_units", { u: unitText(sc) }))}</p>`;
   }
   function stepRows(i) {
@@ -1019,8 +1079,8 @@
       el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}
         <div><span class="big">${signed(c.sen[i] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
         <div id="cellchart"></div>
-        ${statsList({ lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
-          mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years }, sc,
+        ${statsList({ sen: c.sen[i], lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
+          mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years, m: cellSamples() }, sc,
           `<dt>${esc(t("s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
           (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
       seriesChart($("#cellchart"), { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
@@ -1056,7 +1116,7 @@
       <p class="small muted">${esc(t("box_note", { n: nf(sel.cells.length), kind }))}</p>${pill(st)}
       <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
       <div id="cellchart"></div>
-      ${statsList({ lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years }, sc)}`;
+      ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}`;
     seriesChart($("#cellchart"), { t: cube.years.map((v) => v + 0.5), y: annVals, annual: true, unit: unitLabel(sc.units),
       trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
   }
@@ -1074,7 +1134,8 @@
         <div id="rmchart${k}"></div>
         <dl class="kv"><dt>${esc(t("rm_ci"))}</dt><dd>[${fmt(s.sen_lo)}, ${fmt(s.sen_hi)}]</dd>
         <dt>${esc(t("rm_p"))}</dt><dd>${fmtP(s.p_naive)} → ${fmtP(s.p_mk)} → ${fmtP(s.p_ols_ar1)}</dd>
-        <dt>${esc(t("rm_misc"))}</dt><dd>${fmt(s.phi, 2)} · ±${fmt(s.mdt)} · ${s.nstar === null ? "∞" : fmt(s.nstar, 2)}</dd>${steps}</dl></div>`;
+        <dt>${esc(t("rm_misc"))}</dt><dd>${fmt(s.phi, 2)} · ±${fmt(s.mdt)} · ${s.nstar === null ? "∞" : fmt(s.nstar, 2)}</dd>
+        <dt>${esc(t("s_detect_year"))}</dt><dd>${esc(detectShort(detectYear(s.nstar, s.sen, s.sen_lo, s.sen_hi, s.phi, s.n)))}</dd>${steps}</dl></div>`;
     }).join("") || `<p class="muted">${esc(t("no_rm"))}</p>`;
     sc.region_means.forEach((rm, k) => {
       const s = state.res.regionStats[k], host = $("#rmchart" + k);
@@ -1259,6 +1320,22 @@
     const truth = tr ? (mn()
       ? `<p>Үнэн нь мэдэгдэх талбар дээр энгийн газрын зурагт тэмдэглэгдсэн нүднүүдийн <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> нь худал илрэлт; FDR-ийн дараа <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (зорилт ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). Үнэ нь чадал: жинхэнэ чигтэй нүднүүдийн ${Math.round(100 * tr.scores.fdr.power)}%-ийг FDR олдог бол энгийн газрын зураг ${Math.round(100 * tr.scores.naive.power)}%; алдсан ихэнх нь суулгасан чиг нь илрэх хэмжээнээс бага нүднүүд.</p>`
       : `<p>On the known-truth field, <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> of cells flagged by the naive map are false discoveries; after FDR it is <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (target ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). The price is power: ${Math.round(100 * tr.scores.fdr.power)}% of truly trending cells are found, versus ${Math.round(100 * tr.scores.naive.power)}% by the naive map; most misses are cells whose planted trend is below the detectable size.</p>`) : "";
+    const dv = v && v.detection;
+    const dtable = dv ? `<div class="tablewrap"><table><thead><tr>${(mn()
+      ? ["Түүвэр", "φ", "Жинхэнэ n*", "Завсар хамарсан", "Зөвхөн Sen завсар", "e^±B, m = түүвэр", "e^±B, m = жил", "Медиан n̂*/n*"]
+      : ["Sampling", "φ", "True n*", "Range covers", "Sen CI only", "e^±B, m = samples", "e^±B, m = years", "Median n̂*/n*"]).map((h, k) => `<th${k > 1 ? ' class="n"' : ""}>${h}</th>`).join("")}</tr></thead><tbody>
+      ${dv.rows.map((r) => `<tr><td>${mn() ? (r.sampling === "monthly" ? "сарын" : "жилийн") : r.sampling}</td><td class="num">${r.phi}</td><td class="n">${r.n_true}</td><td class="n"><b>${(100 * r.cover_range).toFixed(1)}%</b></td>
+        <td class="n">${(100 * r.cover_trend_ci_only).toFixed(1)}%</td><td class="n">${(100 * r.noise_part_b_samples).toFixed(1)}%</td><td class="n">${(100 * r.noise_part_b_years).toFixed(1)}%</td><td class="n">${r.median_ratio.toFixed(2)}</td></tr>`).join("")}</tbody></table></div>` : "";
+    const emergeCard = mn() ? `<div class="card"><h3>Илрэх он</h3><div class="prose">
+        <p>n* = [K σ<sub>N</sub> / |ω| · √((1+φ)/(1−φ))]<sup>2/3</sup> жил (сарын өгөгдөлд K = 3.3; Weatherhead нар 1998). Энэ нь ω хэмжээтэй чигийг 5%-ийн түвшинд 90% магадлалтай илрүүлэхэд шаардлагатай бүртгэлийн урт. Ижил томьёог Whiteman нар (2011), Henson нар (2016), Sutton нар (2019) хэрэглэсэн. Газрын зураг эхлэх он + n* − 1-ийг харуулна; чиг хэмжсэн хурдаараа үргэлжилнэ гэж үзнэ.</p>
+        <p>Завсар: Sen-ий 95% завсрыг n* ∝ |ω|<sup>−2/3</sup>-ээр хувиргаж, σ<sub>N</sub> ба φ-ийн үнэлгээний тодорхойгүй байдлыг e<sup>±B</sup>-ээр нэмнэ, B = 4/(3√m) · √((1+φ)/(1−φ)), m = түүврийн тоо (Sutton нар 2019; анхны өгүүллийг бид нээж чадаагүй). Чигийн завсар тэгийг агуулбал дээд хязгаар нь "хэзээ ч үгүй байж магадгүй".</p>
+        <p>Зарим судалгаа n*-ийг "time of emergence" гэдэг (Sutton нар 2019); бусад нь энэ нэрийг дохио/шуугианы босгоор тодорхойлдог (жишээ нь Hawkins ба Sutton 2012). Бид чиг илрүүлэх утгаар нь хэрэглэв.</p></div>
+        ${dtable}<p class="small muted">Мөр бүрт ${dv ? dv.reps : ""} симуляц, 45 жил. m = жил гэж авбал завсар хэт өргөн (100%), m = түүвэр гэж авбал нийлмэл завсар 92–99% хамарна.</p></div>`
+      : `<div class="card"><h3>Year detectable</h3><div class="prose">
+        <p>n* = [K σ<sub>N</sub> / |ω| · √((1+φ)/(1−φ))]<sup>2/3</sup> years (K = 3.3 for monthly data; Weatherhead et al. 1998) is the record length at which a trend of size ω is detected with 90% probability at the 5% level. Whiteman et al. (2011), Henson et al. (2016) and Sutton et al. (2019) use the same formula. The map shows start year + n* − 1, assuming the trend continues at the measured rate.</p>
+        <p>Range: the Sen 95% CI mapped through n* ∝ |ω|<sup>−2/3</sup>, widened by e<sup>±B</sup> for the estimated σ<sub>N</sub> and φ, B = 4/(3√m) · √((1+φ)/(1−φ)) with m the number of samples (Sutton et al. 2019; we could not access the original paper). If the trend CI includes zero, the upper end is "maybe never".</p>
+        <p>Some papers call n* the time of emergence (Sutton et al. 2019); others define emergence by a signal-to-noise threshold (e.g. Hawkins and Sutton 2012). Here it means trend detection.</p></div>
+        ${dtable}<p class="small muted">${dv ? dv.reps : ""} simulated 45-year records per row. Reading m as years makes the range far too wide (100%); with m = samples the combined range covers 92–99%.</p></div>`;
     const run = `<pre>pip install -r requirements.txt
 python -m pytest -q
 python -m trend_detective build        # NASA POWER + NSIDC -> web/data/
@@ -1279,7 +1356,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>Сонгосон онуудаар бүх тест, FDR, тоог таны хөтөч дээр дахин тооцно: сарын утга хадгалсан өгөгдөлд (Монгол) сарын утгаас, бусад (дэлхий) жилийн дунджаас.</li>
           <li>Хараат бус бүртгэлтэй хөндлөн шалгалт: MERRA-2 ба IMERG хур тунадас; MERRA-2 ба NSIDC далайн мөс.</li></ul></div>
       </div>
-      <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${truth}
+      <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${truth}${emergeCard}
       <div class="card"><h3>Өөрийн шинжилгээг ажиллуулах</h3><p class="prose">Python 3.10+ суулгаад агуулахын хавтсанд суулгах скриптийг ажиллуулна (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), дараа нь:</p>${run}</div>
       <p class="small muted">Өгөгдөл: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth (world-atlas, ISC). Дэлгэрэнгүй: docs/METHODS.md.</p>`
       : `
@@ -1298,7 +1375,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>For chosen years, every test, the FDR and every count are recomputed in your browser, from monthly values where the dataset stores them (Mongolia) and from annual means otherwise (globe).</li>
           <li>Cross-checks against independent records: MERRA-2 vs IMERG precipitation; MERRA-2 vs NSIDC sea ice.</li></ul></div>
       </div>
-      <h3>Monte Carlo check of the local tests</h3>${table}${truth}
+      <h3>Monte Carlo check of the local tests</h3>${table}${truth}${emergeCard}
       <div class="card"><h3>Run your own analysis</h3><p class="prose">Install Python 3.10+, then run the install script in the repository folder (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), then:</p>${run}</div>
       <p class="small muted">Data: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth via world-atlas (ISC). Details: docs/METHODS.md.</p>`;
   }

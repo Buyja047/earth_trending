@@ -215,6 +215,21 @@
     return Math.pow(weatherheadK(step) * sigma / Math.abs(omega) * Math.sqrt((1 + f) / (1 - f)), 2 / 3);
   }
 
+  // uncertainty factor for n* estimated from m samples: n* lies within [n* e^-B, n* e^B]
+  // (Weatherhead et al. 1998, as given by Sutton et al. 2019); covers sigma_N and phi only
+  function detectionB(phi, m) {
+    const f = Math.min(0.95, Math.max(-0.95, phi || 0));
+    return 4 / (3 * Math.sqrt(m)) * Math.sqrt((1 + f) / (1 - f));
+  }
+
+  // range of n*: the Sen CI maps through n* ~ |trend|^(-2/3), then e^B widens it for the noise;
+  // a CI that includes zero trend has no upper end
+  function detectionRange(nstar, sen, lo, hi, phi, m) {
+    const same = (lo > 0 && hi > 0) || (lo < 0 && hi < 0), eB = Math.exp(detectionB(phi, m));
+    const big = Math.max(Math.abs(lo), Math.abs(hi)), small = Math.min(Math.abs(lo), Math.abs(hi)), a = Math.abs(sen);
+    return { lo: nstar * Math.pow(a / big, 2 / 3) / eB, hi: same ? nstar * Math.pow(a / small, 2 / 3) * eB : Infinity };
+  }
+
   /** Full battery on one series of anomalies; t in decimal years. Drops NaNs. */
   function analyze(xIn, tIn) {
     const x = [], t = [];
@@ -252,7 +267,7 @@
   }
 
   const api = { mkScore, mkVariance, mkZ, pTwoSidedNormal, pTwoSidedT, ranks, lag1,
-    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, analyze, median };
+    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, detectionB, detectionRange, analyze, median };
   root.TDStats = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -45,3 +45,18 @@ def test_js_matches_python():
         assert js["senHi"] == pytest.approx(py["sen_hi"], rel=1e-9)
         assert js["pOls"] == pytest.approx(py["p_ols_ar1"], rel=1e-5)
         assert js["mdt"] == pytest.approx(py["mdt"], rel=1e-6)
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_js_detection_range_matches_python():
+    cases = [(40.0, 0.02, 0.01, 0.04, 0.3, 540), (12.5, -0.3, -0.5, -0.1, 0.8, 45), (60.0, 0.01, -0.002, 0.02, 0.0, 300)]
+    script = (
+        "const S = require(%s); const cases = JSON.parse(process.argv[1]);"
+        "console.log(JSON.stringify(cases.map(c => { const r = S.detectionRange(...c); return [r.lo, r.hi === Infinity ? null : r.hi]; })));"
+    ) % json.dumps(str(ROOT / "web" / "js" / "stats.js"))
+    out = json.loads(subprocess.run([NODE, "-e", script, json.dumps(cases)], capture_output=True,
+                                    text=True, check=True).stdout)
+    for c, (jlo, jhi) in zip(cases, out):
+        lo, hi = S.detection_range(*([v] for v in c[:4]), c[4], c[5])
+        assert jlo == pytest.approx(lo[0], rel=1e-12)
+        assert (jhi is None and np.isinf(hi[0])) or jhi == pytest.approx(hi[0], rel=1e-12)

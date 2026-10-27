@@ -161,6 +161,12 @@ p { margin: 0; }
 .legendbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; }
 .legendbar .ramp { width: 220px; height: 12px; border: 1px solid var(--line-strong); }
 .legendbar .ticks { display: flex; justify-content: space-between; width: 220px; font: 11px var(--font-data); color: var(--muted); }
+.legendbar .ramp { position: relative; }
+.legendbar .ramp .now { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+.legendbar .ticks.pos { display: block; position: relative; height: 14px; }
+.legendbar .ticks.pos span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.legendbar .ticks.pos span:first-child { transform: none; }
+.legendbar .ticks.pos span:last-child { transform: translateX(-100%); }
 .legendbar .seg button { padding: 1px 7px; font: 11px var(--font-data); }
 .legendbar .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--line-strong); vertical-align: -2px; margin-right: 5px; }
 .unitbtn { border: 1px dashed var(--line-strong); background: none; cursor: pointer; padding: 1px 6px; }
