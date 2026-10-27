@@ -1,0 +1,25 @@
+[project]
+name = "trend-detective"
+version = "0.1.0"
+description = "Detect, locate, size and significance-test trends in NASA Earth science variables"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "xarray>=2023.1",
+  "zarr>=2.16",
+  "fsspec>=2023.1",
+  "aiohttp>=3.8",
+  "netCDF4>=1.6",
+  "requests>=2.28",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7", "pymannkendall>=1.4"]
+
+[tool.setuptools]
+packages = ["trend_detective"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

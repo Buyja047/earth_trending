@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trend Detective</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<!--BODY-->
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <p class="eyebrow">Earth System Trend Detective · prototype</p>
+      <h1>Trend Detective</h1>
+      <p>Pick a NASA variable and see what is changing, where, by how much, and whether the change survives honest significance testing.</p>
+    </div>
+    <label class="picker" for="scene">
+      <span class="eyebrow">Variable and region</span>
+      <select id="scene"></select>
+    </label>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="summary" id="summary" aria-live="polite"><p class="loading">Loading precomputed trend maps…</p></section>
+
+  <section class="bench">
+    <div class="card mapcard">
+      <div class="maptools">
+        <div class="layers" id="layers" role="group" aria-label="Map layer"></div>
+        <button type="button" id="boxmode" class="seg-btn" aria-pressed="false" title="On touch screens, turn this on and drag to select a region">Box select</button>
+      </div>
+      <div class="seg" id="stepsel" hidden></div>
+      <div class="mapbox"><canvas id="map" aria-label="Trend map; click a cell to inspect it or drag to select a box"></canvas><div class="tip" id="tip" hidden></div></div>
+      <div class="legend" id="legend"></div>
+      <p class="small muted" id="scene-meta"></p>
+    </div>
+    <aside class="card inspector" id="inspector" aria-live="polite"></aside>
+  </section>
+
+  <section class="panels">
+    <div class="card panel">
+      <p class="eyebrow">How much · area means</p>
+      <div id="rmeans"></div>
+    </div>
+    <div class="card panel">
+      <p class="eyebrow">Does the answer depend on the years chosen?</p>
+      <h3 id="tri-title"></h3>
+      <div id="tri"></div>
+      <p class="small muted">Each square is the trend from a start year (across) to an end year (up), for windows of 10 years or more. Dots mark windows with OLS + AR(1) p&lt;0.05. The outlined square is the full record.</p>
+    </div>
+    <div class="card panel">
+      <p class="eyebrow">Case notes</p>
+      <div id="case"></div>
+    </div>
+  </section>
+
+  <section class="block" id="compare" hidden>
+    <p class="eyebrow">Model or satellites?</p>
+    <h2>Cross-check: MERRA-2 against GPM IMERG</h2>
+    <div class="card panel" id="compare-body"></div>
+  </section>
+
+  <section class="block" id="screen" hidden>
+    <p class="eyebrow">What is changing · variable screen</p>
+    <h2>Every variable over Mongolia, ranked</h2>
+    <p class="muted small" id="screen-meta"></p>
+    <div class="seg" role="group" aria-label="Filter variables">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="fdr" aria-pressed="false">Significant after FDR</button>
+      <button type="button" data-filter="model" aria-pressed="false">Model (MERRA-2)</button>
+      <button type="button" data-filter="mission" aria-pressed="false">Satellites (CERES)</button>
+    </div>
+    <div class="tablewrap" style="max-height: 520px;">
+      <table>
+        <thead><tr><th>Variable</th><th>Source</th><th class="n">Years</th><th class="n">Trend / decade</th><th class="n">95% CI</th>
+          <th class="n">Change in σ</th><th class="n">Change, % of mean</th><th class="n">p naive</th><th class="n">p corrected</th><th>FDR</th><th>Annual</th></tr></thead>
+        <tbody id="screen-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="block" id="method">
+    <p class="eyebrow">Is it significant · method and validation</p>
+    <h2>How the tool decides a change is real</h2>
+    <div class="method">
+      <div class="card panel">
+        <h3>Per cell</h3>
+        <ol>
+          <li>Remove the seasonal cycle (monthly climatology).</li>
+          <li>Size: Theil-Sen slope with a rank confidence interval.</li>
+          <li>Significance: Mann-Kendall with the Hamed-Rao autocorrelation correction, rank ACF modelled as AR(1).</li>
+          <li>Cross-check: OLS with an AR(1) effective sample size (Santer et al. 2000). Disagreement is shown, not hidden.</li>
+          <li>Detectability: Weatherhead et al. (1998) smallest detectable trend and years needed. "No trend" becomes "not yet detectable" when the record is too short.</li>
+          <li>Homogeneity: a step test at every documented data-source change (instrument switch, reanalysis stream).</li>
+        </ol>
+      </div>
+      <div class="card panel">
+        <h3>Across the map</h3>
+        <ul>
+          <li>Benjamini-Hochberg false discovery rate over all valid cells, with α<sub>FDR</sub> = 2 × α<sub>global</sub> for spatially correlated fields (Wilks 2016).</li>
+          <li>Cells with missing months are excluded, never gap-filled, and the tool says why.</li>
+          <li>Connected regions of significant increase and decrease are listed so opposite-sign changes in the same variable stand out.</li>
+          <li>Every number on this page can be recomputed with <code>python -m trend_detective build</code>.</li>
+        </ul>
+      </div>
+    </div>
+    <h3>Monte Carlo check of the local tests</h3>
+    <div class="tablewrap" id="validation"></div>
+    <p class="small muted" id="validation-note"></p>
+    <p class="small" id="truth-note"></p>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Data: NASA POWER v10 analysis-ready Zarr on AWS Open Data (MERRA-2, CERES SYN1deg, GPM IMERG), CC BY 4.0. Boundaries: Natural Earth via world-atlas. <span id="gen"></span></p>
+  <p>Prototype for NASA Space Apps 2026, "Be an Earth System Trend Detective".</p>
+</footer>
+<!--/BODY-->
+<script src="js/stats.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
