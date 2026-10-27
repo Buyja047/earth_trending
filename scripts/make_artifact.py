@@ -1,7 +1,7 @@
 """Inline web/index.html's CSS and JS into one page fragment for publishing.
 
 The fragment omits <!doctype>/<html>/<head>/<body> (the host adds them) and
-keeps fetching data/ relatively, so publish web/data/* alongside it.
+keeps loading data/*.js relatively, so publish web/data/* alongside it.
 Usage: python scripts/make_artifact.py OUT.html
 """
 
@@ -20,7 +20,7 @@ def main(out: str) -> None:
     fonts = [m for m in re.findall(r"<link[^>]+>", head) if "fonts.g" in m]
     body = html.split("<!--BODY-->", 1)[1].split("<!--/BODY-->", 1)[0]
     css = (WEB / "css" / "app.css").read_text()
-    js = "\n".join((WEB / "js" / f).read_text() for f in ("stats.js", "app.js"))
+    js = "\n".join((WEB / "js" / f).read_text() for f in ("stats.js", "i18n.js", "surface.js", "app.js"))
     page = "\n".join([title, *metas, *fonts, f"<style>\n{css}</style>", body,
                       f"<script>\n{js}</script>"])
     Path(out).write_text(page)

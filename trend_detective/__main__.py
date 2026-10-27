@@ -1,8 +1,9 @@
 """Command line: ``python -m trend_detective <command>``.
 
-  build    precompute every scene + the Mongolia variable screen into web/data
-  series   trend report for one variable averaged over a lon/lat box
-  vars     list the monthly variables of a product, optionally filtered
+  build      precompute every scene + the Mongolia variable screen into web/data
+  series     trend report for one variable averaged over a lon/lat box
+  vars       list the monthly variables of a product, optionally filtered
+  furniture  rebuild coastlines (world-atlas) and searchable places (GeoNames)
 """
 
 from __future__ import annotations
@@ -11,9 +12,8 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-
 from . import analysis, catalog, power
+from .geo import build_geo, build_places
 from .scenes import _breaks, _stats_json, build_all
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,7 +25,7 @@ def main(argv=None):
 
     b = sub.add_parser("build", help="precompute scenes for the web viewer")
     b.add_argument("--out", type=Path, default=ROOT / "web" / "data")
-    b.add_argument("--geo", type=Path, default=ROOT / "web" / "data" / "geo.json")
+    b.add_argument("--geo", type=Path, default=ROOT / "web" / "data" / "geo.js")
     b.add_argument("--only", nargs="*", help="scene ids to build (default: all)")
     b.add_argument("--no-screen", action="store_true", help="skip the variable screen")
     b.add_argument("--screen-limit", type=int, help="screen only the first N variables per product")
@@ -41,6 +41,10 @@ def main(argv=None):
     v = sub.add_parser("vars", help="list variables")
     v.add_argument("product", choices=sorted(power.STORES))
     v.add_argument("--grep", default="")
+
+    f = sub.add_parser("furniture", help="rebuild web/data/geo.js and web/data/places.js")
+    f.add_argument("--world-atlas", type=Path, help="extracted `npm pack world-atlas@2.0.2` package/ dir")
+    f.add_argument("--geonames", type=Path, help="dir with GeoNames MN.txt and cities15000.txt")
 
     a = ap.parse_args(argv)
     if a.cmd == "build":
@@ -60,6 +64,13 @@ def main(argv=None):
             if a.grep.lower() in text.lower():
                 flag = "" if catalog.screenable(r["var"]) else "  (not screened)"
                 print(text + flag)
+    elif a.cmd == "furniture":
+        data = ROOT / "web" / "data"
+        if a.world_atlas:
+            build_geo(a.world_atlas, data / "geo.js")
+            print("wrote", data / "geo.js")
+        if a.geonames:
+            print("wrote", len(build_places(a.geonames, data / "places.js")), "places")
 
 
 if __name__ == "__main__":

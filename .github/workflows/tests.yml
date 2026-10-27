@@ -17,3 +17,5 @@ jobs:
           node-version: "20"
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
+      - name: Syntax-check the viewer scripts
+        run: for f in web/js/*.js; do node --check "$f"; done

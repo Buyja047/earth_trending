@@ -46,6 +46,24 @@ For a chosen variable, region and period:
 7. Area means use cos(latitude) weights over valid cells only; sea-ice
    scenes report approximate hemispheric area (fraction x cell area).
 
+## Detectability for annual data
+
+Weatherhead's constant 3.3 assumes monthly sampling. For a series sampled every
+`step` years the trend standard error scales by sqrt(12 x step), so the tool
+uses K = 3.3 sqrt(12 step) (11.4 for annual data). Our Monte Carlo check found
+that keeping 3.3 for annual series gave only 10-20 % power at the claimed
+"90 %" detectable trend; with the scaled constant it is 87-90 %
+(`tests/test_stats.py::test_weatherhead_scales_with_sampling_interval`).
+
+## Recomputing for chosen years in the viewer
+
+When the reader picks a start and end year, the browser reruns the same
+battery (`web/js/stats.js`, tested against the Python engine) for every valid
+cell: on monthly values re-deseasonalised within that window where the scene
+stores monthly series (Mongolia), on annual means otherwise (globe), followed
+by the map-wide FDR at the chosen alpha. Step tests, cross-checks and case
+notes stay on the full record and say so.
+
 ## Why not the published Hamed-Rao test
 
 We first implemented Hamed-Rao exactly as published (and as in

@@ -1,7 +1,10 @@
-"""Coastlines and borders from the world-atlas TopoJSON (Natural Earth, ISC licence).
+"""Map furniture: coastlines and borders from world-atlas (Natural Earth, ISC
+licence) and searchable places from GeoNames (CC BY 4.0).
 
-Get the files with ``npm pack world-atlas@2.0.2`` and pass the extracted
-``package/`` directory to :func:`build_geo`.
+Coastlines: ``npm pack world-atlas@2.0.2`` and pass the extracted ``package/``
+directory to :func:`build_geo`. Places: download ``MN.zip`` and
+``cities15000.zip`` from https://download.geonames.org/export/dump/, unzip, and
+pass that directory to :func:`build_places`.
 """
 
 from __future__ import annotations
@@ -10,6 +13,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+
+from .payload import read_payload, write_payload
 
 
 def _decode_arcs(topo: dict) -> list[np.ndarray]:
@@ -84,10 +89,59 @@ def build_geo(world_atlas_dir: Path, out_path: Path, country: str = "Mongolia") 
         "borders": _rounded(borders, 2),
         "focus": {"name": country, "rings": _rounded(focus, 3)},
     }
-    out_path.write_text(json.dumps(geo, separators=(",", ":")))
+    write_payload(out_path, "geo", geo)
     return geo
 
 
 def load_focus_rings(geo_path: Path) -> list[np.ndarray]:
-    geo = json.loads(Path(geo_path).read_text())
+    geo = read_payload(geo_path)
     return [np.asarray(r) for r in geo["focus"]["rings"]]
+
+
+# Mongolian spellings for the GeoNames places we keep, keyed by GeoNames name.
+MN_NAMES = {
+    "Ulan Bator": "Улаанбаатар", "Erdenet": "Эрдэнэт", "Darhan": "Дархан",
+    "Choibalsan": "Чойбалсан", "Nalayh": "Налайх", "Mörön": "Мөрөн",
+    "Bayanhongor": "Баянхонгор", "Ulaangom": "Улаангом", "Khovd": "Ховд",
+    "Arvayheer": "Арвайхээр", "Ölgii": "Өлгий", "Dalandzadgad": "Даланзадгад",
+    "Sühbaatar": "Сүхбаатар", "Undurkhaan": "Чингис хот (Өндөрхаан)",
+    "Tsetserleg": "Цэцэрлэг", "Saynshand": "Сайншанд", "Dzüünharaa": "Зүүнхараа",
+    "Baruun-Urt": "Баруун-Урт", "Altai": "Алтай", "Bulgan": "Булган",
+    "Dzuunmod": "Зуунмод", "Uliastay": "Улиастай", "Kharkhorin": "Хархорин",
+    "Mandalgovi": "Мандалговь", "Zamiin Uud": "Замын-Үүд", "Choyr": "Чойр",
+    "Oyu Tolgoi": "Оюу толгой (уурхай)", "Tavan Tolgoi": "Таван толгой (нисэх буудал)",
+}
+EXTRA_MN = {("PPL", "Nalayh"), ("PPL", "Dzüünharaa"), ("PPL", "Zamiin Uud"),
+            ("PPLA2", "Kharkhorin"), ("MN", "Oyu Tolgoi"), ("AIRF", "Tavan Tolgoi")}
+
+
+def _geonames_rows(path: Path):
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            r = line.rstrip("\n").split("\t")
+            if len(r) >= 15:
+                yield r
+
+
+def build_places(geonames_dir: Path, out_path: Path) -> list[dict]:
+    """Mongolian aimag centres, larger towns and two mining sites, plus world capitals."""
+    d = Path(geonames_dir)
+    places, seen = [], set()
+    for r in _geonames_rows(d / "MN.txt"):
+        name, lat, lon, fcode = r[1], float(r[4]), float(r[5]), r[7]
+        keep = fcode in ("PPLC", "PPLA") or (fcode, name) in EXTRA_MN
+        if not keep or name in seen:
+            continue
+        seen.add(name)
+        kind = {"PPLC": "capital", "PPLA": "aimag", "MN": "mine", "AIRF": "airfield"}.get(fcode, "town")
+        places.append({"en": name.replace("Ulan Bator", "Ulaanbaatar") + (" (mine)" if kind == "mine" else
+                                                                            " (airfield)" if kind == "airfield" else ""),
+                       "mn": MN_NAMES.get(name, name), "lat": round(lat, 3), "lon": round(lon, 3),
+                       "kind": kind, "cc": "MN"})
+    for r in _geonames_rows(d / "cities15000.txt"):
+        if r[7] == "PPLC" and r[8] != "MN":
+            places.append({"en": r[1], "mn": r[1], "lat": round(float(r[4]), 3),
+                           "lon": round(float(r[5]), 3), "kind": "capital", "cc": r[8]})
+    write_payload(out_path, "places", {"source": "GeoNames (CC BY 4.0), downloaded 2026-10-27",
+                                      "places": places})
+    return places

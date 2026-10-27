@@ -125,3 +125,14 @@ def test_ar1_noise_has_requested_memory():
     x = ar1_noise(np.random.default_rng(0), (2000, 4, 4), 0.6)
     r1 = np.mean([np.corrcoef(x[1:, i, j], x[:-1, i, j])[0, 1] for i in range(4) for j in range(4)])
     assert r1 == pytest.approx(0.6, abs=0.05)
+
+
+def test_weatherhead_scales_with_sampling_interval():
+    """Annual sampling: a trend at the annual MDT is found ~90 % of the time."""
+    rng = np.random.default_rng(12)
+    n, reps, phi = 45, 400, 0.3
+    t = 1981.5 + np.arange(n, dtype=float)
+    mdt = S.min_detectable_trend(1.0, phi, n, step=1.0)
+    assert mdt == pytest.approx(S.min_detectable_trend(1.0, phi, n) * np.sqrt(12))
+    res = S.analyze_rows(ar1(rng, n, phi, reps) + mdt * (t - t[0]), t)
+    assert 0.80 < np.mean(res["p_ols_ar1"] < 0.05) < 0.97

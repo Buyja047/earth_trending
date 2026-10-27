@@ -1,15 +1,14 @@
 """Precompute trend scenes for the web viewer.
 
 A scene is one variable over one region and period. For each scene we write
-``<id>.json`` (per-cell statistics, verdicts, regions, region means) and
-``<id>.series.txt`` (base64 int16 anomaly series per cell for the inspector and
+``<id>.js`` holding per-cell statistics, verdicts, regions, region means and
+a base64 int16 anomaly series per cell (for the inspector and
 the trend triangle).
 """
 
 from __future__ import annotations
 
 import base64
-import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +17,7 @@ import numpy as np
 
 from . import analysis, catalog, grid, nsidc, power, stats
 from .geo import load_focus_rings, points_in_rings
+from .payload import read_payload, write_payload
 from .synthetic import dipole_field
 
 REGIONS = {
@@ -89,18 +89,13 @@ def _num(a, sig=4):
             for v in np.asarray(a, dtype=float).ravel()]
 
 
-def _write_series(path: Path, arr: np.ndarray) -> float:
-    """Base64 text of int16 little-endian values; -32768 marks missing.
-
-    Text rather than raw binary so any static host (including ones that only
-    serve web types) can deliver it. Returns the scale factor.
-    """
+def encode_series(arr: np.ndarray) -> tuple[str, float]:
+    """Base64 of int16 little-endian values (-32768 = missing) and the scale."""
     finite = np.isfinite(arr)
     peak = float(np.max(np.abs(arr[finite]))) if finite.any() else 1.0
     scale = (peak / 32000.0) or 1.0
     q = np.where(finite, np.round(np.nan_to_num(arr) / scale), -32768).astype("<i2")
-    path.write_text(base64.b64encode(q.tobytes()).decode("ascii"))
-    return scale
+    return base64.b64encode(q.tobytes()).decode("ascii"), scale
 
 
 def _edges(coord: np.ndarray) -> float:
@@ -193,8 +188,7 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
     else:
         cell_series = np.where(res["valid"][:, None], res["anom"], np.nan)
         series_meta = {"kind": "monthly", "start": float(res["t"][0]), "n": int(res["t"].size)}
-    series_meta["file"] = f"{sid}.series.txt"
-    series_meta["scale"] = _write_series(out_dir / series_meta["file"], cell_series)
+    series_meta["b64"], series_meta["scale"] = encode_series(cell_series)
 
     area = grid.cell_area_km2(lat, dlat, dlon)
     region_means = []
@@ -278,7 +272,7 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
         out["truth"] = {"slope": _num(truth.ravel() * 10), "scores": scores}
     if extra:
         out.update(extra)
-    (out_dir / f"{sid}.json").write_text(json.dumps(out, separators=(",", ":")))
+    write_payload(out_dir / f"{sid}.js", sid, out)
     return out
 
 
@@ -456,7 +450,7 @@ def screen_region(out_dir: Path, focus_rings, bbox=REGIONS["mongolia"]["bbox"],
     rows.sort(key=lambda r: (not r["fdr"], -abs(r["change_sd"] or 0)))
     out = {"region": "Mongolia (country mask)", "alpha_fdr": 0.05, "p_star": pstar,
            "n_variables": len(rows), "rows": rows}
-    (out_dir / "screen-mongolia.json").write_text(json.dumps(out, separators=(",", ":")))
+    write_payload(out_dir / "screen-mongolia.js", "screen-mongolia", out)
     return out
 
 
@@ -479,9 +473,9 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
             "long_name", "units", "region", "region_name", "counts", "period")
     entries = {sc["id"]: {k: sc[k] for k in keys} for sc in built.values()}
     comps = [compare(built[a], built[b]) for a, b in COMPARISONS if a in built and b in built]
-    old_index = out_dir / "index.json"
+    old_index = out_dir / "index.js"
     if only and old_index.exists():  # partial rebuild: keep what was not rebuilt
-        prev = json.loads(old_index.read_text())
+        prev = read_payload(old_index)
         merged = {e["id"]: e for e in prev["scenes"]}
         merged.update(entries)
         order = [s.id for s in SCENES]
@@ -503,5 +497,5 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
         "transitions": catalog.TRANSITIONS,
         "has_screen": screen or screen_kept,
     }
-    (out_dir / "index.json").write_text(json.dumps(idx, separators=(",", ":"), indent=None))
+    write_payload(out_dir / "index.js", "index", idx)
     return idx

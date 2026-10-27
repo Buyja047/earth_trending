@@ -2,14 +2,14 @@ import base64
 
 import numpy as np
 
-from trend_detective.scenes import _write_series, box_regrid
+from trend_detective.payload import read_payload, write_payload
+from trend_detective.scenes import box_regrid, encode_series
 
 
-def test_series_roundtrip(tmp_path):
+def test_series_roundtrip():
     arr = np.array([[0.5, -1.25, np.nan], [2.0, 0.0, 1.0]])
-    path = tmp_path / "s.series.txt"
-    scale = _write_series(path, arr)
-    q = np.frombuffer(base64.b64decode(path.read_text()), dtype="<i2").reshape(arr.shape)
+    b64, scale = encode_series(arr)
+    q = np.frombuffer(base64.b64decode(b64), dtype="<i2").reshape(arr.shape)
     back = np.where(q == -32768, np.nan, q * scale)
     np.testing.assert_allclose(back, arr, atol=scale)
 
@@ -32,3 +32,11 @@ def test_nsidc_csv_parsing_maps_missing_to_nan():
     assert rows[(1987, 12)][0] == ""
     assert np.isnan(rows[(1987, 12)][1]) and np.isnan(rows[(1987, 12)][2])
     assert rows[(2025, 1)] == ("NSIDC-0803", 4.69, 2.84)
+
+
+def test_payload_roundtrip(tmp_path):
+    obj = {"a": [1, 2.5, None], "s": "x,y)"}
+    path = tmp_path / "k.js"
+    write_payload(path, "k", obj)
+    assert path.read_text().startswith('TD_DATA("k",')
+    assert read_payload(path) == obj

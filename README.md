@@ -6,7 +6,60 @@ model, and the tool reports **what** is changing, **where**, **how much**, and
 whether the change is **significant** once autocorrelation, multiple testing,
 record length and data-source changes are taken into account.
 
-![layers](https://img.shields.io/badge/data-NASA%20POWER%20v10%20(MERRA--2%2C%20CERES%2C%20IMERG)-1d4e63)
+English and Mongolian interface · works offline · no installation needed to view.
+
+---
+
+## Open it in one minute (no installation)
+
+1. On GitHub press **Code → Download ZIP** (or use
+   `https://github.com/Buyja047/earth_trending/archive/refs/heads/main.zip`).
+2. Unzip the file anywhere.
+3. Double-click **`TrendDetective.html`** in the unzipped folder.
+
+That is all. The viewer runs in any modern browser (Chrome, Edge, Firefox,
+Safari), works without internet once unzipped, and keeps every calculation on
+your computer. Keep the `web/` folder next to `TrendDetective.html`.
+
+## Нэг минутад нээх (суулгах шаардлагагүй)
+
+1. GitHub дээр **Code → Download ZIP** дарна (эсвэл
+   `https://github.com/Buyja047/earth_trending/archive/refs/heads/main.zip`).
+2. Татсан ZIP файлаа хүссэн газраа задална.
+3. Задалсан хавтас доторх **`TrendDetective.html`** файлыг давхар товшино.
+
+Ингээд л болно. Хөтөч (Chrome, Edge, Firefox, Safari) дээр ажиллана, задалсны
+дараа интернэтгүй ажиллана, бүх тооцоо таны компьютер дээр хийгдэнэ.
+`web/` хавтсыг `TrendDetective.html`-ийн хажууд байлгаарай. Хэлийг баруун
+дээд буланд **EN / МН** товчоор солино.
+
+---
+
+## What you can do in the viewer
+
+- **Datasets** (left panel): global MERRA-2 temperature, precipitation, soil
+  wetness, sea ice and ozone (1981–2025); Mongolia temperature, precipitation,
+  soil wetness, wind, snow (1981–2025), CERES aerosol and IMERG precipitation
+  (2001–2025); a known-truth test field.
+- **Layers** (right edge of the map, as on windy.com): FDR-tested trend, naive
+  trend, verdict, smallest detectable trend, year-by-year anomaly, data-source
+  steps.
+- **Timeline** under the map: press ▶ to play the anomalies year by year.
+- **Years**: pick a start and end year and press Apply. Every trend, test,
+  false-discovery threshold and count is recomputed in the browser (monthly
+  values for Mongolia, annual means for the globe). Change α the same way.
+- **Click a cell** for its time series and statistics; **drag a box** to
+  average a region (on touch screens switch on *Box select* first).
+- **3D surface** (toolbar or View menu): the trend field as a landscape; drag
+  to rotate, scroll to zoom, change the height.
+- **Search** Mongolian aimag centres, Oyu Tolgoi, the Tavan Tolgoi airfield
+  and world capitals (GeoNames).
+- **Analysis tab**: area means, the start/end-year triangle, case notes, and
+  cross-checks (MERRA-2 vs GPM IMERG precipitation; MERRA-2 vs NSIDC sea ice).
+- **Variable ranking tab**: 91 MERRA-2 and CERES variables over Mongolia.
+- **Method tab**: how significance is decided, with a Monte Carlo check.
+- **Legend**: click the unit to switch between per decade, per year and total.
+- **View menu**: light, dark or system theme; hide side panels.
 
 ## What it does
 
@@ -20,36 +73,31 @@ record length and data-source changes are taken into account.
 - **Controls false discoveries across the map** with Benjamini-Hochberg FDR
   (alpha_FDR = 2 alpha_global, Wilks 2016) and shows the naive map beside it.
 - **Says "not yet detectable"** instead of "no trend" when the record is too
-  short (Weatherhead et al. 1998), and shows the smallest trend each cell
-  could detect.
-- **Guards against artificial trends**: tests for steps at documented
-  instrument and data-source changes, excludes cells with missing months and
-  explains why.
-- **Finds opposite-sign regions** in the same variable (Arctic vs Antarctic
-  sea ice; wetting vs drying soils).
-- **Screens every variable** in a region (Mongolia: 94 MERRA-2 and CERES
-  variables) and ranks them by change relative to noise.
-- **Cross-checks a model against independent records** (MERRA-2 vs GPM IMERG
-  precipitation; MERRA-2 vs NSIDC Sea Ice Index).
-- **Validates itself**: a known-truth synthetic map and a Monte Carlo table of
-  false-positive and detection rates ship with the viewer.
+  short (Weatherhead et al. 1998, scaled for the sampling interval).
+- **Guards against artificial trends**: step tests at documented instrument
+  and data-source changes, cells with missing months excluded with a reason.
+- **Validates itself**: a known-truth synthetic map and a Monte Carlo table.
 
-## Run it
+## Rebuild the data or run your own analysis (optional)
+
+Needs Python 3.10+ and an internet connection.
+
+| | Windows | macOS / Linux |
+|---|---|---|
+| 1. Install once | double-click `install_analysis.bat` | `bash install_analysis.sh` |
+| 2. Rebuild `web/data` (20–30 min) | double-click `run_analysis.bat` | `bash run_analysis.sh` |
+
+Then open `TrendDetective.html` again. For developers:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                       # statistics + browser/Python agreement
-python -m trend_detective.validation      # Monte Carlo table -> web/data/validation.json
-python -m trend_detective build           # download, analyse, write web/data/ (~20 min)
-cd web && python -m http.server 8000      # open http://localhost:8000
-```
-
-Other commands:
-
-```bash
+python -m pytest -q                       # statistics, JS/Python agreement, payloads
+python -m trend_detective.validation      # Monte Carlo table -> web/data/validation.js
+python -m trend_detective build           # NASA POWER + NSIDC -> web/data/*.js
+python -m trend_detective build --only mn-t2m --no-screen
+python -m trend_detective series merra2 T2M --bbox 104 43 107 45
 python -m trend_detective vars merra2 --grep soil
-python -m trend_detective series merra2 T2M --bbox 104 43 107 45 --start 1981-01 --end 2025-12
-python -m trend_detective build --only mn-t2m mn-precip --no-screen
+python -m trend_detective furniture --geonames DIR --world-atlas DIR
 ```
 
 Scenes are defined in `trend_detective/scenes.py`; add a `SceneSpec` to
@@ -58,28 +106,25 @@ analyse another variable or region.
 ## Layout
 
 ```
+TrendDetective.html   double-click to open the viewer
+web/                  viewer (index.html, css/, js/, data/*.js)
 trend_detective/
-  stats.py       per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
-  analysis.py    field analysis, verdicts, region means
-  grid.py        area weights, connected opposite-sign regions
-  power.py       NASA POWER Zarr access (anonymous HTTPS, cached)
-  catalog.py     products, documented data-source transitions, notes
-  nsidc.py       NSIDC Sea Ice Index monthly extent and area
-  scenes.py      scene definitions, variable screen, model-vs-satellite comparison
-  synthetic.py   known-truth test fields
-  validation.py  Monte Carlo size/power table
-  geo.py         coastlines and borders (Natural Earth via world-atlas)
-web/             static viewer (index.html, css/, js/, data/)
-tests/           pytest suite, including JS-vs-Python agreement
-docs/METHODS.md  methods, validation results, data traps, limits
+  stats.py            per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
+  analysis.py         field analysis, verdicts, region means
+  scenes.py           scene definitions, variable screen, cross-checks
+  power.py, nsidc.py  data access (NASA POWER Zarr, NSIDC Sea Ice Index)
+  catalog.py          products and documented data-source transitions
+  payload.py          data files the viewer reads from disk or HTTP
+  geo.py              coastlines (Natural Earth) and places (GeoNames)
+  grid.py, synthetic.py, validation.py
+tests/                pytest suite
+docs/METHODS.md       methods, validation, data traps, limits
 ```
 
 ## Results worth looking at
 
-See the viewer and `docs/METHODS.md`. Highlights:
-
-- On a synthetic map with known trends, about two thirds of cells flagged by
-  a naive p < 0.05 map are false; after FDR it is close to the 10 % target.
+- On a synthetic map with known trends, 66 % of cells flagged by a naive
+  p < 0.05 map are false; after FDR it is 13 %.
 - The published Hamed-Rao test rejected 15 % of trend-free records at
   phi = 0.6 in our Monte Carlo runs; the AR(1)-modelled variant used here
   stays at 5 %.
@@ -88,26 +133,7 @@ See the viewer and `docs/METHODS.md`. Highlights:
 - MERRA-2 shows Antarctic sea ice growing (+0.19 million km2/decade); the
   NSIDC Sea Ice Index shows no trend (-0.03). The difference jumps by +0.86
   million km2 in January 2005 (p 8e-7), when the sea-ice input inside the
-  Reynolds SST analysis used by MERRA-2 changed source. The viewer shows this
-  cross-check on the sea-ice scene.
-
-## Монгол хураангуй
-
-**Trend Detective** нь NASA-гийн хиймэл дагуул болон загварын хувьсагч бүрийн
-хувьд **юу**, **хаана**, **хэр их** өөрчлөгдөж байгааг, мөн тэр өөрчлөлт
-**статистикийн хувьд бодит эсэхийг** тогтоодог прототип хэрэгсэл.
-
-- Өгөгдөл: NASA POWER v10 (MERRA-2 загвар 1981-, CERES хиймэл дагуул 2001-,
-  GPM IMERG 1998-), AWS дээрх нээлттэй Zarr, нэвтрэх эрх шаардахгүй.
-- Нүд бүрт: автокорреляцид засварласан Mann-Kendall тест, Sen-ий налуу ба
-  95 %-ийн итгэлийн завсар, OLS + AR(1) хяналтын тест.
-- Газрын зураг бүхэлдээ: FDR (Wilks 2016) — naive газрын зурагтай зэрэгцүүлж харуулна.
-- "Чиг байхгүй" биш, "одоогоор илрэх боломжгүй" гэж хэлдэг (Weatherhead 1998).
-- Сенсор, өгөгдлийн эх сурвалж солигдсон огноонуудад алхамын тест хийнэ.
-- Монгол орны 94 хувьсагчийг өөрчлөлтийн хэмжээгээр нь эрэмбэлнэ.
-- MERRA-2 загварыг GPM IMERG хиймэл дагуултай харьцуулна.
-
-Ажиллуулах: дээрх "Run it" хэсгийг үзнэ үү.
+  Reynolds SST analysis used by MERRA-2 changed source.
 
 ## Before submitting to Space Apps
 
@@ -118,7 +144,9 @@ allowed, list this repository under References.
 
 ## Data and licences
 
-- NASA POWER v10 on AWS Open Data, `s3://nasa-power`, CC BY 4.0.
-  The POWER project is funded by the NASA Applied Sciences Program.
-- Boundaries: Natural Earth via `world-atlas` 2.0.2 (ISC).
+- NASA POWER v10 on AWS Open Data, `s3://nasa-power`, CC BY 4.0. The POWER
+  project is funded by the NASA Applied Sciences Program.
+- NSIDC Sea Ice Index, G02135 v4, doi:10.7265/a98x-0f50.
+- Places: GeoNames, CC BY 4.0. Coastlines and borders: Natural Earth via
+  `world-atlas` 2.0.2 (ISC).
 - Statistical references are listed in `docs/METHODS.md`.

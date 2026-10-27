@@ -1,33 +1,55 @@
-/* Trend Detective viewer. Loads precomputed scenes from data/ and lets the
+/* Trend Detective workbench. Loads precomputed scenes from data/ and lets the
  * reader ask, for each variable: what is changing, where, by how much, and
- * whether the change survives honest significance testing. */
+ * whether the change survives honest significance testing. Works opened from
+ * disk (file://) or served over HTTP. */
 (function () {
   "use strict";
-  const S = window.TDStats;
+  const S = window.TDStats, I = window.TDI18N;
+  const t = (k, v) => I.t(k, v);
   const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const store = {
+    get(k) { try { return localStorage.getItem("td." + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem("td." + k, v); } catch (e) { /* storage blocked */ } },
+  };
 
   const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO"]);
-  const PLACES = [
-    { name: "Ulaanbaatar", lat: 47.92, lon: 106.92 },
-    { name: "Tavan Tolgoi", lat: 43.6, lon: 105.5 },
-    { name: "Dalanzadgad", lat: 43.57, lon: 104.42, left: true },
-  ];
-  const LAYERS = [
-    { id: "trend", label: "Trend, FDR-tested" },
-    { id: "naive", label: "Trend, naive p<0.05" },
-    { id: "verdict", label: "Verdict" },
-    { id: "detect", label: "Detectable trend size" },
-    { id: "steps", label: "Data-source steps" },
-    { id: "truth", label: "Planted truth" },
-  ];
+  const REPO = "https://github.com/Buyja047/earth_trending";
+  const LAYERS = ["trend", "naive", "verdict", "detect", "anom", "steps", "truth"];
+  const ICONS = {
+    trend: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 4h3v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+    naive: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/>',
+    verdict: '<rect x="2" y="2" width="5" height="5" fill="currentColor"/><rect x="9" y="2" width="5" height="5" fill="none" stroke="currentColor"/><rect x="2" y="9" width="5" height="5" fill="none" stroke="currentColor"/><rect x="9" y="9" width="5" height="5" fill="currentColor" opacity=".5"/>',
+    detect: '<circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="currentColor"/>',
+    anom: '<rect x="2" y="9" width="2.5" height="5" fill="currentColor"/><rect x="6.7" y="4" width="2.5" height="10" fill="currentColor"/><rect x="11.4" y="7" width="2.5" height="7" fill="currentColor"/>',
+    steps: '<path d="M2 12h4V7h4V3h4" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+    truth: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/>',
+  };
+  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
+  const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
+    arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
+    focus: "Монгол (улсын хилээр)" };
+  const SCENE_REGION_MN = { Globe: "Дэлхий", Mongolia: "Монгол", "Synthetic globe": "Синтетик бөмбөрцөг" };
+  const NOTE_MN = {
+    "Observation-corrected": "Ажиглалтаар засварласан хур тунадас: бага ба дунд өргөрөгт борооны хэмжүүрээр (CPCU), Африкт CMAP-аар засварладаг; 42.5–62.5° өргөрөгт загварын хур тунадас руу аажмаар шилжиж, 62.5°-аас хойш зөвхөн загварынх (Reichle нар 2017). Монгол (41–52°N) энэ шилжилтийн бүсэд оршдог тул энд гарах чиг хэсэгчлэн загвараас хамаарна.",
+    "CERES SYN1deg merges": "CERES SYN1deg хэд хэдэн хиймэл дагуулыг нэгтгэдэг бөгөөд тэдгээрийн бүрэлдэхүүн цаг хугацааны явцад өөрчлөгддөг; эдгээр өөрчлөлтийн огноог энд шалгаагүй.",
+    "MLS retrieval": "2015 онд MLS-ийн хувилбар 2.2 → 4.2 болсон (сар нь батлагдаагүй). Огноо батлагдаагүй тул шалгаагүй.",
+    "NCEP sea-ice": "NCEP-ийн далайн мөсний алгоритм 1997, 2004, 2006, 2009, 2011 онд өөрчлөгдсөн (сар нь батлагдаагүй). Огноо батлагдаагүй тул шалгаагүй.",
+  };
 
-  const state = { index: null, geo: null, validation: null, screen: null, cache: {}, sc: null,
-    series: null, layer: "trend", sel: null, step: 0, screenFilter: "all" };
+  const state = {
+    index: null, geo: null, places: [], validation: null, screen: null, cache: {},
+    entry: null, sc: null, res: null, layer: "trend", step: 0, view: "map", tab: "map",
+    y0: null, y1: null, alpha: 0.05, sel: null, year: null, playing: null, unit: "decade",
+    theme: "system", screenFilter: "all", searched: null, busy: false,
+    ov: { coast: true, borders: true, places: true, stipple: false },
+  };
 
-  // ------------------------------------------------------------------ formatting
+  // ------------------------------------------------------------ formatting
   function unitLabel(u) {
-    return ({ C: "°C", "1": "fraction", Dobsons: "DU", dimensionless: "", sd: "sd" })[u] ?? u;
+    const base = ({ C: "°C", "1": "fraction", Dobsons: "DU", dimensionless: "", sd: "sd" })[u] ?? u;
+    return I.unit(base);
   }
   function fmt(v, sig = 3) {
     if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -37,7 +59,7 @@
     if (a < 1e-3) return v.toExponential(1);
     return Number(v.toPrecision(sig)).toString();
   }
-  function signed(v, sig = 3) { return (v > 0 ? "+" : "") + fmt(v, sig); }
+  const signed = (v, sig = 3) => (v > 0 ? "+" : "") + fmt(v, sig);
   function fmtP(p) {
     if (p === null || p === undefined || !Number.isFinite(p)) return "–";
     if (p < 0.001) return "<0.001";
@@ -46,236 +68,390 @@
   function ll(lat, lon) {
     return `${Math.abs(lat).toFixed(2)}°${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(2)}°${lon >= 0 ? "E" : "W"}`;
   }
-  function perDecade(sc) { const u = unitLabel(sc.units); return `${u ? u + " " : ""}per decade`; }
-
-  // ------------------------------------------------------------------ colour
-  function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
-  function hexRgb(h) {
-    const m = h.replace("#", "");
-    return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
+  const nf = (v) => (+v).toLocaleString("en-US");
+  const L = () => I.lang();
+  const mn = () => L() === "mn";
+  function sceneTitle(s) { return I.sceneTitle(s.id, s.title); }
+  function regionName(rm) { return mn() ? (REGION_MN[rm.key] || rm.name) : rm.name; }
+  function sceneRegion(sc) { return mn() ? (SCENE_REGION_MN[sc.region_name] || sc.region_name) : sc.region_name; }
+  function noteText(s) {
+    if (!mn()) return s;
+    const k = Object.keys(NOTE_MN).find((p) => s.includes(p));
+    return k ? NOTE_MN[k] : s;
   }
+  // values are stored per decade; convert to the unit chosen in the legend
+  function unitFactor() {
+    if (state.unit === "year") return 0.1;
+    if (state.unit === "total") return (state.y1 - state.y0 + 1) / 10;
+    return 1;
+  }
+  function unitText(sc) {
+    const u = unitLabel(sc.units);
+    const key = state.unit === "year" ? "unit_year" : state.unit === "total" ? "unit_total" : "unit_decade";
+    return `${u ? u + " " : ""}${t(key, { y0: state.y0, y1: state.y1 })}`;
+  }
+
+  // ------------------------------------------------------------ colour
+  const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const hexRgb = (h) => { const m = h.replace("#", ""); return [0, 2, 4].map((i) => parseInt(m.slice(i, i + 2), 16)); };
   const toLin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-  const toSrgb = (c) => { const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; return Math.round(255 * Math.min(1, Math.max(0, v))); };
+  const toSrgb = (c) => Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055)));
   function oklab([r, g, b]) {
     r = toLin(r); g = toLin(g); b = toLin(b);
     const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
     const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
     const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
-    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
-      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
       0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
   }
-  function fromOklab([L, a, b]) {
-    const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3);
-    const m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3);
-    const s = Math.pow(L - 0.0894841775 * a - 1.291485548 * b, 3);
-    return [toSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
-      toSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+  function fromOklab([Lx, a, b]) {
+    const l = Math.pow(Lx + 0.3963377774 * a + 0.2158037573 * b, 3), m = Math.pow(Lx - 0.1055613458 * a - 0.0638541728 * b, 3);
+    const s = Math.pow(Lx - 0.0894841775 * a - 1.291485548 * b, 3);
+    return [toSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s), toSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
       toSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s)];
   }
-  function mixLab(a, b, t) { return [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t); }
   function rampLUT(stops, n = 256) {
     const labs = stops.map((h) => oklab(hexRgb(h)));
-    const out = [];
-    for (let i = 0; i < n; i++) {
-      const x = i / (n - 1) * (labs.length - 1);
-      const k = Math.min(labs.length - 2, Math.floor(x));
-      out.push(fromOklab(mixLab(labs[k], labs[k + 1], x - k)));
-    }
-    return out;
+    return Array.from({ length: n }, (_, i) => {
+      const x = i / (n - 1) * (labs.length - 1), k = Math.min(labs.length - 2, Math.floor(x)), f = x - k;
+      return fromOklab([0, 1, 2].map((q) => labs[k][q] + (labs[k + 1][q] - labs[k][q]) * f));
+    });
   }
-  let palette = null;
+  let pal = null;
   function buildPalette() {
-    const neg = [cssVar("--div-neg-2"), cssVar("--div-neg-1"), cssVar("--div-mid")];
-    const pos = [cssVar("--div-mid"), cssVar("--div-pos-1"), cssVar("--div-pos-2")];
-    palette = {
-      div: rampLUT([...neg, ...pos.slice(1)], 257),
-      seq: rampLUT(["#cde2fb", "#6da7ec", "#256abf", "#0d366b"], 256),
-      seqDark: rampLUT(["#184f95", "#3987e5", "#9ec5f4", "#e6f0fc"], 256),
-      surface: hexRgb(cssVar("--surface")),
-      sea: hexRgb(cssVar("--sea")),
-      s1: cssVar("--s1"), s2: cssVar("--s2"), s3: cssVar("--s3"),
-      muted: cssVar("--muted"), rule: cssVar("--rule"), axis: cssVar("--axis"),
-      ink: cssVar("--ink"), ink2: cssVar("--ink-2"), coast: cssVar("--coast"),
-      dark: document.documentElement.dataset.theme === "dark" ||
-        (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches),
+    const dark = document.documentElement.dataset.theme === "dark" ||
+      (document.documentElement.dataset.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+    const muted = cssVar("--muted");
+    pal = {
+      dark,
+      div: rampLUT([cssVar("--div-neg-2"), cssVar("--div-neg-1"), cssVar("--div-mid"), cssVar("--div-pos-1"), cssVar("--div-pos-2")], 257),
+      seq: dark ? rampLUT(["#184f95", "#3987e5", "#9ec5f4", "#e6f0fc"]) : rampLUT(["#cde2fb", "#6da7ec", "#256abf", "#0d366b"]),
+      bg: hexRgb(cssVar("--map-bg")), ink: cssVar("--ink"), coast: cssVar("--coast"), line: cssVar("--line"),
+      s1: hexRgb(cssVar("--s1")), s2: hexRgb(cssVar("--s2")), s3: hexRgb(cssVar("--s3")),
+      axis: hexRgb(cssVar("--axis")), grid: hexRgb(cssVar("--grid")), muted: hexRgb(muted.length === 7 ? muted : "#888888"),
     };
   }
+  const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
   function divColor(v, lim, invert) {
-    let t = Math.max(-1, Math.min(1, v / lim));
-    if (invert) t = -t;
-    return palette.div[Math.round((t + 1) / 2 * 256)];
+    let x = Math.max(-1, Math.min(1, v / lim));
+    if (invert) x = -x;
+    return pal.div[Math.round((x + 1) / 2 * 256)];
   }
-  function fade(rgb, amt) {
-    const s = palette.sea;
-    return rgb.map((c, i) => Math.round(c + (s[i] - c) * amt));
-  }
-  const rgbStr = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
-  const VERDICT = {
-    1: { label: "Detected; parametric test agrees", color: () => palette.s1 },
-    2: { label: "Detected; parametric test disagrees", color: () => palette.s3 },
-    3: { label: "Naive test only (likely false alarm)", color: () => palette.s2 },
-    4: { label: "Not yet detectable", color: () => palette.axis },
-    5: { label: "No trend at this precision", color: () => palette.rule },
-    6: { label: "Excluded: months missing", color: () => palette.muted },
-  };
+  const fade = (c, a) => c.map((v, i) => Math.round(v + (pal.bg[i] - v) * a));
+  const verdictColors = () => ({ 1: pal.s1, 2: pal.s3, 3: pal.s2, 4: pal.axis, 5: pal.grid, 6: pal.muted });
 
-  // ------------------------------------------------------------------ data
-  async function getJSON(url) {
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-    return r.json();
+  // ------------------------------------------------------------ data loading
+  const pending = {};
+  window.TD_DATA = (key, obj) => { (pending[key] || []).forEach((r) => r(obj)); delete pending[key]; };
+  function loadPayload(key) {
+    if (location.protocol === "file:") {
+      return new Promise((resolve, reject) => {
+        (pending[key] = pending[key] || []).push(resolve);
+        const s = document.createElement("script");
+        s.src = `data/${key}.js`;
+        s.onerror = () => reject(new Error(`data/${key}.js`));
+        document.head.appendChild(s);
+      });
+    }
+    return fetch(`data/${key}.js`).then((r) => {
+      if (!r.ok) throw new Error(`data/${key}.js: HTTP ${r.status}`);
+      return r.text();
+    }).then((txt) => JSON.parse(txt.slice(txt.indexOf(",") + 1, txt.lastIndexOf(")"))));
   }
   async function loadScene(id) {
     if (state.cache[id]) return state.cache[id];
-    const sc = await getJSON(`data/${id}.json`);
-    const txt = await (await fetch(`data/${sc.series.file}`)).text();
-    const bin = atob(txt.trim());
-    const bytes = new Uint8Array(bin.length);
-    for (let k = 0; k < bin.length; k++) bytes[k] = bin.charCodeAt(k);
-    const entry = { sc, series: new Int16Array(bytes.buffer) };
+    const sc = await loadPayload(id);
+    const bin = atob(sc.series.b64);
+    const vals = new Float32Array(bin.length / 2);
+    for (let k = 0, q = 0; k < vals.length; k++, q += 2) {
+      const raw = ((bin.charCodeAt(q) | (bin.charCodeAt(q + 1) << 8)) << 16) >> 16;
+      vals[k] = raw === -32768 ? NaN : raw * sc.series.scale;
+    }
+    delete sc.series.b64;
+    const entry = { sc, vals };
     state.cache[id] = entry;
     return entry;
-  }
-  function cellSeries(i) {
-    const { n, scale } = state.sc.series;
-    const raw = state.series.subarray(i * n, (i + 1) * n);
-    const out = new Float64Array(n);
-    for (let k = 0; k < n; k++) out[k] = raw[k] === -32768 ? NaN : raw[k] * scale;
-    return out;
   }
   function seriesTimes(sc) {
     const { n, start, kind } = sc.series;
     return Array.from({ length: n }, (_, k) => kind === "monthly" ? start + k / 12 : start + 0.5 + k);
   }
-  function annualFrom(t, y) {
-    const by = new Map();
-    t.forEach((tt, k) => {
-      const yr = Math.floor(tt);
-      if (!by.has(yr)) by.set(yr, []);
-      by.get(yr).push(y[k]);
-    });
-    const years = [], vals = [];
-    for (const [yr, arr] of by) {
-      if (arr.length === 12 || state.sc.series.kind === "annual") {
-        years.push(yr);
-        vals.push(arr.reduce((a, b) => a + b, 0) / arr.length);
+  function cellSeries(i) {
+    const n = state.sc.series.n;
+    return state.entry.vals.subarray(i * n, (i + 1) * n);
+  }
+  // per-cell calendar-year means, computed once per scene
+  function annualCube(entry) {
+    if (entry.annual) return entry.annual;
+    const sc = entry.sc, n = sc.series.n, ncell = sc.grid.nx * sc.grid.ny;
+    let years, data, ny;
+    if (sc.series.kind === "annual") {
+      ny = n; years = Array.from({ length: n }, (_, k) => sc.series.start + k);
+      data = entry.vals;
+    } else {
+      ny = Math.floor(n / 12);
+      const y0 = Math.floor(sc.series.start);
+      years = Array.from({ length: ny }, (_, k) => y0 + k);
+      data = new Float32Array(ncell * ny);
+      for (let c = 0; c < ncell; c++) {
+        for (let y = 0; y < ny; y++) {
+          let s = 0;
+          for (let m = 0; m < 12; m++) s += entry.vals[c * n + y * 12 + m];
+          data[c * ny + y] = s / 12;
+        }
       }
     }
-    return { years, vals };
+    const abs = [];
+    for (let k = 0; k < data.length; k += 7) if (Number.isFinite(data[k])) abs.push(Math.abs(data[k]));
+    abs.sort((a, b) => a - b);
+    entry.annual = { years, data, ny, lim: niceLim(abs[Math.floor(abs.length * 0.98)] || 1) };
+    return entry.annual;
+  }
+  function niceLim(q) {
+    const p = Math.pow(10, Math.floor(Math.log10(q || 1)));
+    return Math.ceil(q / p * 2) / 2 * p;
   }
 
-  // ------------------------------------------------------------------ map
-  const map = { canvas: null, ctx: null, W: 0, H: 0, geom: null, drag: null, boxMode: false };
-  function geometry(sc) {
+  // ------------------------------------------------------------ statistics for the chosen years
+  function bhThreshold(ps, a) {
+    const v = ps.filter(Number.isFinite).sort((x, y) => x - y), m = v.length;
+    let best = 0;
+    for (let i = 0; i < m; i++) if (v[i] <= a * (i + 1) / m) best = v[i];
+    return best;
+  }
+  function fullRange() { const sc = state.sc; return [+sc.period.start.slice(0, 4), +sc.period.end.slice(0, 4)]; }
+  function isFull() { const [a, b] = fullRange(); return state.y0 === a && state.y1 === b; }
+
+  // verdict per cell from stored p-values; `base` marks valid (1-5), excluded (6), no data (0)
+  function classify(cells, base, alpha, years) {
+    const ncell = base.length, status = new Int8Array(ncell);
+    const valid = (k) => base[k] >= 1 && base[k] <= 5;
+    const ps = [];
+    for (let k = 0; k < ncell; k++) if (valid(k) && cells.p_mk[k] !== null) ps.push(cells.p_mk[k]);
+    const pstar = bhThreshold(ps, 2 * alpha);
+    const c = { valid: 0, naive: 0, fdr: 0, robust: 0, fdr_up: 0, fdr_down: 0, not_yet: 0, gappy: 0 };
+    for (let k = 0; k < ncell; k++) {
+      if (!valid(k)) { status[k] = base[k]; if (base[k] === 6) c.gappy++; continue; }
+      c.valid++;
+      const p = cells.p_mk[k], sen = cells.sen[k];
+      const fdr = p !== null && pstar > 0 && p <= pstar;
+      // precomputed cells keep no OLS slope; when both tests are significant their signs agree in practice
+      const sameSign = cells.ols ? Math.sign(cells.ols[k]) === Math.sign(sen) : true;
+      const agree = cells.p_ols[k] !== null && cells.p_ols[k] < alpha && sameSign;
+      const naive = cells.p_naive[k] !== null && cells.p_naive[k] < alpha;
+      const ns = cells.nstar[k];
+      let st = ns !== null && Number.isFinite(ns) && ns <= years ? 5 : 4;
+      if (naive && !fdr) st = 3;
+      if (fdr) st = agree ? 1 : 2;
+      status[k] = st;
+      if (naive) c.naive++;
+      if (fdr) { c.fdr++; if (agree) c.robust++; if (sen > 0) c.fdr_up++; else if (sen < 0) c.fdr_down++; }
+      if (st === 4) c.not_yet++;
+    }
+    return { status, counts: c, pstar };
+  }
+  function statsFromJS(r) {
+    if (!r) return null;
+    return { sen: r.sen * 10, sen_lo: r.senLo * 10, sen_hi: r.senHi * 10, p_naive: r.pNaive, p_mk: r.pMk, p_ols_ar1: r.pOls,
+      phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: Number.isFinite(r.nstar) ? r.nstar : null, years: r.years, steps: [] };
+  }
+  // monthly values inside [y0, y1], with the calendar-month means of that window removed
+  function monthlyWindow(vals, start, y0, y1) {
+    const t0 = Math.floor(start), x = [], tt = [];
+    for (let k = 0; k < vals.length; k++) {
+      const y = t0 + Math.floor(k / 12);
+      if (y < y0 || y > y1) continue;
+      x.push(vals[k] === null ? NaN : vals[k]);
+      tt.push(start + k / 12);
+    }
+    const sum = new Float64Array(12), cnt = new Float64Array(12);
+    x.forEach((v, k) => { if (Number.isFinite(v)) { sum[k % 12] += v; cnt[k % 12]++; } });
+    for (let k = 0; k < x.length; k++) x[k] -= cnt[k % 12] ? sum[k % 12] / cnt[k % 12] : 0;
+    return { x, t: tt };
+  }
+  function subsetAnnual(years, vals, y0, y1) {
+    const ys = [], vs = [];
+    years.forEach((y, k) => { if (y >= y0 && y <= y1) { ys.push(y + 0.5); vs.push(vals[k] === null ? NaN : vals[k]); } });
+    return { ys, vs };
+  }
+
+  async function computeResults() {
+    const sc = state.sc, entry = state.entry, years = state.y1 - state.y0 + 1;
+    if (isFull()) {
+      const cells = sc.cells;
+      const exact = Math.abs(state.alpha - 0.05) < 1e-9;
+      const cl = exact ? { status: Int8Array.from(cells.status), counts: Object.assign({}, sc.counts), pstar: sc.p_star }
+        : classify(cells, cells.status, state.alpha, sc.period.years);
+      cl.counts.step_flagged = sc.counts.step_flagged;
+      state.res = { custom: false, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years: sc.period.years,
+        regionStats: sc.region_means.map((rm) => rm.stats) };
+      return;
+    }
+    const cube = annualCube(entry), i0 = cube.years.indexOf(state.y0);
+    const tt = Array.from({ length: years }, (_, k) => state.y0 + k + 0.5);
+    const ncell = sc.grid.nx * sc.grid.ny, monthly = sc.series.kind === "monthly", n = sc.series.n;
+    const cells = {};
+    ["sen", "sen_lo", "sen_hi", "p_naive", "p_mk", "p_ols", "phi", "sigma", "mdt", "nstar", "ols", "p_hr_empirical"].forEach((k) => { cells[k] = new Array(ncell).fill(null); });
+    cells.clim_mean = sc.cells.clim_mean;
+    const base = sc.cells.status, busy = $("#busy");
+    busy.hidden = false;
+    state.busy = true;
+    let tick = performance.now();
+    for (let c = 0; c < ncell; c++) {
+      if (base[c] >= 1 && base[c] <= 5) {
+        let r;
+        if (monthly) {
+          const w = monthlyWindow(entry.vals.subarray(c * n, (c + 1) * n), sc.series.start, state.y0, state.y1);
+          r = S.analyze(w.x, w.t);
+        } else r = S.analyze(Array.from(cube.data.subarray(c * cube.ny + i0, c * cube.ny + i0 + years)), tt);
+        if (r) {
+          cells.sen[c] = r.sen * 10; cells.sen_lo[c] = r.senLo * 10; cells.sen_hi[c] = r.senHi * 10;
+          cells.p_naive[c] = r.pNaive; cells.p_mk[c] = r.pMk; cells.p_ols[c] = r.pOls; cells.phi[c] = r.phi;
+          cells.sigma[c] = r.sigma; cells.mdt[c] = r.mdt * 10; cells.nstar[c] = Number.isFinite(r.nstar) ? r.nstar : null; cells.ols[c] = r.ols;
+        }
+      }
+      if (performance.now() - tick > 60) {
+        busy.textContent = t("computing", { p: Math.round(100 * c / ncell) });
+        await new Promise((res) => setTimeout(res, 0));
+        tick = performance.now();
+      }
+    }
+    busy.hidden = true;
+    state.busy = false;
+    const cl = classify(cells, base, state.alpha, years);
+    cl.counts.step_flagged = sc.counts.step_flagged;
+    const regionStats = sc.region_means.map((rm) => {
+      const w = monthlyWindow(rm.monthly, rm.monthly_start, state.y0, state.y1);
+      return statsFromJS(S.analyze(w.x, w.t));
+    });
+    state.res = { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly };
+  }
+
+  // ------------------------------------------------------------ 2D map
+  const map = { canvas: null, ctx: null, W: 0, H: 0, g: null, drag: null, boxMode: false, lim: 1 };
+  let surface = null;
+  function baseGeom(sc) {
     const g = sc.grid;
-    let lon0 = g.lon[0] - g.dlon / 2, lon1 = g.lon[g.nx - 1] + g.dlon / 2;
-    let lat0 = g.lat[0] - g.dlat / 2, lat1 = g.lat[g.ny - 1] + g.dlat / 2;
+    let lon0 = g.lon[0] - g.dlon / 2, lon1 = g.lon[g.nx - 1] + g.dlon / 2, lat0 = g.lat[0] - g.dlat / 2, lat1 = g.lat[g.ny - 1] + g.dlat / 2;
     if (sc.region === "global") { lon0 = -180; lon1 = 180; lat0 = -90; lat1 = 90; }
     const k = sc.region === "global" ? 1 : Math.cos((lat0 + lat1) / 2 * Math.PI / 180);
     return { lon0, lon1, lat0, lat1, aspect: (lat1 - lat0) / ((lon1 - lon0) * k) };
   }
-  const X = (lon) => (lon - map.geom.lon0) / (map.geom.lon1 - map.geom.lon0) * map.W;
-  const Y = (lat) => (map.geom.lat1 - lat) / (map.geom.lat1 - map.geom.lat0) * map.H;
-  const LON = (x) => map.geom.lon0 + x / map.W * (map.geom.lon1 - map.geom.lon0);
-  const LAT = (y) => map.geom.lat1 - y / map.H * (map.geom.lat1 - map.geom.lat0);
+  const X = (lon) => map.g.ox + (lon - map.g.lon0) / (map.g.lon1 - map.g.lon0) * map.g.w;
+  const Y = (lat) => map.g.oy + (map.g.lat1 - lat) / (map.g.lat1 - map.g.lat0) * map.g.h;
+  const LON = (x) => map.g.lon0 + (x - map.g.ox) / map.g.w * (map.g.lon1 - map.g.lon0);
+  const LAT = (y) => map.g.lat1 - (y - map.g.oy) / map.g.h * (map.g.lat1 - map.g.lat0);
 
-  function layerValue(i) {
-    const c = state.sc.cells, st = c.status[i];
-    switch (state.layer) {
-      case "trend": return { v: c.sen[i], strong: st === 1 || st === 2 };
-      case "naive": return { v: c.sen[i], strong: c.p_naive[i] !== null && c.p_naive[i] < 0.05 };
-      case "detect": return { v: c.mdt[i] };
-      case "steps": {
-        const s = state.sc.steps[state.step];
-        return s ? { v: s.step[i], strong: s.flag[i] === 1 } : { v: null };
-      }
-      case "truth": return { v: state.sc.truth ? state.sc.truth.slope[i] : null, strong: true };
-      default: return { v: null };
-    }
-  }
   function layerLimit() {
-    const sc = state.sc, c = sc.cells;
+    const sc = state.sc, c = state.res.cells, st = state.res.status;
+    if (state.layer === "anom") return annualCube(state.entry).lim;
     let arr;
     if (state.layer === "detect") arr = c.mdt;
     else if (state.layer === "steps") arr = sc.steps[state.step] ? sc.steps[state.step].step : [];
     else if (state.layer === "truth") arr = sc.truth ? sc.truth.slope : [];
     else arr = c.sen;
-    const vals = arr.filter((v, i) => v !== null && Number.isFinite(v) && c.status[i] !== 0 && c.status[i] !== 6)
-      .map(Math.abs).sort((a, b) => a - b);
-    if (!vals.length) return 1;
-    const q = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.98))] || vals[vals.length - 1] || 1;
-    const p = Math.pow(10, Math.floor(Math.log10(q)));
-    return Math.ceil(q / p * 2) / 2 * p;
+    const vals = [];
+    for (let k = 0; k < arr.length; k++) if (arr[k] !== null && Number.isFinite(arr[k]) && st[k] >= 1 && st[k] <= 5) vals.push(Math.abs(arr[k]));
+    vals.sort((a, b) => a - b);
+    const f = state.layer === "steps" ? 1 : unitFactor();
+    return niceLim((vals[Math.floor(vals.length * 0.98)] || vals[vals.length - 1] || 1) * f);
+  }
+  // colour and signed height (in units of the colour limit) for one cell in the current layer
+  function cellLook(k, lim) {
+    const st = state.res.status[k], c = state.res.cells, sc = state.sc;
+    if (st === 0) return null;
+    if (st === 6) return { col: pal.muted, h: NaN };
+    const invert = WATER_VARS.has(sc.var), f = unitFactor();
+    switch (state.layer) {
+      case "verdict": return { col: verdictColors()[st], h: c.sen[k] !== null ? c.sen[k] * f / lim : 0 };
+      case "detect": {
+        const v = c.mdt[k] === null ? NaN : c.mdt[k] * f;
+        return Number.isFinite(v) ? { col: pal.seq[Math.min(255, Math.round(Math.abs(v) / lim * 255))], h: Math.min(1.5, v / lim) } : null;
+      }
+      case "anom": {
+        const cube = annualCube(state.entry), v = cube.data[k * cube.ny + cube.years.indexOf(state.year)];
+        return Number.isFinite(v) ? { col: divColor(v, lim, invert), h: v / lim } : null;
+      }
+      case "steps": {
+        const s = sc.steps[state.step];
+        if (!s || s.step[k] === null) return null;
+        const col = divColor(s.step[k], lim, invert);
+        return { col: s.flag[k] ? col : fade(col, 0.72), h: s.step[k] / lim };
+      }
+      case "truth": {
+        const v = sc.truth ? sc.truth.slope[k] * f : null;
+        return v === null ? null : { col: divColor(v, lim, invert), h: v / lim };
+      }
+      default: {
+        if (c.sen[k] === null) return null;
+        const v = c.sen[k] * f;
+        const strong = state.layer === "naive" ? (c.p_naive[k] !== null && c.p_naive[k] < state.alpha) : (st === 1 || st === 2);
+        const col = divColor(v, lim, invert);
+        return { col: strong ? col : fade(col, 0.72), h: v / lim };
+      }
+    }
   }
 
   function drawMap() {
     const sc = state.sc;
-    if (!sc) return;
-    const box = map.canvas.parentElement;
-    const W = Math.max(280, box.clientWidth);
-    map.geom = geometry(sc);
-    const H = Math.round(W * map.geom.aspect);
-    const dpr = window.devicePixelRatio || 1;
-    map.canvas.width = Math.round(W * dpr);
-    map.canvas.height = Math.round(H * dpr);
-    map.canvas.style.height = H + "px";
-    map.W = W; map.H = H;
-    const ctx = map.ctx;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = rgbStr(palette.sea);
-    ctx.fillRect(0, 0, W, H);
-    const g = sc.grid, c = sc.cells;
+    if (!sc || !state.res || !pal) return;
     const lim = layerLimit();
     map.lim = lim;
-    const invert = WATER_VARS.has(sc.var) && state.layer !== "detect";
-    for (let j = 0; j < g.ny; j++) {
-      const y0 = Y(g.lat[j] + g.dlat / 2), y1 = Y(g.lat[j] - g.dlat / 2);
-      for (let i = 0; i < g.nx; i++) {
-        const k = j * g.nx + i, st = c.status[k];
-        if (st === 0) continue;
-        const x0 = X(g.lon[i] - g.dlon / 2), x1 = X(g.lon[i] + g.dlon / 2);
-        let col;
-        if (st === 6) col = palette.muted;
-        else if (state.layer === "verdict") col = VERDICT[st].color();
-        else {
-          const { v, strong } = layerValue(k);
-          if (v === null || !Number.isFinite(v)) continue;
-          if (state.layer === "detect") {
-            const lut = palette.dark ? palette.seqDark : palette.seq;
-            col = rgbStr(lut[Math.min(255, Math.round(Math.abs(v) / lim * 255))]);
-          } else {
-            const rgb = divColor(v, lim, invert);
-            col = rgbStr(strong ? rgb : fade(rgb, 0.72));
-          }
-        }
-        ctx.fillStyle = col;
-        ctx.fillRect(x0, y0, x1 - x0 + 0.6, y1 - y0 + 0.6);
-      }
-    }
-    drawLines(state.geo.land, palette.coast, 0.8);
-    if (sc.region !== "global") {
-      drawLines(state.geo.borders, palette.coast, 0.6, [3, 3]);
-      drawLines(state.geo.focus.rings, palette.ink, 1.6);
-      ctx.font = "11px " + cssVar("--font-body");
-      for (const p of PLACES) {
-        const x = X(p.lon), y = Y(p.lat);
-        ctx.fillStyle = palette.ink;
-        ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2 * Math.PI); ctx.fill();
-        ctx.strokeStyle = rgbStr(palette.surface); ctx.lineWidth = 1.5; ctx.stroke();
-        ctx.lineWidth = 3; ctx.strokeStyle = rgbStr(palette.surface);
-        ctx.textAlign = p.left ? "right" : "left";
-        const lx = p.left ? x - 6 : x + 6;
-        ctx.strokeText(p.name, lx, y + 4);
-        ctx.fillText(p.name, lx, y + 4);
-        ctx.textAlign = "left";
-      }
-    }
-    drawSelection();
     renderLegend(lim);
+    if (state.view === "surf") { drawSurface(lim); return; }
+    const wrap = $("#mapwrap"), gb0 = baseGeom(sc);
+    // on phones the map gets the height its shape needs instead of filling the pane
+    const narrow = matchMedia("(max-width: 760px)").matches;
+    const want = narrow ? `${Math.round(wrap.clientWidth * gb0.aspect + 20)}px` : "";
+    if (wrap.style.height !== want) wrap.style.height = want;
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (!W || !H) return;
+    const dpr = window.devicePixelRatio || 1;
+    map.canvas.width = Math.round(W * dpr); map.canvas.height = Math.round(H * dpr);
+    map.W = W; map.H = H;
+    const gb = baseGeom(sc), pad = 10;
+    let w = W - 2 * pad, h = w * gb.aspect;
+    if (h > H - 2 * pad) { h = H - 2 * pad; w = h / gb.aspect; }
+    map.g = Object.assign(gb, { w, h, ox: (W - w) / 2, oy: (H - h) / 2 });
+    const ctx = map.ctx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = rgb(pal.bg);
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = pal.line;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(map.g.ox - 0.5, map.g.oy - 0.5, w + 1, h + 1);
+    const g = sc.grid;
+    for (let j = 0; j < g.ny; j++) {
+      const ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
+      for (let i = 0; i < g.nx; i++) {
+        const k = j * g.nx + i, look = cellLook(k, lim);
+        if (!look) continue;
+        const xa = X(g.lon[i] - g.dlon / 2), xb = X(g.lon[i] + g.dlon / 2);
+        ctx.fillStyle = rgb(look.col);
+        ctx.fillRect(xa, ya, xb - xa + 0.6, yb - ya + 0.6);
+      }
+    }
+    if (state.ov.stipple && map.g.w / g.nx >= 3) {
+      ctx.fillStyle = pal.ink;
+      const r = Math.max(0.8, map.g.w / g.nx / 7);
+      for (let k = 0; k < state.res.status.length; k++) {
+        const s = state.res.status[k];
+        if (s !== 1 && s !== 2) continue;
+        ctx.beginPath(); ctx.arc(X(g.lon[k % g.nx]), Y(g.lat[Math.floor(k / g.nx)]), r, 0, 2 * Math.PI); ctx.fill();
+      }
+    }
+    if (state.ov.coast) drawLines(state.geo.land, pal.coast, 0.8);
+    if (sc.region !== "global") {
+      if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
+      drawLines(state.geo.focus.rings, pal.ink, 1.6);
+    }
+    drawPlaces();
+    drawSelection();
   }
   function drawLines(rings, color, width, dash) {
     const ctx = map.ctx;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(map.g.ox, map.g.oy, map.g.w, map.g.h); ctx.clip();
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.setLineDash(dash || []);
     for (const r of rings) {
       ctx.beginPath();
@@ -285,18 +461,45 @@
       }
       ctx.stroke();
     }
-    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  const placeName = (p) => (mn() ? p.mn : p.en);
+  const inMap = (lat, lon) => lon >= map.g.lon0 && lon <= map.g.lon1 && lat >= map.g.lat0 && lat <= map.g.lat1;
+  function drawPlaces() {
+    const ctx = map.ctx, sc = state.sc, list = [];
+    if (state.ov.places && sc.region !== "global") list.push(...state.places.filter((p) => p.cc === "MN"));
+    if (state.searched && !list.includes(state.searched)) list.push(state.searched);
+    ctx.font = `11px ${cssVar("--font-ui")}`;
+    for (const p of list) {
+      if (!inMap(p.lat, p.lon)) continue;
+      const x = X(p.lon), y = Y(p.lat);
+      const labelled = p === state.searched || ["capital", "mine", "airfield"].includes(p.kind);
+      ctx.fillStyle = pal.ink;
+      ctx.strokeStyle = rgb(pal.bg);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (p.kind === "mine" || p.kind === "airfield") ctx.rect(x - 3.5, y - 3.5, 7, 7); else ctx.arc(x, y, p === state.searched ? 5 : 2.6, 0, 2 * Math.PI);
+      ctx.fill(); ctx.stroke();
+      if (!labelled) continue;
+      ctx.lineWidth = 3;
+      const right = p.kind === "airfield" || (p.kind === "mine" && p.lon > 106);
+      ctx.textAlign = right ? "left" : "right";
+      const lx = right ? x + 7 : x - 7;
+      ctx.strokeText(placeName(p), lx, y + 4);
+      ctx.fillText(placeName(p), lx, y + 4);
+      ctx.textAlign = "left";
+    }
   }
   function drawSelection() {
     const ctx = map.ctx, g = state.sc.grid, sel = state.sel;
-    ctx.strokeStyle = palette.ink; ctx.lineWidth = 2;
+    ctx.strokeStyle = pal.ink; ctx.lineWidth = 2;
     if (sel && sel.type === "cell") {
       const j = Math.floor(sel.i / g.nx), i = sel.i % g.nx;
-      const x0 = X(g.lon[i] - g.dlon / 2), x1 = X(g.lon[i] + g.dlon / 2);
-      const y0 = Y(g.lat[j] + g.dlat / 2), y1 = Y(g.lat[j] - g.dlat / 2);
-      ctx.strokeRect(x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2);
+      const xa = X(g.lon[i] - g.dlon / 2), xb = X(g.lon[i] + g.dlon / 2), ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
+      ctx.strokeRect(xa - 1.5, ya - 1.5, xb - xa + 3, yb - ya + 3);
     }
-    const b = map.drag && map.drag.moved ? map.drag : (sel && sel.type === "box" ? sel : null);
+    const b = map.drag && map.drag.moved ? map.drag
+      : (sel && sel.type === "box" ? { x0: X(sel.bounds[0]), x1: X(sel.bounds[2]), y0: Y(sel.bounds[3]), y1: Y(sel.bounds[1]) } : null);
     if (b) {
       ctx.setLineDash([5, 4]);
       ctx.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
@@ -304,238 +507,277 @@
     }
   }
   function cellAt(x, y) {
-    const g = state.sc.grid;
-    const lon = LON(x), lat = LAT(y);
-    const i = Math.floor((lon - (g.lon[0] - g.dlon / 2)) / g.dlon);
-    const j = Math.floor((lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
-    if (i < 0 || j < 0 || i >= g.nx || j >= g.ny) return -1;
-    return j * g.nx + i;
+    const g = state.sc.grid, lon = LON(x), lat = LAT(y);
+    const i = Math.floor((lon - (g.lon[0] - g.dlon / 2)) / g.dlon), j = Math.floor((lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
+    return (i < 0 || j < 0 || i >= g.nx || j >= g.ny) ? -1 : j * g.nx + i;
   }
-  function pointer(e) {
-    const r = map.canvas.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  function pointer(e) { const r = map.canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+
+  function drawSurface(lim) {
+    const sc = state.sc, g = sc.grid, ncell = g.nx * g.ny;
+    const h = new Float32Array(ncell).fill(NaN), color = new Array(ncell).fill(null);
+    for (let k = 0; k < ncell; k++) {
+      const look = cellLook(k, lim);
+      if (!look) continue;
+      color[k] = look.col;
+      h[k] = Number.isFinite(look.h) ? Math.max(-1.6, Math.min(1.6, look.h)) : 0;
+    }
+    surface.setData({ nx: g.nx, ny: g.ny, lon0: g.lon[0] - g.dlon / 2, lon1: g.lon[g.nx - 1] + g.dlon / 2,
+      lat0: g.lat[0] - g.dlat / 2, lat1: g.lat[g.ny - 1] + g.dlat / 2, aspect: baseGeom(sc).aspect, h, color,
+      lines: state.ov.coast ? state.geo.land.concat(sc.region !== "global" ? state.geo.focus.rings : []) : [],
+      bg: rgb(pal.bg), frame: pal.line, coast: pal.coast });
   }
-  function onPointerDown(e) {
-    if (e.pointerType !== "mouse" && !map.boxMode) return;
-    const p = pointer(e);
-    map.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
-    map.canvas.setPointerCapture(e.pointerId);
+
+  // ------------------------------------------------------------ hover, click, box
+  function hideTip() { $("#tip").hidden = true; }
+  function cellText(i) {
+    const sc = state.sc, c = state.res.cells, st = state.res.status[i];
+    if (st === 6) return t("v6");
+    if (state.layer === "detect") return `±${fmt(c.mdt[i] * unitFactor())} ${unitText(sc)}`;
+    if (state.layer === "anom") {
+      const cube = annualCube(state.entry);
+      return `${state.year}: ${signed(cube.data[i * cube.ny + cube.years.indexOf(state.year)])} ${unitLabel(sc.units)}`;
+    }
+    if (state.layer === "steps" && sc.steps[state.step]) {
+      const s = sc.steps[state.step];
+      return `${t("lg_step")}: ${signed(s.step[i])} ${unitLabel(sc.units)} (p ${fmtP(s.p_step[i])})`;
+    }
+    return c.sen[i] === null ? "–" : `${signed(c.sen[i] * unitFactor())} ${unitText(sc)}`;
   }
-  function onPointerMove(e) {
+  function onMove(e) {
+    if (state.view !== "map" || !state.res) return;
     const p = pointer(e);
     if (map.drag) {
       map.drag.x1 = p.x; map.drag.y1 = p.y;
       if (Math.hypot(p.x - map.drag.x0, p.y - map.drag.y0) > 6) map.drag.moved = true;
       if (map.drag.moved) { drawMap(); hideTip(); return; }
     }
-    showTip(p);
+    const i = cellAt(p.x, p.y), tip = $("#tip"), st = i >= 0 ? state.res.status[i] : 0;
+    if (i < 0 || st === 0) { tip.hidden = true; status({ cursor: null }); return; }
+    const g = state.sc.grid, lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx], txt = cellText(i);
+    tip.innerHTML = `<div class="num">${ll(lat, lon)}</div><div><b>${esc(txt)}</b></div>${st >= 1 && st <= 5 ? `<div class="muted">${esc(t("v" + st))}</div>` : ""}`;
+    tip.hidden = false;
+    tip.style.left = Math.max(4, Math.min(p.x + 14, map.W - 220)) + "px";
+    tip.style.top = Math.max(4, Math.min(p.y + 14, map.H - 76)) + "px";
+    status({ cursor: ll(LAT(p.y), LON(p.x)), value: txt });
   }
-  function onPointerUp(e) {
+  function onDown(e) {
+    if (state.view !== "map" || (e.pointerType !== "mouse" && !map.boxMode)) return;
     const p = pointer(e);
-    const d = map.drag;
+    map.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
+    map.canvas.setPointerCapture(e.pointerId);
+  }
+  function onUp(e) {
+    if (state.view !== "map" || !state.res) return;
+    const p = pointer(e), d = map.drag;
     map.drag = null;
-    if (d && d.moved) {
-      selectBox(d);
-    } else {
+    if (d && d.moved) selectBox(d);
+    else {
       const i = cellAt(p.x, p.y);
-      if (i >= 0 && state.sc.cells.status[i] !== 0) { state.sel = { type: "cell", i }; renderSelection(); }
+      if (i >= 0 && state.res.status[i] !== 0) { state.sel = { type: "cell", i }; renderInspector(); renderAnalysis(); }
     }
     drawMap();
   }
-  function hideTip() { $("#tip").hidden = true; }
-  function showTip(p) {
-    const i = cellAt(p.x, p.y), tip = $("#tip");
-    const c = state.sc.cells;
-    if (i < 0 || c.status[i] === 0) { tip.hidden = true; return; }
-    const g = state.sc.grid;
-    const lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx];
-    let html = `<div class="num">${ll(lat, lon)}</div>`;
-    if (c.status[i] === 6) html += `<div>${VERDICT[6].label}</div>`;
-    else if (state.layer === "detect") html += `<div>Detectable: ±${fmt(c.mdt[i])} ${esc(perDecade(state.sc))}</div>`;
-    else if (state.layer === "steps" && state.sc.steps[state.step]) {
-      const s = state.sc.steps[state.step];
-      html += `<div>Step: ${signed(s.step[i])} ${esc(unitLabel(state.sc.units))} (p ${fmtP(s.p_step[i])})</div>`;
-    } else {
-      html += `<div><b>${signed(c.sen[i])}</b> ${esc(perDecade(state.sc))}</div>`;
-      html += `<div class="muted">${VERDICT[c.status[i]].label}</div>`;
-    }
-    tip.innerHTML = html;
-    tip.hidden = false;
-    const bx = map.canvas.parentElement.clientWidth;
-    tip.style.left = Math.min(p.x + 14, bx - 200) + "px";
-    tip.style.top = (p.y + 14) + "px";
-  }
   function selectBox(d) {
-    const g = state.sc.grid, c = state.sc.cells;
-    const lonA = LON(Math.min(d.x0, d.x1)), lonB = LON(Math.max(d.x0, d.x1));
-    const latA = LAT(Math.max(d.y0, d.y1)), latB = LAT(Math.min(d.y0, d.y1));
+    const g = state.sc.grid, st = state.res.status;
+    const lonA = LON(Math.min(d.x0, d.x1)), lonB = LON(Math.max(d.x0, d.x1)), latA = LAT(Math.max(d.y0, d.y1)), latB = LAT(Math.min(d.y0, d.y1));
     const cells = [];
     for (let j = 0; j < g.ny; j++) {
       if (g.lat[j] < latA || g.lat[j] > latB) continue;
       for (let i = 0; i < g.nx; i++) {
         if (g.lon[i] < lonA || g.lon[i] > lonB) continue;
         const k = j * g.nx + i;
-        if (c.status[k] >= 1 && c.status[k] <= 5) cells.push(k);
+        if (st[k] >= 1 && st[k] <= 5) cells.push(k);
       }
     }
-    state.sel = { type: "box", x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1, cells, bounds: [lonA, latA, lonB, latB] };
-    renderSelection();
+    state.sel = { type: "box", cells, bounds: [lonA, latA, lonB, latB] };
+    renderInspector();
+    renderAnalysis();
   }
 
-  // ------------------------------------------------------------------ legend
+  // ------------------------------------------------------------ layer picker, legend, timeline, status bar
+  function renderPicker() {
+    const sc = state.sc;
+    const avail = LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth));
+    if (!avail.includes(state.layer)) state.layer = "trend";
+    $("#picker").innerHTML = avail.map((l) => `<button type="button" data-layer="${l}" aria-pressed="${l === state.layer}"><svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>${esc(t(LAYER_KEY[l]))}</button>`).join("") +
+      (state.layer === "steps" && sc.steps.length > 1 ? sc.steps.map((s, k) => `<button type="button" data-step="${k}" aria-pressed="${k === state.step}">${esc(s.label.slice(0, 7))}</button>`).join("") : "");
+  }
+  function countStatus(k) { let n = 0; for (const s of state.res.status) if (s === k) n++; return n; }
   function renderLegend(lim) {
     const sc = state.sc, el = $("#legend");
-    const invert = WATER_VARS.has(sc.var);
+    const unitBtn = `<button type="button" class="unitbtn" id="unitbtn" title="${esc(t("lg_unit_hint"))}">${esc(unitText(sc))}</button>`;
     if (state.layer === "verdict") {
-      el.innerHTML = Object.entries(VERDICT).map(([k, v]) =>
-        `<span><i class="sw" style="background:${v.color()}"></i>${v.label} <span class="num muted">${countStatus(+k)}</span></span>`).join("");
+      const cols = verdictColors();
+      el.innerHTML = [1, 2, 3, 4, 5, 6].map((k) => `<span><i class="sw" style="background:${rgb(cols[k])}"></i>${esc(t("v" + k))} <span class="num muted">${nf(countStatus(k))}</span></span>`).join("");
       return;
     }
     if (state.layer === "detect") {
-      const lut = palette.dark ? palette.seqDark : palette.seq;
-      el.innerHTML = `<span>Smallest trend this record can detect (90% power), ${esc(perDecade(sc))}</span>
-        <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${rgbStr(lut[0])},${rgbStr(lut[128])},${rgbStr(lut[255])})"></span>
-        <span class="ticks"><span>0</span><span>${fmt(lim / 2)}</span><span>≥${fmt(lim)}</span></span></span>`;
+      el.innerHTML = `<span><b>${esc(t("lg_detect"))}</b></span><span><span class="ramp" style="display:block;background:linear-gradient(90deg,${rgb(pal.seq[0])},${rgb(pal.seq[128])},${rgb(pal.seq[255])})"></span>
+        <span class="ticks"><span>0</span><span>${fmt(lim / 2)}</span><span>≥${fmt(lim)}</span></span></span>${unitBtn}`;
       return;
     }
-    const left = invert ? "increase" : "decrease", right = invert ? "decrease" : "increase";
-    const stops = [0, 64, 128, 192, 256].map((k) => rgbStr(palette.div[k]));
-    const unit = state.layer === "steps" ? unitLabel(sc.units) : perDecade(sc);
-    const what = state.layer === "steps" ? "Step at the transition" : state.layer === "truth" ? "Planted trend" : "Sen slope";
-    let note = "";
-    if (state.layer === "trend") note = `Full colour: significant after FDR (α<sub>FDR</sub>=${sc.alpha_fdr}). Faded: not significant.`;
-    if (state.layer === "naive") note = "Full colour: p&lt;0.05 with no autocorrelation or multiple-testing correction.";
-    if (state.layer === "steps") note = "Full colour: step significant after FDR.";
-    el.innerHTML = `<span>${what}, ${esc(unit)}</span>
-      <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${stops.join(",")})"></span>
+    const invert = WATER_VARS.has(sc.var);
+    const stops = [0, 64, 128, 192, 256].map((k) => rgb(pal.div[k])).join(",");
+    let what = t("lg_sen"), note = "", unit = unitBtn;
+    if (state.layer === "trend") note = t("lg_full", { a: fmt(2 * state.alpha) });
+    if (state.layer === "naive") note = t("lg_naive", { a: state.alpha });
+    if (state.layer === "steps") { what = t("lg_step"); note = t("lg_stepnote"); unit = esc(unitLabel(sc.units)); }
+    if (state.layer === "truth") what = t("lg_truth");
+    if (state.layer === "anom") {
+      const cube = annualCube(state.entry);
+      what = t("lg_anom", { y: state.year }); unit = esc(unitLabel(sc.units));
+      note = t("lg_anomnote", { y0: cube.years[0], y1: cube.years[cube.years.length - 1] });
+    }
+    el.innerHTML = `<span><b>${esc(what)}</b></span>
+      <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${stops})"></span>
       <span class="ticks"><span>${signed(invert ? lim : -lim)}</span><span>0</span><span>${signed(invert ? -lim : lim)}</span></span></span>
-      <span class="muted">${left} ← → ${right}</span><span class="muted">${note}</span>`;
+      ${unit}<span class="muted">${esc(invert ? t("lg_inc") : t("lg_dec"))} ← → ${esc(invert ? t("lg_dec") : t("lg_inc"))}</span>
+      <span class="muted">${note}</span>`;
   }
-  function countStatus(k) { return state.sc.cells.status.filter((s) => s === k).length.toLocaleString("en-US"); }
+  function renderTimeline() {
+    const cube = annualCube(state.entry), sl = $("#yearslider");
+    sl.min = 0; sl.max = cube.years.length - 1;
+    if (state.year === null || !cube.years.includes(state.year)) state.year = cube.years[cube.years.length - 1];
+    sl.value = cube.years.indexOf(state.year);
+    $("#yearlbl").textContent = state.year;
+    const pb = $("#play"), key = state.playing ? "tl_pause" : "tl_play";
+    pb.textContent = state.playing ? "❚❚" : "▶";
+    pb.setAttribute("aria-label", t(key));
+    pb.title = t(key);
+  }
+  function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; } }
+  function togglePlay() {
+    if (state.playing) { stopPlay(); renderTimeline(); return; }
+    state.layer = "anom";
+    renderPicker();
+    state.playing = setInterval(() => {
+      const cube = annualCube(state.entry);
+      state.year = cube.years[(cube.years.indexOf(state.year) + 1) % cube.years.length];
+      renderTimeline();
+      drawMap();
+    }, 450);
+    renderTimeline();
+    drawMap();
+  }
+  function status(extra) {
+    const sc = state.sc, r = state.res;
+    if (!sc || !r) { $("#status").innerHTML = `<span>${esc(t("st_ready"))}</span>`; return; }
+    state.statusExtra = Object.assign(state.statusExtra || {}, extra || {});
+    const x = state.statusExtra;
+    $("#status").innerHTML = [
+      `<span>${esc(t("st_cursor"))}: <b>${x.cursor ? esc(x.cursor) : "–"}</b></span>`,
+      `<span>${esc(t("st_value"))}: <b>${x.cursor && x.value ? esc(x.value) : "–"}</b></span>`,
+      `<span>${esc(sceneTitle(sc))}</span>`,
+      `<span>${esc(t("st_period"))}: <b>${state.y0}–${state.y1}</b></span>`,
+      `<span>α = <b>${state.alpha}</b> · FDR p* = <b>${fmt(r.pstar, 2)}</b></span>`,
+      `<span>${esc(t("st_cells"))}: <b>${nf(r.counts.valid)}</b></span>`,
+    ].join("");
+  }
 
-  // ------------------------------------------------------------------ charts
-  const svgNS = "http://www.w3.org/2000/svg";
+  // ------------------------------------------------------------ charts
   function niceTicks(lo, hi, n = 4) {
-    const span = hi - lo || 1;
-    const step0 = Math.pow(10, Math.floor(Math.log10(span / n)));
+    const span = hi - lo || 1, step0 = Math.pow(10, Math.floor(Math.log10(span / n)));
     const step = [1, 2, 2.5, 5, 10].map((m) => m * step0).find((s) => span / s <= n) || step0 * 10;
     const out = [];
     for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-12; v += step) out.push(+v.toFixed(10));
     return out;
   }
-  /** Time-series chart with Sen trend, CI fan and transition markers. Hover shows values. */
-  function seriesChart(host, opts) {
-    const W = Math.max(260, host.clientWidth || 340), H = opts.height || 190;
-    const m = { l: 44, r: 10, t: 10, b: 24 };
-    const t = opts.t, y = opts.y;
-    const fin = y.filter(Number.isFinite);
-    if (!fin.length) { host.textContent = "No data"; return; }
+  /** Time series with an annual-mean line, Sen trend and CI over the chosen window, transition markers, hover. */
+  function seriesChart(host, o) {
+    const W = Math.max(240, host.clientWidth || 320), H = o.height || 170, m = { l: 40, r: 8, t: 10, b: 22 };
+    const tt = o.t, y = o.y, fin = y.filter(Number.isFinite);
+    if (!fin.length) { host.textContent = "–"; return; }
     let lo = Math.min(...fin), hi = Math.max(...fin);
-    const pad = (hi - lo) * 0.08 || 1;
-    lo -= pad; hi += pad;
-    const t0 = t[0], t1 = t[t.length - 1] + (opts.annual ? 1 : 1 / 12);
-    const sx = (v) => m.l + (v - t0) / (t1 - t0) * (W - m.l - m.r);
-    const sy = (v) => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
-    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || "time series")}">`;
+    const pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+    const t0 = tt[0] - (o.annual ? 0.5 : 0), t1 = tt[tt.length - 1] + (o.annual ? 0.5 : 1 / 12);
+    const sx = (v) => m.l + (v - t0) / (t1 - t0) * (W - m.l - m.r), sy = (v) => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label || "")}">`;
+    if (o.window) {
+      const [a, b] = o.window;
+      if (a > t0) s += `<rect x="${sx(t0)}" y="${m.t}" width="${Math.max(0, sx(a) - sx(t0))}" height="${H - m.t - m.b}" fill="var(--panel-2)" opacity="0.85"/>`;
+      if (b < t1) s += `<rect x="${sx(b)}" y="${m.t}" width="${Math.max(0, sx(t1) - sx(b))}" height="${H - m.t - m.b}" fill="var(--panel-2)" opacity="0.85"/>`;
+    }
     for (const v of niceTicks(lo, hi)) {
-      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--grid)" stroke-width="1"/>`;
-      s += `<text x="${m.l - 6}" y="${sy(v) + 4}" text-anchor="end">${fmt(v, 2)}</text>`;
+      s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--grid)"/><text x="${m.l - 5}" y="${sy(v) + 3}" text-anchor="end">${fmt(v, 2)}</text>`;
     }
-    if (lo < 0 && hi > 0) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--axis)" stroke-width="1"/>`;
-    for (const yr of niceTicks(t0, t1, 5)) {
-      s += `<text x="${sx(yr)}" y="${H - 6}" text-anchor="middle">${Math.round(yr)}</text>`;
-    }
-    for (const mk of opts.markers || []) {
+    if (lo < 0 && hi > 0) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--axis)"/>`;
+    for (const yr of niceTicks(t0, t1, 5)) s += `<text x="${sx(yr)}" y="${H - 6}" text-anchor="middle">${Math.round(yr)}</text>`;
+    (o.markers || []).forEach((mk, k) => {
       const x = sx(mk.t);
-      s += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}" stroke="var(--s2)" stroke-dasharray="3 3" stroke-width="1.5"/>`;
-      s += `<text class="lbl" x="${x + 4}" y="${m.t + 10}">${esc(mk.short)}</text>`;
-    }
-    const path = (ys, xs) => {
+      s += `<line x1="${x}" x2="${x}" y1="${m.t}" y2="${H - m.b}" stroke="var(--s2)" stroke-dasharray="3 3" stroke-width="1.4"/><text class="lbl" x="${x + 3}" y="${m.t + 9 + (k % 2) * 11}">${esc(mk.short)}</text>`;
+    });
+    const path = (ys, xs, off) => {
       let d = "", on = false;
-      ys.forEach((v, k) => {
-        if (!Number.isFinite(v)) { on = false; return; }
-        d += (on ? "L" : "M") + sx(xs[k] + (opts.annual ? 0 : 1 / 24)).toFixed(1) + "," + sy(v).toFixed(1);
-        on = true;
-      });
+      ys.forEach((v, k) => { if (!Number.isFinite(v)) { on = false; return; } d += (on ? "L" : "M") + sx(xs[k] + off).toFixed(1) + "," + sy(v).toFixed(1); on = true; });
       return d;
     };
-    if (!opts.annual && opts.ann) {
-      s += `<path d="${path(y, t)}" fill="none" stroke="var(--axis)" stroke-width="1"/>`;
-      s += `<path d="${path(opts.ann.vals, opts.ann.years.map((v) => v + 0.5 - 1 / 24))}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
-    } else {
-      s += `<path d="${path(y, t)}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
+    if (!o.annual && o.ann) {
+      s += `<path d="${path(y, tt, 1 / 24)}" fill="none" stroke="var(--axis)" stroke-width="1"/>`;
+      s += `<path d="${path(o.ann.vals, o.ann.years, 0.5)}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
+    } else s += `<path d="${path(y, tt, 0)}" fill="none" stroke="var(--s1)" stroke-width="2"/>`;
+    if (o.trend && Number.isFinite(o.trend.sen)) {
+      const a = o.window ? Math.max(o.window[0], t0) : t0, b = o.window ? Math.min(o.window[1], t1) : t1;
+      const tm = (a + b) / 2, ym = o.trend.intercept + o.trend.sen * tm;
+      const line = (sl, dash, wdt) => `<line x1="${sx(a)}" y1="${sy(ym + sl * (a - tm))}" x2="${sx(b)}" y2="${sy(ym + sl * (b - tm))}" stroke="var(--ink)" stroke-width="${wdt}" ${dash ? 'stroke-dasharray="4 3" opacity="0.6"' : ""}/>`;
+      if (Number.isFinite(o.trend.lo)) s += line(o.trend.lo, true, 1) + line(o.trend.hi, true, 1);
+      s += line(o.trend.sen, false, 2);
     }
-    if (opts.trend && Number.isFinite(opts.trend.sen)) {
-      const tm = (t0 + t1) / 2, ym = opts.trend.intercept + opts.trend.sen * tm;
-      const line = (b, dash, w) => `<line x1="${sx(t0)}" y1="${sy(ym + b * (t0 - tm))}" x2="${sx(t1)}" y2="${sy(ym + b * (t1 - tm))}" stroke="var(--ink)" stroke-width="${w}" ${dash ? 'stroke-dasharray="4 3" opacity="0.6"' : ""}/>`;
-      if (Number.isFinite(opts.trend.lo)) s += line(opts.trend.lo, true, 1) + line(opts.trend.hi, true, 1);
-      s += line(opts.trend.sen, false, 2);
-    }
-    s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/>`;
-    s += `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent" class="hit"/></svg>`;
-    s += `<div class="tip" hidden></div>`;
+    s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" stroke="var(--muted)" visibility="hidden"/><rect class="hit" x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/></svg><div class="tip" hidden></div>`;
     host.innerHTML = s;
     host.style.position = "relative";
     const svg = host.querySelector("svg"), xh = host.querySelector(".xh"), tip = host.querySelector(".tip");
-    const src = opts.annual || !opts.ann ? { xs: t, ys: y, ann: opts.annual } : { xs: opts.ann.years.map((v) => v + 0.5 - 1 / 24), ys: opts.ann.vals, ann: true };
+    const src = o.annual || !o.ann ? { xs: tt, ys: y, off: o.annual ? 0 : 1 / 24 } : { xs: o.ann.years, ys: o.ann.vals, off: 0.5 };
     host.querySelector(".hit").addEventListener("pointermove", (e) => {
-      const r = svg.getBoundingClientRect();
-      const px = (e.clientX - r.left) / r.width * W;
-      const tv = t0 + (px - m.l) / (W - m.l - m.r) * (t1 - t0);
+      const r = svg.getBoundingClientRect(), tv = t0 + ((e.clientX - r.left) / r.width * W - m.l) / (W - m.l - m.r) * (t1 - t0);
       let best = 0;
-      src.xs.forEach((v, k) => { if (Math.abs(v - tv) < Math.abs(src.xs[best] - tv)) best = k; });
-      const x = sx(src.xs[best] + (opts.annual ? 0 : 1 / 24));
+      src.xs.forEach((v, k) => { if (Math.abs(v + src.off - tv) < Math.abs(src.xs[best] + src.off - tv)) best = k; });
+      const x = sx(src.xs[best] + src.off);
       xh.setAttribute("x1", x); xh.setAttribute("x2", x); xh.setAttribute("visibility", "visible");
-      const yr = Math.floor(src.xs[best]);
-      tip.innerHTML = `<span class="num">${yr}${src.ann ? "" : ""}: ${signed(src.ys[best])} ${esc(opts.unit || "")}</span>`;
+      tip.innerHTML = `<span class="num">${Math.floor(src.xs[best] + src.off)}: ${signed(src.ys[best])} ${esc(o.unit || "")}</span>`;
       tip.hidden = false;
-      tip.style.left = Math.min(x / W * r.width + 10, r.width - 150) + "px";
-      tip.style.top = "6px";
+      tip.style.left = Math.min(x / W * r.width + 8, r.width - 140) + "px";
+      tip.style.top = "4px";
     });
     host.querySelector(".hit").addEventListener("pointerleave", () => { xh.setAttribute("visibility", "hidden"); tip.hidden = true; });
   }
 
   /** Every start/end window of 10+ years: OLS slope (colour) and Santer p<0.05 (dot). */
   function triangle(host, years, vals, unit, invert) {
-    const n = years.length;
-    const W = Math.max(260, host.clientWidth || 340), m = { l: 40, r: 8, t: 8, b: 30 };
-    const cs = Math.max(3, Math.floor((W - m.l - m.r) / n));
-    const H = m.t + m.b + cs * n;
+    const n = years.length, W = Math.max(240, host.clientWidth || 320), m = { l: 38, r: 6, t: 6, b: 28 };
+    const cs = Math.max(3, Math.floor((W - m.l - m.r) / n)), H = m.t + m.b + cs * n;
     const cells = [];
     let lim = 0;
     for (let a = 0; a < n; a++) {
       for (let b = a + 9; b < n; b++) {
-        const xs = years.slice(a, b + 1).map((v) => v + 0.5), ys = vals.slice(a, b + 1);
+        const xs = years.slice(a, b + 1).map((v) => v + 0.5), ys = vals.slice(a, b + 1).map((v) => (v === null ? NaN : v));
         if (ys.some((v) => !Number.isFinite(v))) continue;
         const o = S.olsAr1(ys, xs);
         cells.push({ a, b, slope: o.ols * 10, p: o.p });
         lim = Math.max(lim, Math.abs(o.ols * 10));
       }
     }
-    if (!cells.length) { host.textContent = "Need at least 10 years."; return; }
+    if (!cells.length) { host.textContent = t("tri_need"); return; }
     lim = lim || 1;
     let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="trend for every start and end year">`;
     for (const c of cells) {
       const x = m.l + c.a * cs, y = m.t + (n - 1 - c.b) * cs;
-      const col = rgbStr(divColor(c.slope, lim, invert));
-      s += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${col}" data-a="${c.a}" data-b="${c.b}" data-s="${c.slope}" data-p="${c.p}"/>`;
-      if (c.p < 0.05 && cs >= 5) s += `<circle cx="${x + cs / 2}" cy="${y + cs / 2}" r="${Math.max(1, cs / 6)}" fill="var(--surface)" pointer-events="none"/>`;
+      s += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${rgb(divColor(c.slope, lim, invert))}" data-a="${c.a}" data-b="${c.b}" data-s="${c.slope}" data-p="${c.p}"/>`;
+      if (c.p < 0.05 && cs >= 5) s += `<circle cx="${x + cs / 2}" cy="${y + cs / 2}" r="${Math.max(1, cs / 6)}" fill="var(--bg)" pointer-events="none"/>`;
     }
-    const full = cells.find((c) => c.a === 0 && c.b === n - 1);
-    if (full) s += `<rect x="${m.l}" y="${m.t}" width="${cs}" height="${cs}" fill="none" stroke="var(--ink)" stroke-width="2" pointer-events="none"/>`;
+    const a0 = years.indexOf(state.y0), b0 = years.indexOf(state.y1);
+    if (a0 >= 0 && b0 >= 0) s += `<rect x="${m.l + a0 * cs}" y="${m.t + (n - 1 - b0) * cs}" width="${cs}" height="${cs}" fill="none" stroke="var(--ink)" stroke-width="2" pointer-events="none"/>`;
     for (let k = 0; k < n; k += 10) {
-      s += `<text x="${m.l + k * cs + cs / 2}" y="${H - 14}" text-anchor="middle">${years[k]}</text>`;
-      s += `<text x="${m.l - 4}" y="${m.t + (n - 1 - k) * cs + cs / 2 + 4}" text-anchor="end">${years[k]}</text>`;
+      s += `<text x="${m.l + k * cs + cs / 2}" y="${H - 14}" text-anchor="middle">${years[k]}</text><text x="${m.l - 4}" y="${m.t + (n - 1 - k) * cs + cs / 2 + 4}" text-anchor="end">${years[k]}</text>`;
     }
-    s += `<text class="lbl" x="${m.l}" y="${H - 1}">start year →</text></svg><div class="tip" hidden></div>`;
+    s += `<text class="lbl" x="${m.l}" y="${H - 1}">${esc(t("start_year"))}</text></svg><div class="tip" hidden></div>`;
     host.innerHTML = s;
     host.style.position = "relative";
     const tip = host.querySelector(".tip"), svg = host.querySelector("svg");
     svg.addEventListener("pointermove", (e) => {
       const r = e.target;
       if (!r.dataset || r.dataset.a === undefined) { tip.hidden = true; return; }
-      const a = +r.dataset.a, b = +r.dataset.b;
-      tip.innerHTML = `<span class="num">${years[a]}–${years[b]}: ${signed(+r.dataset.s)} ${esc(unit)} · p ${fmtP(+r.dataset.p)}</span>`;
+      tip.innerHTML = `<span class="num">${years[+r.dataset.a]}–${years[+r.dataset.b]}: ${signed(+r.dataset.s)} ${esc(unit)} · p ${fmtP(+r.dataset.p)}</span>`;
       tip.hidden = false;
       const br = svg.getBoundingClientRect();
       tip.style.left = Math.min(e.clientX - br.left + 10, br.width - 190) + "px";
@@ -544,422 +786,613 @@
     svg.addEventListener("pointerleave", () => { tip.hidden = true; });
   }
 
-  // ------------------------------------------------------------------ inspector
-  function verdictPill(st) {
-    const v = VERDICT[st] || { label: "No data", color: () => palette.rule };
-    return `<span class="pill"><i style="background:${v.color()}"></i>${v.label}</span>`;
+  // ------------------------------------------------------------ details pane
+  function pill(st) {
+    const cols = verdictColors();
+    return `<span class="pill"><i style="background:${cols[st] ? rgb(cols[st]) : "transparent"}"></i>${esc(t("v" + (st || 0)))}</span>`;
+  }
+  const periodText = () => t(isFull() ? "period_full" : "period_custom",
+    { y0: state.y0, y1: state.y1, kind: t(state.sc.series.kind === "monthly" ? "kind_monthly" : "kind_annual") });
+  function renderSummary() {
+    const sc = state.sc, r = state.res, k = r.counts, el = $("#summary");
+    const rm = sc.region_means[0], rs = r.regionStats[0], title = sceneTitle(sc), yrs = `${state.y0}–${state.y1}`;
+    let head;
+    if (mn()) {
+      head = `<b>${esc(title)}</b>, ${esc(sceneRegion(sc))}, ${yrs}. ${nf(k.valid)} нүдний <strong>${nf(k.fdr)}</strong> нь FDR тестийг давсан чигтэй (${nf(k.fdr_up)} өсөлт, ${nf(k.fdr_down)} бууралт); энгийн тест <strong>${nf(k.naive)}</strong> нүдийг тэмдэглэх байсан.`;
+      if (rm && rs) head += ` ${esc(regionName(rm))}: <strong>${signed(rs.sen)}</strong> ${esc(unitLabel(rm.units))} арван жилд (95% завсар ${fmt(rs.sen_lo)}–${fmt(rs.sen_hi)}, засварласан p ${fmtP(rs.p_mk)}).`;
+    } else {
+      head = `<b>${esc(title)}</b>, ${esc(sceneRegion(sc))}, ${yrs}. <strong>${nf(k.fdr)}</strong> of ${nf(k.valid)} cells show a trend that survives the false discovery rate test (${nf(k.fdr_up)} up, ${nf(k.fdr_down)} down); a naive test would flag <strong>${nf(k.naive)}</strong>.`;
+      if (rm && rs) head += ` ${esc(regionName(rm))}: <strong>${signed(rs.sen)}</strong> ${esc(unitLabel(rm.units))} per decade (95% CI ${fmt(rs.sen_lo)} to ${fmt(rs.sen_hi)}, corrected p ${fmtP(rs.p_mk)}).`;
+    }
+    const chips = [[k.valid, "c_tested"], [k.naive, "c_naive"], [k.fdr, "c_fdr"], [k.robust, "c_robust"], [k.not_yet, "c_notyet"]];
+    if (k.gappy) chips.push([k.gappy, "c_gappy"]);
+    if (sc.steps.length) chips.push([k.step_flagged, "c_steps"]);
+    const warns = [];
+    if (sc.counts.gappy) {
+      warns.push({ sev: "critical", w: mn()
+        ? `${nf(sc.counts.gappy)} нүдэнд зарим сар дутуу тул нөхөж тооцолгүй хассан. Нийлүүлэгч [${sc.valid_min}, ${sc.valid_max}] мужаас гадуурх утгыг хасдаг тул дутуу сарууд нь бодит туйлын утга байж болно; тэдгээрийг хасаад тооцсон чиг цензурдсан болно.`
+        : (sc.data_warnings || [])[0] || "" });
+    }
+    (sc.notes || []).forEach((w) => warns.push({ sev: "", w: noteText(w) }));
+    (sc.transitions || []).filter((tr) => !tr.verified).forEach((tr) => warns.push({ sev: "", w: mn() ? noteText(tr.label) : `${tr.label}. Not tested: date unconfirmed.` }));
+    el.innerHTML = `<p class="eyebrow">${esc(t("d_dataset"))}</p><h3>${esc(title)}</h3>
+      <p class="small muted">${esc(sc.product_name)} · ${esc(periodText())}</p>
+      <p class="headline">${head}</p>
+      <div class="chips">${chips.map(([v, l]) => `<div class="chip"><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
+      ${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}`;
   }
   function statsList(st, sc, extra = "") {
-    const pd = perDecade(sc);
+    const f = unitFactor();
     return `<dl class="kv">
-      <dt>Sen slope, 95% CI</dt><dd>[${fmt(st.lo)}, ${fmt(st.hi)}]</dd>
-      <dt>p, naive Mann-Kendall</dt><dd>${fmtP(st.pNaive)}</dd>
-      <dt>p, autocorrelation-corrected MK</dt><dd>${fmtP(st.pMk)}</dd>
-      <dt>p, OLS + AR(1) (Santer)</dt><dd>${fmtP(st.pOls)}</dd>
+      <dt>${esc(t("s_ci"))}</dt><dd>[${fmt(st.lo * f)}, ${fmt(st.hi * f)}]</dd>
+      <dt>${esc(t("s_pnaive"))}</dt><dd>${fmtP(st.pNaive)}</dd>
+      <dt>${esc(t("s_pmk"))}</dt><dd>${fmtP(st.pMk)}</dd>
+      <dt>${esc(t("s_pols"))}</dt><dd>${fmtP(st.pOls)}</dd>
       <div class="sep"></div>
-      <dt>Lag-1 autocorrelation φ</dt><dd>${fmt(st.phi, 2)}</dd>
-      <dt>Noise σ (${esc(unitLabel(sc.units))})</dt><dd>${fmt(st.sigma)}</dd>
-      <dt>Smallest detectable trend</dt><dd>±${fmt(st.mdt)}</dd>
-      <dt>Years to detect a trend this size</dt><dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (have ${fmt(st.years, 3)})</dd>
-      ${extra}
-    </dl><p class="small muted">Trends and detectable sizes in ${esc(pd)}.</p>`;
+      <dt>${esc(t("s_phi"))}</dt><dd>${fmt(st.phi, 2)}</dd>
+      <dt>${esc(t("s_sigma"))} (${esc(unitLabel(sc.units))})</dt><dd>${fmt(st.sigma)}</dd>
+      <dt>${esc(t("s_mdt"))}</dt><dd>±${fmt(st.mdt * f)}</dd>
+      <dt>${esc(t("s_nstar"))}</dt><dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
+      ${extra}</dl><p class="small muted">${esc(t("s_units", { u: unitText(sc) }))}</p>`;
   }
   function stepRows(i) {
     const sc = state.sc;
     if (!sc.steps.length) return "";
-    return `<div class="sep"></div>` + sc.steps.map((s) =>
-      `<dt>${esc(s.label.split(":")[0])} step ${s.flag[i] ? '<b class="yes">flagged</b>' : ""}</dt><dd>${signed(s.step[i])} (p ${fmtP(s.p_step[i])})</dd>
-       <dt>Trend if the step is allowed for</dt><dd>${signed(s.trend_with_step[i])}</dd>`).join("");
+    return `<div class="sep"></div>` + sc.steps.map((s) => `<dt>${esc(t("s_step", { d: s.label.slice(0, 7) }))} ${s.flag[i] ? `<b class="yes">${esc(t("s_flag"))}</b>` : ""} <span class="muted">(${esc(t("full_only"))})</span></dt><dd>${signed(s.step[i])} (p ${fmtP(s.p_step[i])})</dd>
+      <dt>${esc(t("s_tws"))}</dt><dd>${signed(s.trend_with_step[i])}</dd>`).join("");
   }
-  function markers(sc) {
-    return sc.steps.map((s) => ({ t: s.t_break, short: s.label.split(":")[0] }));
-  }
-  function renderSelection() {
+  const markers = (sc) => sc.steps.map((s) => ({ t: s.t_break, short: s.label.slice(0, 7) }));
+  const chartWindow = () => [state.y0, state.y1 + 1];
+
+  function renderInspector() {
     const sc = state.sc, el = $("#inspector"), sel = state.sel;
-    if (!sel) {
-      el.innerHTML = `<p class="eyebrow">Inspector</p><p class="muted">Click a cell on the map, or drag a box to average a region.</p>`;
-      renderTriangle(null);
+    if (!sel) { el.innerHTML = `<p class="eyebrow">${esc(t("d_selection"))}</p><p class="muted">${esc(t("sel_hint"))}</p>`; return; }
+    const tt = seriesTimes(sc), cube = annualCube(state.entry);
+    if (sel.type === "cell") {
+      const c = state.res.cells, i = sel.i, g = sc.grid, st = state.res.status[i];
+      const lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx];
+      if (st === 6 || c.sen[i] === null) {
+        el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}<p class="muted">${esc(t("gappy_cell"))}</p>`;
+        return;
+      }
+      const y = Array.from(cellSeries(i)), sen = c.sen[i] / 10;
+      const ann = { years: cube.years, vals: Array.from(cube.data.subarray(i * cube.ny, (i + 1) * cube.ny)) };
+      const sub = subsetAnnual(ann.years, ann.vals, state.y0, state.y1);
+      const intercept = S.median(sub.vs.map((v, k) => v - sen * sub.ys[k]).filter(Number.isFinite));
+      el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}
+        <div><span class="big">${signed(c.sen[i] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
+        <div id="cellchart"></div>
+        ${statsList({ lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
+          mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years }, sc,
+          `<dt>${esc(t("s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
+          (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
+      seriesChart($("#cellchart"), { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
+        trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept }, markers: markers(sc), window: chartWindow(), label: "cell series" });
       return;
     }
-    const tt = seriesTimes(sc);
-    if (sel.type === "cell") {
-      const c = sc.cells, i = sel.i, g = sc.grid;
-      const lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx];
-      if (c.status[i] === 6 || c.sen[i] === null) {
-        el.innerHTML = `<p class="eyebrow">Cell ${ll(lat, lon)}</p>${verdictPill(c.status[i])}<p class="muted">This cell is missing some months, so it was left out rather than gap-filled.</p>`;
-        renderTriangle(null);
-        return;
-      }
-      const y = cellSeries(i);
-      const st = { lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i],
-        sigma: c.sigma[i], mdt: c.mdt[i], nstar: c.nstar[i], years: sc.period.years };
-      const sen = c.sen[i] / 10;
-      const yv = Array.from(y);
-      const intercept = S.median(yv.map((v, k) => v - sen * tt[k]).filter(Number.isFinite));
-      el.innerHTML = `<p class="eyebrow">Cell ${ll(lat, lon)}</p>${verdictPill(c.status[i])}
-        <div><span class="big">${signed(c.sen[i])}</span> <span class="muted">${esc(perDecade(sc))}</span></div>
-        <div id="cellchart"></div>
-        ${statsList(st, sc, `<dt>Mean value</dt><dd>${fmt(c.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>
-          <dt>p, Hamed-Rao as published</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>${stepRows(i)}`)}`;
-      const ann = sc.series.kind === "monthly" ? annualFrom(tt, yv) : null;
-      seriesChart($("#cellchart"), { t: tt, y: yv, ann, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
-        trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept: intercept + sen * 0 }, markers: markers(sc),
-        label: "anomaly series for the selected cell" });
-      const a = ann || { years: tt.map(Math.floor), vals: yv };
-      renderTriangle({ years: a.years, vals: a.vals, title: `cell ${ll(lat, lon)}` });
-    } else if (sel.type === "box") {
-      if (!sel.cells.length) {
-        el.innerHTML = `<p class="eyebrow">Selected box</p><p class="muted">No valid cells inside. Drag a larger box.</p>`;
-        return;
-      }
-      const g = sc.grid, n = sc.series.n;
-      const acc = new Float64Array(n), wsum = new Float64Array(n);
+    if (!sel.cells.length) { el.innerHTML = `<p class="eyebrow">${esc(t("d_selection"))}</p><p class="muted">${esc(t("box_empty"))}</p>`; return; }
+    const g = sc.grid, acc = new Float64Array(cube.ny), ws = new Float64Array(cube.ny);
+    for (const k of sel.cells) {
+      const w = Math.cos(g.lat[Math.floor(k / g.nx)] * Math.PI / 180);
+      for (let q = 0; q < cube.ny; q++) { const v = cube.data[k * cube.ny + q]; if (Number.isFinite(v)) { acc[q] += w * v; ws[q] += w; } }
+    }
+    const annVals = Array.from(acc, (v, q) => (ws[q] ? v / ws[q] : NaN));
+    let r, kind;
+    if (sc.series.kind === "monthly") {
+      const n = sc.series.n, mAcc = new Float64Array(n), mW = new Float64Array(n);
       for (const k of sel.cells) {
-        const w = Math.cos(g.lat[Math.floor(k / g.nx)] * Math.PI / 180);
-        const y = cellSeries(k);
-        for (let q = 0; q < n; q++) if (Number.isFinite(y[q])) { acc[q] += w * y[q]; wsum[q] += w; }
+        const w = Math.cos(g.lat[Math.floor(k / g.nx)] * Math.PI / 180), y = cellSeries(k);
+        for (let q = 0; q < n; q++) if (Number.isFinite(y[q])) { mAcc[q] += w * y[q]; mW[q] += w; }
       }
-      const y = Array.from(acc, (v, q) => wsum[q] ? v / wsum[q] : NaN);
-      const r = S.analyze(y, tt);
-      const [lonA, latA, lonB, latB] = sel.bounds;
-      el.innerHTML = `<p class="eyebrow">Box ${ll(latA, lonA)} to ${ll(latB, lonB)}</p>
-        <p class="small muted">${sel.cells.length} cells, cos-latitude weighted, computed in your browser from ${sc.series.kind} anomalies.</p>
-        <div><span class="big">${signed(r.sen * 10)}</span> <span class="muted">${esc(perDecade(sc))}</span></div>
-        ${r.pMk < 0.05 ? verdictPill(r.pOls < 0.05 ? 1 : 2) : verdictPill(r.nstar > r.years ? 4 : 5)}
-        <div id="cellchart"></div>
-        ${statsList({ lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi,
-          sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years }, sc)}`;
-      const ann = sc.series.kind === "monthly" ? annualFrom(tt, y) : null;
-      seriesChart($("#cellchart"), { t: tt, y, ann, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
-        trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), label: "box-mean anomaly series" });
-      const a = ann || { years: tt.map(Math.floor), vals: y };
-      renderTriangle({ years: a.years, vals: a.vals, title: "selected box" });
+      const win = monthlyWindow(Array.from(mAcc, (v, q) => (mW[q] ? v / mW[q] : NaN)), sc.series.start, state.y0, state.y1);
+      r = S.analyze(win.x, win.t);
+      kind = t("kind_monthly");
+    } else {
+      const sub = subsetAnnual(cube.years, annVals, state.y0, state.y1);
+      r = S.analyze(sub.vs, sub.ys);
+      kind = t("kind_annual");
     }
-  }
-  function renderTriangle(sel) {
-    const host = $("#tri"), sc = state.sc;
-    if (!sel) {
-      const rm = sc.region_means[0];
-      if (!rm) { host.textContent = ""; return; }
-      sel = { years: rm.annual_years, vals: rm.annual, title: rm.name, unit: rm.units };
-    }
-    $("#tri-title").textContent = sel.title;
-    triangle(host, sel.years, sel.vals, (sel.unit ? unitLabel(sel.unit) + " " : perDecade(sc).replace("per decade", "")) + "per decade",
-      WATER_VARS.has(sc.var));
+    if (!r) { el.innerHTML = `<p class="muted">${esc(t("tri_need"))}</p>`; return; }
+    const [lonA, latA, lonB, latB] = sel.bounds;
+    const st = r.pMk < state.alpha ? (r.pOls < state.alpha ? 1 : 2) : (r.nstar > r.years ? 4 : 5);
+    el.innerHTML = `<p class="eyebrow">${esc(t("d_box", { a: ll(latA, lonA), b: ll(latB, lonB) }))}</p>
+      <p class="small muted">${esc(t("box_note", { n: nf(sel.cells.length), kind }))}</p>${pill(st)}
+      <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
+      <div id="cellchart"></div>
+      ${statsList({ lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years }, sc)}`;
+    seriesChart($("#cellchart"), { t: cube.years.map((v) => v + 0.5), y: annVals, annual: true, unit: unitLabel(sc.units),
+      trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
   }
 
-  // ------------------------------------------------------------------ panels
-  function renderSummary() {
-    const sc = state.sc, k = sc.counts, el = $("#summary");
-    const rm = sc.region_means[0];
-    let head = `<b>${esc(sc.long_name)}</b> from ${esc(sc.product_name)}, ${esc(sc.region_name)}, ${sc.period.start.slice(0, 4)}–${sc.period.end.slice(0, 4)}. `;
-    head += `<strong>${k.fdr.toLocaleString("en-US")}</strong> of ${k.valid.toLocaleString("en-US")} cells show a trend that survives the false discovery rate test`;
-    head += k.fdr ? ` (${k.fdr_up.toLocaleString("en-US")} up, ${k.fdr_down.toLocaleString("en-US")} down)` : "";
-    head += `; a naive test would have flagged <strong>${k.naive.toLocaleString("en-US")}</strong>.`;
-    if (rm) {
-      const s = rm.stats;
-      head += ` ${esc(rm.name)}: <strong>${signed(s.sen)}</strong> ${esc(unitLabel(rm.units))} per decade (95% CI ${fmt(s.sen_lo)} to ${fmt(s.sen_hi)}, corrected p ${fmtP(s.p_mk)}).`;
-    }
-    const chips = [
-      [k.valid, "cells tested"], [k.naive, "naive p<0.05"], [k.fdr, "significant after FDR"],
-      [k.robust, "and parametric agrees"], [k.not_yet, "not yet detectable"],
-    ];
-    if (k.gappy) chips.push([k.gappy, "excluded, months missing"]);
-    if (sc.steps.length) chips.push([k.step_flagged, "cell-steps at known transitions"]);
-    const warns = [...(sc.data_warnings || []).map((w) => ({ w, sev: "critical" })),
-      ...(sc.notes || []).map((w) => ({ w, sev: "" })),
-      ...(sc.transitions || []).filter((tr) => !tr.verified).map((tr) => ({ w: `${tr.label}. Not tested: date unconfirmed.`, sev: "" }))];
-    el.innerHTML = `<p class="headline">${head}</p>
-      <div class="chips">${chips.map(([v, l]) => `<div class="chip"><b>${(+v).toLocaleString("en-US")}</b><span>${l}</span></div>`).join("")}</div>
-      ${warns.length ? `<div class="warnings">${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}</div>` : ""}`;
-  }
-
-  function renderRegionMeans() {
+  // ------------------------------------------------------------ analysis document
+  function renderAnalysis() {
+    if (state.tab !== "analysis" || !state.res) return;
     const sc = state.sc, el = $("#rmeans");
     el.innerHTML = sc.region_means.map((rm, k) => {
-      const s = rm.stats;
-      const steps = s.steps.map((st) => `<dt>${esc(st.label.split(":")[0])} step</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)})</dd>`).join("");
-      return `<div class="rm"><h3>${esc(rm.name)}</h3>
-        <div><span class="big">${signed(s.sen)}</span> <span class="muted">${esc(unitLabel(rm.units))} per decade · mean ${fmt(rm.raw_mean)} ${esc(unitLabel(rm.units))}</span></div>
+      const s = state.res.regionStats[k];
+      if (!s) return `<div class="rm"><h3>${esc(regionName(rm))}</h3><p class="muted">${esc(t("tri_need"))}</p></div>`;
+      const steps = state.res.custom ? "" : (s.steps || []).map((st) => `<dt>${esc(t("s_step", { d: st.label.slice(0, 7) }))}</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)})</dd>`).join("");
+      return `<div class="rm"><h3>${esc(regionName(rm))}</h3>
+        <div><span class="big">${signed(s.sen)}</span> <span class="muted">${esc(unitLabel(rm.units))} ${esc(t("unit_decade"))} · ${esc(t("rm_mean"))} ${fmt(rm.raw_mean)} ${esc(unitLabel(rm.units))}</span></div>
         <div id="rmchart${k}"></div>
-        <dl class="kv"><dt>95% CI</dt><dd>[${fmt(s.sen_lo)}, ${fmt(s.sen_hi)}]</dd>
-        <dt>p naive → corrected → OLS-AR(1)</dt><dd>${fmtP(s.p_naive)} → ${fmtP(s.p_mk)} → ${fmtP(s.p_ols_ar1)}</dd>
-        <dt>φ · detectable trend · years needed</dt><dd>${fmt(s.phi, 2)} · ±${fmt(s.mdt)} · ${fmt(s.nstar, 2)}</dd>${steps}</dl></div>`;
-    }).join("") || `<p class="muted">No region mean for this scene.</p>`;
+        <dl class="kv"><dt>${esc(t("rm_ci"))}</dt><dd>[${fmt(s.sen_lo)}, ${fmt(s.sen_hi)}]</dd>
+        <dt>${esc(t("rm_p"))}</dt><dd>${fmtP(s.p_naive)} → ${fmtP(s.p_mk)} → ${fmtP(s.p_ols_ar1)}</dd>
+        <dt>${esc(t("rm_misc"))}</dt><dd>${fmt(s.phi, 2)} · ±${fmt(s.mdt)} · ${s.nstar === null ? "∞" : fmt(s.nstar, 2)}</dd>${steps}</dl></div>`;
+    }).join("") || `<p class="muted">${esc(t("no_rm"))}</p>`;
     sc.region_means.forEach((rm, k) => {
-      const t = rm.monthly.map((_, q) => rm.monthly_start + q / 12);
-      const y = rm.monthly.map((v) => v === null ? NaN : v);
-      const s = rm.stats;
-      const tm = t.reduce((a, b) => a + b, 0) / t.length;
-      const intercept = S.median(y.map((v, q) => v - s.sen / 10 * t[q]).filter(Number.isFinite));
-      seriesChart($("#rmchart" + k), { t, y, ann: { years: rm.annual_years, vals: rm.annual }, unit: unitLabel(rm.units), height: 150,
-        trend: { sen: s.sen / 10, lo: s.sen_lo / 10, hi: s.sen_hi / 10, intercept: intercept + 0 * tm }, markers: markers(sc),
-        label: rm.name + " anomalies" });
+      const s = state.res.regionStats[k], host = $("#rmchart" + k);
+      if (!s || !host) return;
+      const tm = rm.monthly.map((_, q) => rm.monthly_start + q / 12), y = rm.monthly.map((v) => (v === null ? NaN : v));
+      const sub = subsetAnnual(rm.annual_years, rm.annual, state.y0, state.y1);
+      const intercept = S.median(sub.vs.map((v, q) => v - s.sen / 10 * sub.ys[q]).filter(Number.isFinite));
+      seriesChart(host, { t: tm, y, ann: { years: rm.annual_years, vals: rm.annual.map((v) => (v === null ? NaN : v)) }, unit: unitLabel(rm.units), height: 140,
+        trend: { sen: s.sen / 10, lo: s.sen_lo / 10, hi: s.sen_hi / 10, intercept }, markers: markers(sc), window: chartWindow(), label: regionName(rm) });
     });
-  }
-
-  function renderCase() {
-    const sc = state.sc, el = $("#case");
+    let tri = null;
+    const cube = annualCube(state.entry), sel = state.sel;
+    if (sel && sel.type === "cell" && state.res.cells.sen[sel.i] !== null) {
+      const g = sc.grid;
+      tri = { years: cube.years, vals: Array.from(cube.data.subarray(sel.i * cube.ny, (sel.i + 1) * cube.ny)),
+        title: `${t("d_cell")} ${ll(g.lat[Math.floor(sel.i / g.nx)], g.lon[sel.i % g.nx])}`, unit: sc.units };
+    } else if (sc.region_means[0]) {
+      const rm = sc.region_means[0];
+      tri = { years: rm.annual_years, vals: rm.annual, title: regionName(rm), unit: rm.units };
+    }
+    if (tri) {
+      $("#tri-title").textContent = tri.title;
+      triangle($("#tri"), tri.years, tri.vals, `${unitLabel(tri.unit)} ${t("unit_decade")}`, WATER_VARS.has(sc.var));
+    }
     const fn = CASES[sc.case];
-    el.innerHTML = fn ? fn(sc) : `<p class="muted">No case notes for this scene.</p>`;
-  }
-
-  function renderReference(ref) {
-    $("#compare-eyebrow").textContent = "Checked against an independent record";
-    $("#compare-title").textContent = `Cross-check: MERRA-2 sea ice against ${ref.name}`;
-    const body = $("#compare-body");
-    body.innerHTML = `<p class="prose">MERRA-2 copies its sea ice from other analyses. NSIDC builds a consistent satellite record for this purpose. Subtracting NSIDC's anomalies from MERRA-2's removes the weather and climate both records share, so a jump in the difference at a documented data-source change points to an artifact.</p>` +
-      ref.hemispheres.map((h, k) => {
-        const d = h.difference, steps = d.steps.map((st) => `<dt>${esc(st.label.split(":")[0])} step in the difference</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)}), trend after: ${signed(st.trend_with_step)}</dd>`).join("");
-        return `<div class="rm"><h3>${esc(h.name)} sea-ice area, million km² per decade</h3>
-          <div class="cmp">
-            <div class="chip"><b>${signed(h.nsidc_area.sen)}</b><span>NSIDC (p ${fmtP(h.nsidc_area.p_mk)}; extent ${signed(h.nsidc_extent.sen)})</span></div>
-            <div class="chip"><b>${signed(h.merra2_area.sen)}</b><span>MERRA-2 (p ${fmtP(h.merra2_area.p_mk)})</span></div>
-            <div class="chip"><b>${signed(d.sen)}</b><span>MERRA-2 minus NSIDC (p ${fmtP(d.p_mk)})</span></div>
-            <div class="chip"><b>${fmt(h.anomaly_correlation, 2)}</b><span>correlation of monthly anomalies</span></div>
-          </div>
-          <div id="refchart${k}"></div>
-          <dl class="kv">${steps}</dl></div>`;
-      }).join("") +
-      `<p class="small muted">NSIDC months missing: Dec 1987 and Jan 1988. NSIDC switched from SSMIS to AMSR2 input on 1 Jan 2025, tested as a step in its own series. Source: <a href="${esc(ref.url)}" target="_blank" rel="noopener">${esc(ref.url)}</a></p>`;
-    ref.hemispheres.forEach((h, k) => {
-      const t = h.difference_monthly.map((_, q) => h.monthly_start + q / 12);
-      const y = h.difference_monthly.map((v) => v === null ? NaN : v);
-      const d = h.difference;
-      const intercept = S.median(y.map((v, q) => v - d.sen / 10 * t[q]).filter(Number.isFinite));
-      seriesChart($("#refchart" + k), { t, y, ann: { years: h.annual_years, vals: h.difference_annual.map((v) => v === null ? NaN : v) },
-        unit: "million km²", height: 150, trend: { sen: d.sen / 10, lo: d.sen_lo / 10, hi: d.sen_hi / 10, intercept },
-        markers: d.steps.map((st) => ({ t: st.t_break, short: st.label.split(":")[0] })), label: `${h.name} MERRA-2 minus NSIDC` });
-    });
+    $("#case").innerHTML = fn ? fn(sc) : `<p class="muted">${esc(t("no_case"))}</p>`;
+    renderCompare();
   }
 
   function renderCompare() {
-    const el = $("#compare");
-    if (state.sc.reference) { el.hidden = false; renderReference(state.sc.reference); return; }
-    const comps = (state.index.comparisons || []).filter((c) => c.a === state.sc.id || c.b === state.sc.id);
-    if (!comps.length) { el.hidden = true; return; }
-    el.hidden = false;
-    $("#compare-eyebrow").textContent = "Model or satellites?";
-    $("#compare-title").textContent = "Cross-check: MERRA-2 against GPM IMERG";
-    const c = comps[0];
-    const a = c.region_trend_a, b = c.region_trend_b;
-    $("#compare-body").innerHTML = `<p class="prose">The same question asked of a model (MERRA-2) and of satellites (GPM IMERG), on the same 0.5° × 0.625° grid, 2001–2025.</p>
-      <div class="cmp">
-        <div class="chip"><b>${signed(a.sen)}</b><span>MERRA-2 Mongolia mean, mm/day per decade (p ${fmtP(a.p_mk)})</span></div>
-        <div class="chip"><b>${signed(b.sen)}</b><span>IMERG Mongolia mean, mm/day per decade (p ${fmtP(b.p_mk)})</span></div>
-        <div class="chip"><b>${fmt(c.region_anomaly_correlation, 2)}</b><span>correlation of monthly anomalies</span></div>
-        <div class="chip"><b>${Math.round(100 * c.sign_agreement_all)}%</b><span>cells where the two trends share a sign</span></div>
-        <div class="chip"><b>${c.cells_significant_either}</b><span>cells significant in either</span></div>
-        <div class="chip"><b>${c.both_significant_same_sign} / ${c.both_significant_opposite}</b><span>significant in both: same / opposite sign</span></div>
-      </div>
-      <div class="seg">${[c.a, c.b].map((id) => `<button type="button" data-go="${id}" aria-pressed="${id === state.sc.id}">${esc(sceneTitle(id))}</button>`).join("")}</div>`;
-  }
-
-  function renderScreen() {
-    const sec = $("#screen");
-    if (!state.screen) { sec.hidden = true; return; }
-    sec.hidden = false;
-    const f = state.screenFilter;
-    const rows = state.screen.rows.filter((r) => f === "all" || (f === "fdr" && r.fdr) || r.kind === f);
-    const sceneFor = (r) => (state.index.scenes.find((s) => s.region === "mongolia" && s.var === r.var && s.product === r.product && s.period.start.slice(0, 4) === r.start) || {}).id;
-    $("#screen-meta").textContent = `${state.screen.n_variables} variables averaged over Mongolia. Variables that pass a variable-level FDR at 5% come first, then all are ordered by the size of the change relative to month-to-month noise. Variables are correlated, so read the ranking as a guide to where to look. Click a highlighted row to open its map.`;
-    $("#screen-body").innerHTML = rows.map((r) => {
-      const s = r.stats, id = sceneFor(r);
-      return `<tr class="${id ? "link" : ""}" ${id ? `data-go="${id}"` : ""}>
-        <td>${esc(r.long_name)} <span class="muted num">${esc(r.var)}</span></td>
-        <td>${r.kind === "model" ? "MERRA-2 model" : "CERES satellites"}</td>
-        <td class="n">${r.start}–2025</td>
-        <td class="n">${signed(s.sen)} <span class="muted">${esc(unitLabel(r.units))}</span></td>
-        <td class="n">[${fmt(s.sen_lo, 2)}, ${fmt(s.sen_hi, 2)}]</td>
-        <td class="n">${fmt(r.change_sd, 2)}</td>
-        <td class="n">${r.change_pct === null ? "–" : signed(r.change_pct, 2) + "%"}</td>
-        <td class="n">${fmtP(s.p_naive)}</td><td class="n">${fmtP(s.p_mk)}</td>
-        <td>${r.fdr ? '<span class="yes">✓ yes</span>' : '<span class="muted">no</span>'}</td>
-        <td>${spark(r.annual)}</td></tr>`;
-    }).join("");
-  }
-  function spark(vals) {
-    const v = vals.map((x) => x === null ? NaN : x), f = v.filter(Number.isFinite);
-    if (!f.length) return "";
-    const lo = Math.min(...f), hi = Math.max(...f), W = 90, H = 22;
-    const d = v.map((x, k) => Number.isFinite(x) ? `${k ? "L" : "M"}${(k / (v.length - 1) * W).toFixed(1)},${(H - 2 - (x - lo) / ((hi - lo) || 1) * (H - 4)).toFixed(1)}` : "").join("");
-    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--s1)" stroke-width="1.5"/></svg>`;
-  }
-
-  function renderMethod() {
-    const v = state.validation, el = $("#validation");
-    if (!v) return;
-    const keys = Object.keys(v.tests);
-    el.innerHTML = `<table><thead><tr><th>Noise memory φ</th>${keys.map((k) => `<th class="n">${esc(v.tests[k])}</th>`).join("")}<th class="n">Sen CI coverage</th></tr></thead><tbody>
-      ${v.rows.map((r) => `<tr><td class="num">${r.phi}</td>${keys.map((k) => `<td class="n">${(100 * r.size[k]).toFixed(1)}% <span class="muted">/ ${(100 * r.power_at_mdt[k]).toFixed(0)}%</span></td>`).join("")}<td class="n">${(100 * r.sen_ci_coverage).toFixed(0)}%</td></tr>`).join("")}
-      </tbody></table>`;
-    $("#validation-note").textContent = `Each cell: false-positive rate when there is no trend (target 5%) / detection rate when the trend equals the Weatherhead minimum detectable trend (target 90%). ${v.reps} simulated 45-year monthly records per row; Monte Carlo standard error ±${(100 * v.mc_standard_error_at_5pct).toFixed(1)} points at 5%.`;
-    const syn = state.cache["synthetic-truth"];
-    const tr = syn && syn.sc.truth;
-    if (tr) {
-      $("#truth-note").innerHTML = `On the known-truth field, <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> of cells flagged by the naive map are false discoveries; after FDR it is <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (target ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). The price is power: ${Math.round(100 * tr.scores.fdr.power)}% of truly trending cells are found, versus ${Math.round(100 * tr.scores.naive.power)}% by the naive map, and most misses are cells whose planted trend is below the detectable size.`;
+    const el = $("#compare"), sc = state.sc;
+    if (sc.reference) {
+      el.hidden = false;
+      const ref = sc.reference;
+      $("#compare-eyebrow").textContent = `${t("cmp_eyebrow_ref")} · ${t("full_only")}`;
+      $("#compare-title").textContent = t("cmp_nsidc", { name: ref.name });
+      $("#compare-body").innerHTML = `<p class="prose">${esc(t("ref_intro"))}</p>` + ref.hemispheres.map((h, k) => {
+        const d = h.difference, hn = mn() ? (h.key === "S" ? "Антарктид" : "Арктик") : h.name;
+        return `<div class="rm"><h3>${esc(t("ref_head", { h: hn }))}</h3><div class="cmp">
+          <div class="chip"><b>${signed(h.nsidc_area.sen)}</b><span>${esc(t("ref_nsidc", { p: fmtP(h.nsidc_area.p_mk), e: signed(h.nsidc_extent.sen) }))}</span></div>
+          <div class="chip"><b>${signed(h.merra2_area.sen)}</b><span>${esc(t("ref_m2", { p: fmtP(h.merra2_area.p_mk) }))}</span></div>
+          <div class="chip"><b>${signed(d.sen)}</b><span>${esc(t("ref_diff", { p: fmtP(d.p_mk) }))}</span></div>
+          <div class="chip"><b>${fmt(h.anomaly_correlation, 2)}</b><span>${esc(t("cmp_corr"))}</span></div></div>
+          <div id="refchart${k}"></div>
+          <dl class="kv">${d.steps.map((st) => `<dt>${esc(t("ref_step", { d: st.label.slice(0, 7) }))}</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)}), ${esc(t("ref_after"))} ${signed(st.trend_with_step)}</dd>`).join("")}</dl></div>`;
+      }).join("") + `<p class="small muted">${esc(t("ref_foot"))} <a href="${esc(ref.url)}" target="_blank" rel="noopener">${esc(ref.url)}</a></p>`;
+      ref.hemispheres.forEach((h, k) => {
+        const tt = h.difference_monthly.map((_, q) => h.monthly_start + q / 12), y = h.difference_monthly.map((v) => (v === null ? NaN : v)), d = h.difference;
+        const intercept = S.median(y.map((v, q) => v - d.sen / 10 * tt[q]).filter(Number.isFinite));
+        seriesChart($("#refchart" + k), { t: tt, y, ann: { years: h.annual_years, vals: h.difference_annual.map((v) => (v === null ? NaN : v)) }, unit: "million km²", height: 140,
+          trend: { sen: d.sen / 10, lo: d.sen_lo / 10, hi: d.sen_hi / 10, intercept }, markers: d.steps.map((st) => ({ t: st.t_break, short: st.label.slice(0, 7) })), label: h.name });
+      });
+      return;
     }
+    const c = (state.index.comparisons || []).find((x) => x.a === sc.id || x.b === sc.id);
+    if (!c) { el.hidden = true; return; }
+    el.hidden = false;
+    $("#compare-eyebrow").textContent = `${t("cmp_eyebrow_model")} · ${t("full_only")}`;
+    $("#compare-title").textContent = t("cmp_m2_imerg");
+    const a = c.region_trend_a, b = c.region_trend_b;
+    $("#compare-body").innerHTML = `<p class="prose">${esc(t("cmp_imerg_intro"))}</p><div class="cmp">
+      <div class="chip"><b>${signed(a.sen)}</b><span>${esc(t("cmp_a", { p: fmtP(a.p_mk) }))}</span></div>
+      <div class="chip"><b>${signed(b.sen)}</b><span>${esc(t("cmp_b", { p: fmtP(b.p_mk) }))}</span></div>
+      <div class="chip"><b>${fmt(c.region_anomaly_correlation, 2)}</b><span>${esc(t("cmp_corr"))}</span></div>
+      <div class="chip"><b>${Math.round(100 * c.sign_agreement_all)}%</b><span>${esc(t("cmp_sign"))}</span></div>
+      <div class="chip"><b>${c.cells_significant_either}</b><span>${esc(t("cmp_either"))}</span></div>
+      <div class="chip"><b>${c.both_significant_same_sign} / ${c.both_significant_opposite}</b><span>${esc(t("cmp_both"))}</span></div></div>
+      <div class="seg">${[c.a, c.b].map((id) => `<button type="button" data-go="${id}" aria-pressed="${id === sc.id}">${esc(sceneTitle(state.index.scenes.find((s) => s.id === id) || { id, title: id }))}</button>`).join("")}</div>`;
   }
 
-  // ------------------------------------------------------------------ case files
-  function rmStat(sc, key) { const r = sc.region_means.find((x) => x.key === key); return r && r.stats; }
-  function stepOf(s, date) { return (s.steps || []).find((x) => x.label.startsWith(date)); }
+  // ------------------------------------------------------------ case notes (numbers are for the full record)
+  const rmStat = (sc, key) => { const r = sc.region_means.find((x) => x.key === key); return r && r.stats; };
+  const stepOf = (s, date) => (s.steps || []).find((x) => x.label.startsWith(date));
   const CASES = {
-    truth: (sc) => `<div class="prose"><p>This field is synthetic. One region in the north was given a warming trend and one in the south a cooling trend; everything else is noise with month-to-month memory (φ = 0.5) and spatial smoothing, like real climate fields.</p>
-      <p>Switch between <b>Trend, naive p&lt;0.05</b> and <b>Trend, FDR-tested</b>: the naive map scatters significance across empty ocean. Open <b>Planted truth</b> to see what is really there. The Method section scores both maps.</p></div>`,
+    truth: () => mn()
+      ? `<div class="prose"><p>Энэ талбар хиймэл. Хойд хэсэгт нэг бүсэд дулаарах, өмнөд хэсэгт нэг бүсэд хөрөх чиг суулгасан; бусад нь сар хоорондын санах ойтой (φ = 0.5), орон зайд гөлгөр шуугиан бөгөөд бодит уур амьсгалын талбартай төстэй.</p><p><b>Чиг, энгийн p&lt;α</b> ба <b>Чиг, FDR тест</b> давхаргыг сольж хараарай: энгийн газрын зураг хоосон далай дээр ач холбогдлыг тараана. <b>Суулгасан үнэн</b> давхарга жинхэнэ чигийг харуулна. Арга зүй хуудас хоёр газрын зургийг үнэлдэг.</p></div>`
+      : `<div class="prose"><p>This field is synthetic. One northern region was given a warming trend and one southern region a cooling trend; everything else is noise with month-to-month memory (φ = 0.5) and spatial smoothing, like real climate fields.</p><p>Switch between <b>Trend, naive p&lt;α</b> and <b>Trend, FDR-tested</b>: the naive map scatters significance across empty ocean. <b>Planted truth</b> shows what is really there. The Method tab scores both maps.</p></div>`,
     "sea-ice": (sc) => {
       const ar = rmStat(sc, "arctic_area"), an = rmStat(sc, "antarctic_area");
-      const ref = sc.reference && sc.reference.hemispheres.find((h) => h.key === "S");
-      const st = ref && stepOf(ref.difference, "2005-01");
-      return `<div class="prose"><p><b>Same variable, opposite directions?</b> In MERRA-2, Arctic sea-ice area changes by ${signed(ar.sen)} million km² per decade (corrected p ${fmtP(ar.p_mk)}) and Antarctic area by ${signed(an.sen)} (corrected p ${fmtP(an.p_mk)}, naive p ${fmtP(an.p_naive)}).</p>
+      const ref = sc.reference && sc.reference.hemispheres.find((h) => h.key === "S"), st = ref && stepOf(ref.difference, "2005-01");
+      if (mn()) {
+        return `<div class="prose"><p>MERRA-2-оор Арктикийн далайн мөсний талбай арван жилд ${signed(ar.sen)} сая км² (засварласан p ${fmtP(ar.p_mk)}), Антарктидынх ${signed(an.sen)} (засварласан p ${fmtP(an.p_mk)}, энгийн p ${fmtP(an.p_naive)}) өөрчлөгдсөн.</p>
+        ${ref ? `<p><b>Антарктидын өсөлт хөндлөн шалгалтыг давахгүй.</b> NSIDC Sea Ice Index ${signed(ref.nsidc_area.sen)} (p ${fmtP(ref.nsidc_area.p_mk)}) гэж үзүүлж байна: илрэх чиг алга. MERRA-2 хасах NSIDC зөрүү арван жилд ${signed(ref.difference.sen)} (p ${fmtP(ref.difference.p_mk)}).${st ? ` Зөрүү 2005 оны 1-р сард ${signed(st.step)} сая км²-ээр үсэрсэн (p ${fmtP(st.p_step)}); яг тэр үед MERRA-2-ын ашигладаг Reynolds OISST доторх мөсний эх сурвалж NASA GSFC-ээс NCEP рүү солигдсон. Энэ нэг алхамыг тооцоход илүүдэл чиг ${signed(st.trend_with_step)} болж буурна.` : ""} NSIDC-д давуу эрх: Антарктидад 1981–2025 онд ач холбогдолтой чиг алга, MERRA-2-ын өсөлт бол өгөгдлийн артефакт.</p>` : ""}
+        <p>Арктикийн бууралт хоёр бүртгэлд хоёуланд нь бодит. 2005 оны үсрэлтийг хэрэгсэл эхлээд өгөгдлөөс олж, дараа нь баримттай тулгасан.</p></div>`;
+      }
+      return `<div class="prose"><p>In MERRA-2, Arctic sea-ice area changes by ${signed(ar.sen)} million km² per decade (corrected p ${fmtP(ar.p_mk)}) and Antarctic area by ${signed(an.sen)} (corrected p ${fmtP(an.p_mk)}, naive p ${fmtP(an.p_naive)}).</p>
       ${ref ? `<p><b>The Antarctic gain does not survive the cross-check.</b> NSIDC's Sea Ice Index gives ${signed(ref.nsidc_area.sen)} (p ${fmtP(ref.nsidc_area.p_mk)}): no detectable trend. MERRA-2 minus NSIDC trends by ${signed(ref.difference.sen)} per decade (p ${fmtP(ref.difference.p_mk)}).${st ? ` The difference jumps by ${signed(st.step)} million km² in January 2005 (p ${fmtP(st.p_step)}), when the sea-ice input inside Reynolds OISST, which MERRA-2 uses, switched from NASA GSFC to NCEP. With that one step allowed for, the excess trend drops to ${signed(st.trend_with_step)} per decade.` : ""} NSIDC governs: the Antarctic shows no significant 1981–2025 trend, and the MERRA-2 gain is a data artifact.</p>` : ""}
-      <p>The Arctic decline is real in both records; see the cross-check below. The tool first found the January 2005 jump in the data and then matched it to the documentation, so that date is now tested alongside the 1982 and 2006 source changes for every MERRA-2 sea-ice, skin and air temperature scene.</p></div>`;
+      <p>The Arctic decline is real in both records. The tool found the January 2005 jump in the data first and then matched it to the documentation.</p></div>`;
     },
     ozone: (sc) => {
-      const flagged = sc.steps[0] ? sc.steps[0].flagged : 0;
-      return `<div class="prose"><p><b>A data trap, found automatically.</b> NASA POWER marks total ozone below 200 DU as invalid. The Antarctic ozone hole lies exactly there, so ${sc.counts.gappy.toLocaleString("en-US")} cells lose their lowest months. The tool excludes those cells instead of computing a censored trend; they are the grey area around Antarctica.</p>
-      <p>For the cells that remain, the global mean is a good lesson in autocorrelation: naive p ${fmtP(rmStat(sc, "globe").p_naive)}, corrected p ${fmtP(rmStat(sc, "globe").p_mk)}.</p>
-      <p>The ozone input to MERRA-2 switched from SBUV to Aura OMI + MLS in October 2004. ${flagged ? `The step test finds a significant jump at that date in ${flagged.toLocaleString("en-US")} cells; open <b>Data-source steps</b>.` : "The step test finds no significant jump in total column ozone at that date."}</p></div>`;
+      const g = rmStat(sc, "globe"), fl = sc.steps[0] ? sc.steps[0].flagged : 0;
+      return mn()
+        ? `<div class="prose"><p><b>Автоматаар илэрсэн өгөгдлийн занга.</b> NASA POWER 200 DU-ээс бага нийт озоныг хүчингүй гэж тэмдэглэдэг. Антарктидын озоны цоорхой яг тэнд оршдог тул ${nf(sc.counts.gappy)} нүд хамгийн бага саруудаа алдсан. Хэрэгсэл цензурдсан чиг тооцохын оронд эдгээр нүдийг хасдаг; Антарктидын орчмын саарал хэсэг нь тэд.</p><p>Үлдсэн нүднүүдийн дэлхийн дундаж автокорреляцын сайн жишээ: энгийн p ${fmtP(g.p_naive)}, засварласан p ${fmtP(g.p_mk)}.</p><p>MERRA-2-ын озоны оролт 2004 оны 10-р сард SBUV-ээс Aura OMI + MLS рүү шилжсэн. ${fl ? `Тэр огноонд ${nf(fl)} нүдэнд ач холбогдолтой үсрэлт илэрсэн.` : "Нийт озонд тэр огноонд ач холбогдолтой үсрэлт илрээгүй."}</p></div>`
+        : `<div class="prose"><p><b>A data trap, found automatically.</b> NASA POWER marks total ozone below 200 DU as invalid. The Antarctic ozone hole lies exactly there, so ${nf(sc.counts.gappy)} cells lose their lowest months. The tool excludes those cells instead of computing a censored trend; they are the grey area around Antarctica.</p><p>For the cells that remain, the global mean is a lesson in autocorrelation: naive p ${fmtP(g.p_naive)}, corrected p ${fmtP(g.p_mk)}.</p><p>The ozone input to MERRA-2 switched from SBUV to Aura OMI + MLS in October 2004. ${fl ? `The step test finds a significant jump at that date in ${nf(fl)} cells.` : "The step test finds no significant jump in total column ozone at that date."}</p></div>`;
     },
     "wet-dry": (sc) => {
       const g = rmStat(sc, "globe");
-      return `<div class="prose"><p><b>One warming, two signs.</b> A warmer atmosphere holds more water, but over land the result is not simply "wet gets wetter, dry gets drier": Greve et al. (2014, Nature Geoscience) found only about 10.8% of land follows that pattern and 9.5% does the opposite. The map shows regions of significant increase and decrease side by side.</p>
-      <p>Global mean: ${signed(g.sen)} ${esc(unitLabel(sc.units))} per decade (naive p ${fmtP(g.p_naive)}, corrected p ${fmtP(g.p_mk)}).${sc.var === "GWETROOT" ? " Soil wetness has very long memory, so most cells that look significant to a naive test do not survive correction." : ""}</p>
-      <p>MERRA-2 precipitation is corrected with rain gauges over land at low and middle latitudes and is model-only poleward of 62.5°; over the oceans it is the model's own. Soil wetness is a model product forced by that precipitation, and its stream changes (1992, 2001, 2011) are tested as steps. Cross-check any finding against satellites; the Mongolia 2001–2025 scenes do this for precipitation.</p></div>`;
+      return mn()
+        ? `<div class="prose"><p><b>Нэг дулаарал, хоёр тэмдэг.</b> Дулаан агаар илүү ус агуулдаг ч хуурай газар дээр "чийглэг газар илүү чийглэг, хуурай газар илүү хуурай болно" гэсэн энгийн дүрэм биелдэггүй: Greve нар (2014, Nature Geoscience) хуурай газрын ердөө 10.8% нь энэ дүрмийг дагаж, 9.5% нь эсрэгээрээ байгааг олсон. Газрын зураг ач холбогдолтой өсөлт ба бууралтын бүсүүдийг зэрэгцүүлж харуулна.</p><p>Дэлхийн дундаж: арван жилд ${signed(g.sen)} ${esc(unitLabel(sc.units))} (энгийн p ${fmtP(g.p_naive)}, засварласан p ${fmtP(g.p_mk)}).</p><p>MERRA-2-ын хур тунадсыг хуурай газар дээр бага, дунд өргөрөгт борооны хэмжүүрээр засварладаг, 62.5°-аас хойш зөвхөн загварынх; далай дээр загварын өөрийнх. Хөрсний чийг нь энэ хур тунадсаар хөдлөгдөх загварын бүтээгдэхүүн бөгөөд урсгалын шилжилтийг (1992, 2001, 2011) алхамаар шалгадаг.</p></div>`
+        : `<div class="prose"><p><b>One warming, two signs.</b> A warmer atmosphere holds more water, but over land the result is not simply "wet gets wetter, dry gets drier": Greve et al. (2014, Nature Geoscience) found only about 10.8% of land follows that pattern and 9.5% does the opposite. The map shows regions of significant increase and decrease side by side.</p><p>Global mean: ${signed(g.sen)} ${esc(unitLabel(sc.units))} per decade (naive p ${fmtP(g.p_naive)}, corrected p ${fmtP(g.p_mk)}).</p><p>MERRA-2 precipitation is gauge-corrected over land at low and middle latitudes and model-only poleward of 62.5°; over the oceans it is the model's own. Soil wetness is a model product forced by that precipitation, and its stream changes (1992, 2001, 2011) are tested as steps.</p></div>`;
     },
     "arctic-amplification": (sc) => {
-      const nh = rmStat(sc, "nh"), sh = rmStat(sc, "sh"), g = rmStat(sc, "globe");
-      const st = stepOf(g, "2006-04");
-      return `<div class="prose"><p>Northern Hemisphere: ${signed(nh.sen)} °C per decade; Southern Hemisphere: ${signed(sh.sen)} °C per decade. The strongest warming sits in the high Arctic, which Rantanen et al. (2022) found has warmed nearly four times faster than the globe since 1979. Around Antarctica a region of significant cooling stands out.</p>
-      <p>Over the oceans MERRA-2 air temperature follows its prescribed sea-surface temperature, whose source changed in 1982 and 2006. ${st ? `${(sc.steps.find((x) => x.label.startsWith("2006-04")) || { flagged: 0 }).flagged.toLocaleString("en-US")} cells show a significant step at the April 2006 switch, and allowing for a step there moves the global trend from ${signed(g.sen)} to ${signed(st.trend_with_step)} °C per decade (step ${signed(st.step)} °C, p ${fmtP(st.p_step)}). A step test cannot tell an artificial jump from natural variability that happens to shift near that date, so treat this as a flag to check against an independent record.` : ""}</p></div>`;
+      const nh = rmStat(sc, "nh"), sh = rmStat(sc, "sh"), g = rmStat(sc, "globe"), st = stepOf(g, "2006-04");
+      const fl = (sc.steps.find((x) => x.label.startsWith("2006-04")) || { flagged: 0 }).flagged;
+      return mn()
+        ? `<div class="prose"><p>Хойд хагас бөмбөрцөг: арван жилд ${signed(nh.sen)} °C; Өмнөд хагас бөмбөрцөг: ${signed(sh.sen)} °C. Хамгийн хүчтэй дулаарал Арктикт байна; Rantanen нар (2022) Арктик 1979 оноос хойш дэлхийн дунджаас бараг дөрөв дахин хурдан дулаарсныг тогтоосон. Антарктидын орчимд ач холбогдолтой хөргөлтийн бүс тод харагдана.</p><p>Далай дээр MERRA-2-ын агаарын температур тогтоосон далайн гадаргын температурыг дагадаг бөгөөд эх сурвалж нь 1982, 2005, 2006 онд солигдсон.${st ? ` 2006 оны 4-р сарын шилжилтэд ${nf(fl)} нүдэнд ач холбогдолтой алхам гарсан; тэнд алхамыг тооцвол дэлхийн чиг ${signed(g.sen)}-ээс ${signed(st.trend_with_step)} °C болно (алхам ${signed(st.step)} °C, p ${fmtP(st.p_step)}). Алхамын тест жинхэнэ өөрчлөлт ба артефактыг ялгаж чадахгүй тул үүнийг хараат бус бүртгэлтэй шалгах дохио гэж үзнэ үү.` : ""}</p></div>`
+        : `<div class="prose"><p>Northern Hemisphere: ${signed(nh.sen)} °C per decade; Southern Hemisphere: ${signed(sh.sen)} °C per decade. The strongest warming sits in the high Arctic, which Rantanen et al. (2022) found has warmed nearly four times faster than the globe since 1979. Around Antarctica a region of significant cooling stands out.</p><p>Over the oceans MERRA-2 air temperature follows its prescribed sea-surface temperature, whose sources changed in 1982, 2005 and 2006.${st ? ` ${nf(fl)} cells show a significant step at the April 2006 switch, and allowing for a step there moves the global trend from ${signed(g.sen)} to ${signed(st.trend_with_step)} °C per decade (step ${signed(st.step)} °C, p ${fmtP(st.p_step)}). A step test cannot tell an artificial jump from natural variability that shifts near that date, so treat this as a flag to check against an independent record.` : ""}</p></div>`;
     },
     mongolia: (sc) => {
       const m = sc.region_means[0].stats;
-      const flagged = sc.steps.filter((s) => s.flagged).map((s) => `${s.label.slice(0, 4)} (${s.flagged} cells)`);
-      return `<div class="prose"><p>Country mean: ${signed(m.sen)} ${esc(unitLabel(sc.units))} per decade (95% CI ${fmt(m.sen_lo)} to ${fmt(m.sen_hi)}; corrected p ${fmtP(m.p_mk)}). The map marks Ulaanbaatar, Dalanzadgad and the Tavan Tolgoi coal field.</p>
-      ${flagged.length ? `<p><b>Homogeneity flag.</b> Significant steps appear at the MERRA-2 production-stream boundaries ${flagged.join(", ")}, where Reichle et al. (2017) document land spin-up effects. Trends in this variable over Mongolia should not be cited without an independent product.</p>` : ""}
-      <p>MERRA-2 is a 50 km reanalysis. It cannot see local sources such as a mine or a road; it shows the regional climate in which they sit. The variable screen below ranks every MERRA-2 and CERES variable over Mongolia.</p></div>`;
+      const flagged = sc.steps.filter((s) => s.flagged).map((s) => `${s.label.slice(0, 4)} (${s.flagged})`);
+      return mn()
+        ? `<div class="prose"><p>Улсын дундаж: арван жилд ${signed(m.sen)} ${esc(unitLabel(sc.units))} (95% завсар ${fmt(m.sen_lo)}–${fmt(m.sen_hi)}; засварласан p ${fmtP(m.p_mk)}, бүх хугацаа). Газрын зураг аймгийн төвүүд, Оюу толгой болон Таван толгойн нисэх буудлыг тэмдэглэнэ.</p>${flagged.length ? `<p><b>Нэгэн төрлийн байдлын дохио.</b> MERRA-2-ын үйлдвэрлэлийн урсгалын хил ${flagged.join(", ")} дээр ач холбогдолтой алхам гарсан; Reichle нар (2017) тэнд хуурай газрын эхлэлийн (spin-up) нөлөөг баримтжуулсан. Монголд энэ хувьсагчийн чигийг хараат бус бүтээгдэхүүнгүйгээр иш татахгүй байх нь зөв.</p>` : ""}<p>MERRA-2 бол ~50 км-ийн реанализ. Уурхай, зам зэрэг орон нутгийн эх үүсвэрийг харахгүй; тэдгээрийн оршиж буй бүс нутгийн уур амьсгалыг харуулна. Хувьсагчийн эрэмбэ хуудас Монгол дээрх MERRA-2 ба CERES-ийн бүх хувьсагчийг эрэмбэлнэ.</p></div>`
+        : `<div class="prose"><p>Country mean: ${signed(m.sen)} ${esc(unitLabel(sc.units))} per decade (95% CI ${fmt(m.sen_lo)} to ${fmt(m.sen_hi)}; corrected p ${fmtP(m.p_mk)}, full record). The map marks aimag centres, Oyu Tolgoi and the Tavan Tolgoi airfield.</p>${flagged.length ? `<p><b>Homogeneity flag.</b> Significant steps appear at the MERRA-2 production-stream boundaries ${flagged.join(", ")}, where Reichle et al. (2017) document land spin-up effects. Trends in this variable over Mongolia should not be cited without an independent product.</p>` : ""}<p>MERRA-2 is a ~50 km reanalysis. It cannot see local sources such as a mine or a road; it shows the regional climate in which they sit. The Variable ranking tab ranks every MERRA-2 and CERES variable over Mongolia.</p></div>`;
     },
     dust: (sc) => {
       const m = sc.region_means[0].stats;
-      return `<div class="prose"><p>Aerosol optical depth at 550 nm from CERES SYN1deg (1° grid, 2001–2025). Country mean: ${signed(m.sen)} per decade (95% CI ${fmt(m.sen_lo)} to ${fmt(m.sen_hi)}, corrected p ${fmtP(m.p_mk)}), against a mean of ${fmt(sc.region_means[0].raw_mean)}. Dust is one aerosol among several; AOD alone cannot separate dust from smoke or pollution.</p>
-      <p>Compare the drivers in the other Mongolia scenes: wind speed and soil wetness. At 1°, a cell spans roughly 80 × 110 km, so this is the regional background around the Gobi, not the footprint of any one mine.</p></div>`;
+      return mn()
+        ? `<div class="prose"><p>CERES SYN1deg-ийн 550 нм-ийн аэрозолийн оптик зузаан (1° тор, 2001–2025). Улсын дундаж: арван жилд ${signed(m.sen)} (95% завсар ${fmt(m.sen_lo)}–${fmt(m.sen_hi)}, засварласан p ${fmtP(m.p_mk)}), дундаж ${fmt(sc.region_means[0].raw_mean)}. Тоос бол олон аэрозолийн нэг; AOD дангаараа тоосыг утаа, бохирдлоос ялгахгүй.</p><p>Бусад Монголын өгөгдөлтэй харьцуулаарай: салхины хурд ба хөрсний чийг. 1° нүд ойролцоогоор 80 × 110 км тул энэ нь Говийн бүс нутгийн суурь түвшин, нэг уурхайн ул мөр биш.</p></div>`
+        : `<div class="prose"><p>Aerosol optical depth at 550 nm from CERES SYN1deg (1° grid, 2001–2025). Country mean: ${signed(m.sen)} per decade (95% CI ${fmt(m.sen_lo)} to ${fmt(m.sen_hi)}, corrected p ${fmtP(m.p_mk)}), against a mean of ${fmt(sc.region_means[0].raw_mean)}. Dust is one aerosol among several; AOD alone cannot separate dust from smoke or pollution.</p><p>Compare the drivers in the other Mongolia datasets: wind speed and soil wetness. A 1° cell spans roughly 80 × 110 km, so this is the regional background around the Gobi, not the footprint of one mine.</p></div>`;
     },
-    crosscheck: (sc) => {
-      const c = (state.index.comparisons || [])[0];
-      const ratio = c ? c.region_trend_a.sen / c.region_trend_b.sen : NaN;
-      return `<div class="prose"><p>Precipitation from a model (MERRA-2, gauge-corrected with a taper above 42.5°N) and from satellites (GPM IMERG), on the same grid, 2001–2025.</p>
-      ${c ? `<p>They agree on direction: ${Math.round(100 * c.sign_agreement_significant)}% of cells significant in either share a sign, no cell is significant in both with opposite signs, and monthly anomalies correlate at ${fmt(c.region_anomaly_correlation, 2)}. They disagree on size: MERRA-2's country-mean trend is ${fmt(ratio, 2)} times IMERG's. "Wetter" is supported; "how much wetter" depends on the product.</p>` : ""}
-      <p>IMERG switched its calibration from TRMM to the GPM Core Observatory in June 2014; the step test on the IMERG scene checks for a jump there.</p></div>`;
+    crosscheck: () => {
+      const c = (state.index.comparisons || [])[0], ratio = c ? c.region_trend_a.sen / c.region_trend_b.sen : NaN;
+      return mn()
+        ? `<div class="prose"><p>Загварын (MERRA-2, 42.5°N-ээс хойш аажмаар загварт шилждэг) болон хиймэл дагуулын (GPM IMERG) хур тунадас, ижил тор дээр, 2001–2025.</p>${c ? `<p>Чиглэлээрээ таарч байна: аль нэгэнд ач холбогдолтой нүднүүдийн ${Math.round(100 * c.sign_agreement_significant)}% нь ижил тэмдэгтэй, хоёуланд ач холбогдолтой боловч эсрэг тэмдэгтэй нүд алга, сарын аномалийн корреляц ${fmt(c.region_anomaly_correlation, 2)}. Хэмжээгээрээ зөрж байна: MERRA-2-ын улсын дундаж чиг IMERG-ийнхээс ${fmt(ratio, 2)} дахин их. "Чийглэг болж байна" гэдэг батлагдсан; "хэр их" гэдэг нь бүтээгдэхүүнээс хамаарна.</p>` : ""}</div>`
+        : `<div class="prose"><p>Precipitation from a model (MERRA-2, gauge-corrected with a taper above 42.5°N) and from satellites (GPM IMERG), on the same grid, 2001–2025.</p>${c ? `<p>They agree on direction: ${Math.round(100 * c.sign_agreement_significant)}% of cells significant in either share a sign, no cell is significant in both with opposite signs, and monthly anomalies correlate at ${fmt(c.region_anomaly_correlation, 2)}. They disagree on size: MERRA-2's country-mean trend is ${fmt(ratio, 2)} times IMERG's. "Wetter" is supported; "how much wetter" depends on the product.</p>` : ""}</div>`;
     },
   };
 
-  // ------------------------------------------------------------------ scene switching
-  function sceneTitle(id) {
-    const s = state.index.scenes.find((x) => x.id === id);
-    return s ? `${s.title} · ${s.region_name} ${s.period.start.slice(0, 4)}–${s.period.end.slice(0, 4)}` : id;
+  // ------------------------------------------------------------ variable ranking document
+  function screenRows() {
+    const sc = state.screen;
+    if (isFull()) return sc.rows;
+    const rows = sc.rows.map((r) => {
+      const y0 = Math.max(state.y0, +r.start), sub = subsetAnnual(r.annual_years, r.annual, y0, state.y1);
+      const res = sub.vs.length >= 10 ? statsFromJS(S.analyze(sub.vs, sub.ys)) : null;
+      const yrs = state.y1 - y0 + 1;
+      return Object.assign({}, r, { stats: res, start: String(y0),
+        change_sd: res && res.sigma ? res.sen / 10 * yrs / res.sigma : null,
+        change_pct: res && r.change_pct !== null && r.clim_mean > 0 ? 100 * res.sen / 10 * yrs / r.clim_mean : null });
+    });
+    const p = rows.map((r) => (r.stats ? r.stats.p_mk : NaN)), pstar = bhThreshold(p, state.alpha);
+    rows.forEach((r, k) => { r.fdr = Number.isFinite(p[k]) && pstar > 0 && p[k] <= pstar; });
+    rows.sort((a, b) => (a.fdr === b.fdr ? Math.abs(b.change_sd || 0) - Math.abs(a.change_sd || 0) : (a.fdr ? -1 : 1)));
+    return rows;
   }
-  function buildPicker() {
-    const groups = new Map();
-    for (const s of state.index.scenes) {
-      if (!groups.has(s.group)) groups.set(s.group, []);
-      groups.get(s.group).push(s);
-    }
-    $("#scene").innerHTML = [...groups].map(([g, list]) => `<optgroup label="${esc(g)}">${list.map((s) =>
-      `<option value="${s.id}">${esc(s.title)}${s.kind === "mission" ? " · satellite" : s.kind === "model" ? " · model" : ""}</option>`).join("")}</optgroup>`).join("");
+  function renderScreen() {
+    if (state.tab !== "screen" || !state.screen || !state.res) return;
+    const f = state.screenFilter, all = screenRows();
+    const rows = all.filter((r) => f === "all" || (f === "fdr" && r.fdr) || r.kind === f);
+    const sceneFor = (r) => (state.index.scenes.find((s) => s.region === "mongolia" && s.var === r.var && s.product === r.product &&
+      s.period.start.slice(0, 4) === (r.kind === "mission" ? "2001" : "1981")) || {}).id;
+    $("#screen-meta").textContent = t("sc_meta", { n: all.length, y0: state.y0, y1: state.y1 });
+    $("#screen-head").innerHTML = `<tr>${["h_var", "h_src", "h_years", "h_trend", "h_ci", "h_sd", "h_pct", "h_pn", "h_pc", "h_fdr", "h_ann"].map((k, i) => `<th class="${i >= 2 && i <= 8 ? "n" : ""}">${esc(t(k))}</th>`).join("")}</tr>`;
+    $("#screen-body").innerHTML = rows.map((r) => {
+      const s = r.stats, id = sceneFor(r);
+      return `<tr class="${id ? "link" : ""}" ${id ? `data-go="${id}"` : ""}><td>${esc(r.long_name)} <span class="muted num">${esc(r.var)}</span></td>
+        <td>${esc(t(r.kind === "model" ? "src_model" : "src_mission"))}</td><td class="n">${r.start}–${state.y1}</td>
+        ${s ? `<td class="n">${signed(s.sen)} <span class="muted">${esc(unitLabel(r.units))}</span></td><td class="n">[${fmt(s.sen_lo, 2)}, ${fmt(s.sen_hi, 2)}]</td>
+        <td class="n">${fmt(r.change_sd, 2)}</td><td class="n">${r.change_pct === null || r.change_pct === undefined ? "–" : signed(r.change_pct, 2) + "%"}</td>
+        <td class="n">${fmtP(s.p_naive)}</td><td class="n">${fmtP(s.p_mk)}</td>` : `<td class="n" colspan="6">${esc(t("too_short"))}</td>`}
+        <td>${r.fdr ? `<span class="yes">✓ ${esc(t("yes"))}</span>` : `<span class="muted">${esc(t("no"))}</span>`}</td><td>${spark(r.annual)}</td></tr>`;
+    }).join("");
   }
-  function buildLayers() {
-    const sc = state.sc;
-    const avail = LAYERS.filter((l) => (l.id !== "steps" || sc.steps.length) && (l.id !== "truth" || sc.truth));
-    if (!avail.find((l) => l.id === state.layer)) state.layer = "trend";
-    $("#layers").innerHTML = avail.map((l) => `<button type="button" data-layer="${l.id}" aria-pressed="${l.id === state.layer}">${l.label}</button>`).join("");
-    const st = $("#stepsel");
-    if (state.layer === "steps" && sc.steps.length > 1) {
-      st.hidden = false;
-      st.innerHTML = sc.steps.map((s, k) => `<button type="button" data-step="${k}" aria-pressed="${k === state.step}">${esc(s.label.split(":")[0])}</button>`).join("");
-    } else st.hidden = true;
-  }
-  async function showScene(id) {
-    const entry = await loadScene(id);
-    state.sc = entry.sc; state.series = entry.series; state.sel = null; state.step = 0;
-    $("#scene").value = id;
-    if (location.hash.slice(1) !== id) history.replaceState(null, "", "#" + id);
-    buildLayers();
-    renderSummary();
-    drawMap();
-    renderSelection();
-    renderRegionMeans();
-    renderCase();
-    renderCompare();
-    $("#scene-meta").textContent = `${state.sc.product_name}: ${state.sc.source}. ${state.sc.grid_note}. Native resolution ${state.sc.native_res}.`;
+  function spark(vals) {
+    const v = vals.map((x) => (x === null ? NaN : x)), f = v.filter(Number.isFinite);
+    if (!f.length) return "";
+    const lo = Math.min(...f), hi = Math.max(...f), W = 90, H = 22;
+    const d = v.map((x, k) => (Number.isFinite(x) ? `${k ? "L" : "M"}${(k / (v.length - 1) * W).toFixed(1)},${(H - 2 - (x - lo) / ((hi - lo) || 1) * (H - 4)).toFixed(1)}` : "")).join("");
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--s1)" stroke-width="1.5"/></svg>`;
   }
 
-  // ------------------------------------------------------------------ boot
-  async function boot() {
-    map.canvas = $("#map");
-    map.ctx = map.canvas.getContext("2d");
+  // ------------------------------------------------------------ method document
+  function renderMethod() {
+    if (state.tab !== "method") return;
+    const v = state.validation, syn = state.cache["synthetic-truth"], tr = syn && syn.sc.truth;
+    const keys = v ? Object.keys(v.tests) : [];
+    const TEST_MN = { p_naive: "Mann-Kendall, засваргүй", p_hr_empirical: "Hamed-Rao, анхны хувилбар", p_mk: "Mann-Kendall, AR(1) загварчилсан Hamed-Rao (ашигласан)", p_ols_ar1: "OLS + AR(1) үр ашигтай n (Santer 2000)" };
+    const table = v ? `<div class="tablewrap"><table><thead><tr><th>${mn() ? "Шуугианы санах ой φ" : "Noise memory φ"}</th>${keys.map((k) => `<th class="n">${esc(mn() ? TEST_MN[k] : v.tests[k])}</th>`).join("")}<th class="n">${mn() ? "Sen завсрын хамралт" : "Sen CI coverage"}</th></tr></thead><tbody>
+      ${v.rows.map((r) => `<tr><td class="num">${r.phi}</td>${keys.map((k) => `<td class="n">${(100 * r.size[k]).toFixed(1)}% <span class="muted">/ ${(100 * r.power_at_mdt[k]).toFixed(0)}%</span></td>`).join("")}<td class="n">${(100 * r.sen_ci_coverage).toFixed(0)}%</td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted">${mn() ? `Нүд бүрт: чиг байхгүй үеийн хуурамч эерэг хувь (зорилт 5%) / чиг нь Weatherhead-ийн хамгийн бага илрэх хэмжээтэй тэнцүү үеийн илрүүлэлтийн хувь (зорилт 90%). Мөр бүрт 45 жилийн сарын ${v.reps} симуляц; Монте-Карлогийн стандарт алдаа 5% орчимд ±${(100 * v.mc_standard_error_at_5pct).toFixed(1)} пункт.` : `Each cell: false-positive rate with no trend (target 5%) / detection rate when the trend equals the Weatherhead minimum detectable trend (target 90%). ${v.reps} simulated 45-year monthly records per row; Monte Carlo standard error ±${(100 * v.mc_standard_error_at_5pct).toFixed(1)} points at 5%.`}</p>` : "";
+    const truth = tr ? (mn()
+      ? `<p>Үнэн нь мэдэгдэх талбар дээр энгийн газрын зурагт тэмдэглэгдсэн нүднүүдийн <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> нь худал илрэлт; FDR-ийн дараа <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (зорилт ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). Үнэ нь чадал: жинхэнэ чигтэй нүднүүдийн ${Math.round(100 * tr.scores.fdr.power)}%-ийг FDR олдог бол энгийн газрын зураг ${Math.round(100 * tr.scores.naive.power)}%; алдсан ихэнх нь суулгасан чиг нь илрэх хэмжээнээс бага нүднүүд.</p>`
+      : `<p>On the known-truth field, <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> of cells flagged by the naive map are false discoveries; after FDR it is <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (target ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). The price is power: ${Math.round(100 * tr.scores.fdr.power)}% of truly trending cells are found, versus ${Math.round(100 * tr.scores.naive.power)}% by the naive map; most misses are cells whose planted trend is below the detectable size.</p>`) : "";
+    const run = `<pre>pip install -r requirements.txt
+python -m pytest -q
+python -m trend_detective build        # NASA POWER + NSIDC -> web/data/
+python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
+    $("#method").innerHTML = mn() ? `
+      <h2>Хэрэгсэл өөрчлөлтийг бодит гэж хэрхэн шийддэг вэ</h2>
+      <div class="cards method">
+        <div class="card"><h3>Нүд бүрт</h3><ol>
+          <li>Улирлын мөчлөгийг (сарын дундаж) хасна.</li>
+          <li>Хэмжээ: Theil-Sen налуу ба зэрэглэлд суурилсан итгэлийн завсар.</li>
+          <li>Ач холбогдол: Hamed-Rao автокорреляцын засвартай Mann-Kendall; зэрэглэлийн ACF-ийг AR(1)-ээр загварчилсан.</li>
+          <li>Хяналт: AR(1) үр ашигтай түүврийн хэмжээтэй OLS (Santer нар 2000). Санал зөрвөл нууцлахгүй, харуулна.</li>
+          <li>Илрэх чадвар: Weatherhead нар (1998)-ын хамгийн бага илрэх чиг ба шаардлагатай жил, түүвэрлэлтийн давтамжид тохируулсан. Бүртгэл хэт богино бол "чиг алга" биш "одоогоор илрэхгүй" гэнэ.</li>
+          <li>Нэгэн төрлийн байдал: баримтжуулсан эх сурвалжийн шилжилт бүрт алхамын тест.</li></ol></div>
+        <div class="card"><h3>Газрын зураг даяар</h3><ul>
+          <li>Бүх хүчинтэй нүдэнд Benjamini-Hochberg-ийн худал илрэлтийн хувь (FDR), орон зайн хамааралтай талбарт α<sub>FDR</sub> = 2 × α (Wilks 2016).</li>
+          <li>Дутуу сартай нүдийг нөхөхгүй, хасна, шалтгааныг нь хэлнэ.</li>
+          <li>Сонгосон онуудаар бүх тест, FDR, тоог таны хөтөч дээр дахин тооцно: сарын утга хадгалсан өгөгдөлд (Монгол) сарын утгаас, бусад (дэлхий) жилийн дунджаас.</li>
+          <li>Хараат бус бүртгэлтэй хөндлөн шалгалт: MERRA-2 ба IMERG хур тунадас; MERRA-2 ба NSIDC далайн мөс.</li></ul></div>
+      </div>
+      <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${truth}
+      <div class="card"><h3>Өөрийн шинжилгээг ажиллуулах</h3><p class="prose">Python 3.10+ суулгаад агуулахын хавтсанд суулгах скриптийг ажиллуулна (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), дараа нь:</p>${run}</div>
+      <p class="small muted">Өгөгдөл: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth (world-atlas, ISC). Дэлгэрэнгүй: docs/METHODS.md.</p>`
+      : `
+      <h2>How the tool decides a change is real</h2>
+      <div class="cards method">
+        <div class="card"><h3>Per cell</h3><ol>
+          <li>Remove the seasonal cycle (monthly climatology).</li>
+          <li>Size: Theil-Sen slope with a rank confidence interval.</li>
+          <li>Significance: Mann-Kendall with the Hamed-Rao autocorrelation correction, rank ACF modelled as AR(1).</li>
+          <li>Cross-check: OLS with an AR(1) effective sample size (Santer et al. 2000). Disagreement is shown, not hidden.</li>
+          <li>Detectability: Weatherhead et al. (1998) smallest detectable trend and years needed, scaled for the sampling interval. "No trend" becomes "not yet detectable" when the record is too short.</li>
+          <li>Homogeneity: a step test at every documented data-source change.</li></ol></div>
+        <div class="card"><h3>Across the map</h3><ul>
+          <li>Benjamini-Hochberg false discovery rate over all valid cells, with α<sub>FDR</sub> = 2 × α for spatially correlated fields (Wilks 2016).</li>
+          <li>Cells with missing months are excluded, never gap-filled, and the tool says why.</li>
+          <li>For chosen years, every test, the FDR and every count are recomputed in your browser, from monthly values where the dataset stores them (Mongolia) and from annual means otherwise (globe).</li>
+          <li>Cross-checks against independent records: MERRA-2 vs IMERG precipitation; MERRA-2 vs NSIDC sea ice.</li></ul></div>
+      </div>
+      <h3>Monte Carlo check of the local tests</h3>${table}${truth}
+      <div class="card"><h3>Run your own analysis</h3><p class="prose">Install Python 3.10+, then run the install script in the repository folder (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), then:</p>${run}</div>
+      <p class="small muted">Data: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth via world-atlas (ISC). Details: docs/METHODS.md.</p>`;
+  }
+
+  // ------------------------------------------------------------ chrome: menus, tree, toolbar, language
+  function menus() {
+    const v = state.view, th = state.theme, ck = (on) => (on ? "check" : "nocheck");
+    const sc = state.sc;
+    return [
+      { id: "file", label: t("m_file"), items: [
+        { label: t("file_repo"), href: REPO }, { label: t("file_zip"), href: REPO + "/archive/refs/heads/main.zip" },
+        { label: t("file_run"), act: () => setTab("method") }] },
+      { id: "view", label: t("m_view"), items: [
+        { label: t("view_map"), cls: ck(v === "map"), act: () => setView("map") }, { label: t("view_surf"), cls: ck(v === "surf"), act: () => setView("surf") }, "-",
+        { label: t("theme_system"), cls: ck(th === "system"), act: () => setTheme("system") }, { label: t("theme_light"), cls: ck(th === "light"), act: () => setTheme("light") },
+        { label: t("theme_dark"), cls: ck(th === "dark"), act: () => setTheme("dark") }, "-",
+        { label: "English", cls: ck(L() === "en"), act: () => setLang("en") }, { label: "Монгол", cls: ck(L() === "mn"), act: () => setLang("mn") }, "-",
+        { label: t("view_left"), cls: ck(!$("#leftpane").hidden), act: () => { $("#leftpane").hidden = !$("#leftpane").hidden; layoutCols(); } },
+        { label: t("view_right"), cls: ck(!$("#rightpane").hidden), act: () => { $("#rightpane").hidden = !$("#rightpane").hidden; layoutCols(); } }] },
+      { id: "analysis", label: t("m_analysis"), items: [
+        { label: t("an_full"), act: () => preset("full") }, { label: t("an_30"), act: () => preset(30) },
+        { label: t("an_20"), act: () => preset(20) }, { label: t("an_2001"), act: () => preset(2001) }, "-",
+        ...[0.1, 0.05, 0.01].map((a) => ({ label: t("an_alpha", { a }), cls: ck(Math.abs(state.alpha - a) < 1e-9), act: () => { $("#alpha").value = a.toFixed(2); setAlpha(a); } })), "-",
+        ...LAYERS.filter((l) => sc && (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth)).map((l) => ({ label: t(LAYER_KEY[l]), cls: ck(state.layer === l), act: () => setLayer(l) }))] },
+      { id: "help", label: t("m_help"), items: [
+        { label: t("help_guide"), act: showGuide }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
+    ];
+  }
+  let openMenu = null;
+  function renderMenus() {
+    const defs = menus();
+    $("#menubar").innerHTML = defs.map((m) => `<div><button type="button" class="menubtn" data-menu="${m.id}" aria-haspopup="true" aria-expanded="${openMenu === m.id}">${esc(m.label)}</button>
+      ${openMenu === m.id ? `<div class="menu" role="menu">${m.items.map((it, k) => (it === "-" ? "<hr>" : it.href
+        ? `<a role="menuitem" href="${esc(it.href)}" target="_blank" rel="noopener"><span class="nocheck">${esc(it.label)}</span><span>↗</span></a>`
+        : `<button type="button" role="menuitem" data-mi="${m.id}:${k}"><span class="${it.cls || "nocheck"}">${esc(it.label)}</span></button>`)).join("")}</div>` : ""}</div>`).join("");
+    state.menuDefs = defs;
+  }
+  function layoutCols() {
+    const lp = !$("#leftpane").hidden, rp = !$("#rightpane").hidden;
+    $(".workspace").style.gridTemplateColumns = matchMedia("(max-width: 1100px)").matches ? "" : `${lp ? "236px " : ""}minmax(0, 1fr)${rp ? " 350px" : ""}`;
+    requestAnimationFrame(drawMap);
+  }
+  function buildTree() {
+    const groups = new Map();
+    for (const s of state.index.scenes) { if (!groups.has(s.group)) groups.set(s.group, []); groups.get(s.group).push(s); }
+    $("#tree-scenes").innerHTML = [...groups].map(([g, list]) => `<details open><summary>${esc(I.group(g))}</summary>${list.map((s) =>
+      `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
+    $("#scene").innerHTML = [...groups].map(([g, list]) => `<optgroup label="${esc(I.group(g))}">${list.map((s) => `<option value="${s.id}">${esc(sceneTitle(s))}</option>`).join("")}</optgroup>`).join("");
+    if (state.sc) $("#scene").value = state.sc.id;
+  }
+  function fillYears() {
+    const [a, b] = fullRange();
+    const opts = (sel) => Array.from({ length: b - a + 1 }, (_, k) => a + k).map((y) => `<option${y === sel ? " selected" : ""}>${y}</option>`).join("");
+    $("#y0").innerHTML = opts(state.y0);
+    $("#y1").innerHTML = opts(state.y1);
+  }
+  function applyStatic() {
+    document.documentElement.lang = mn() ? "mn" : "en";
+    $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    $$("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+    $$("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lang === L()));
+    $("#placelist").innerHTML = state.places.map((p) => `<option value="${esc(placeName(p))}"></option>`).join("");
+  }
+
+  // ------------------------------------------------------------ actions
+  function renderAll() {
+    renderMenus(); buildTree(); fillYears(); renderPicker(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
+    renderAnalysis(); renderScreen(); renderMethod(); status();
+    $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
+    $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
+  }
+  async function showScene(id, keepYears) {
+    stopPlay();
+    const entry = await loadScene(id), prev = state.sc;
+    state.entry = entry; state.sc = entry.sc; state.sel = null; state.step = 0; state.year = null;
+    const [a, b] = fullRange();
+    if (!keepYears || !prev) { state.y0 = a; state.y1 = b; } else {
+      state.y0 = Math.max(a, Math.min(state.y0, b - 9));
+      state.y1 = Math.min(b, Math.max(state.y1, state.y0 + 9));
+    }
+    if (location.hash.slice(1) !== id) { try { history.replaceState(null, "", "#" + id); } catch (e) { /* file:// can refuse */ } }
+    await computeResults();
+    renderAll();
+  }
+  async function applyYears() {
+    let y0 = +$("#y0").value, y1 = +$("#y1").value;
+    if (y1 < y0) [y0, y1] = [y1, y0];
+    if (y1 - y0 < 9) {
+      y1 = Math.min(fullRange()[1], y0 + 9);
+      y0 = Math.min(y0, y1 - 9);
+    }
+    state.y0 = y0; state.y1 = y1;
+    await computeResults();
+    renderAll();
+  }
+  function preset(p) {
+    const [a, b] = fullRange();
+    if (p === "full") { $("#y0").value = a; $("#y1").value = b; }
+    else if (p === 2001) { $("#y0").value = Math.max(a, 2001); $("#y1").value = b; }
+    else { $("#y0").value = Math.max(a, b - p + 1); $("#y1").value = b; }
+    applyYears();
+  }
+  async function setAlpha(a) { state.alpha = a; await computeResults(); renderAll(); }
+  function setLayer(l) { state.layer = l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  function setView(v) {
+    state.view = v;
+    $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf";
+    hideTip();
+    $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === v));
+    renderMenus();
+    setTab("map");
+  }
+  function setTab(tab) {
+    state.tab = tab;
+    ["map", "analysis", "screen", "method"].forEach((k) => { $("#doc-" + k).hidden = k !== tab; });
+    $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab));
+    if (tab === "map") requestAnimationFrame(drawMap);
+    renderAnalysis(); renderScreen(); renderMethod();
+  }
+  function setTheme(th) {
+    state.theme = th;
+    store.set("theme", th);
+    if (th === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = th;
     buildPalette();
+    renderAll();
+  }
+  function setLang(l) { I.setLang(l); store.set("lang", l); applyStatic(); renderAll(); }
+  function modal(html) {
+    $("#modalbox").innerHTML = html + `<div><button type="button" class="btn primary" id="modalclose">${esc(t("close"))}</button></div>`;
+    $("#modal").hidden = false;
+    $("#modalclose").focus();
+  }
+  function showGuide() { modal(`<h2>${esc(t("guide_title"))}</h2><ol>${t("guide").map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`); }
+  function showAbout() { modal(`<h2>${esc(t("about_title"))}</h2><p>${esc(t("about"))}</p><p><a href="${REPO}" target="_blank" rel="noopener">${REPO}</a></p>`); }
+  function doSearch(q) {
+    q = q.trim().toLowerCase();
+    if (!q || !state.sc) return;
+    const p = state.places.find((x) => x.en.toLowerCase() === q || x.mn.toLowerCase() === q) ||
+      state.places.find((x) => x.en.toLowerCase().startsWith(q) || x.mn.toLowerCase().startsWith(q));
+    if (!p) return;
+    state.searched = p;
+    const g = state.sc.grid, i = Math.floor((p.lon - (g.lon[0] - g.dlon / 2)) / g.dlon), j = Math.floor((p.lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
+    if (i >= 0 && j >= 0 && i < g.nx && j < g.ny && state.res.status[j * g.nx + i] !== 0) {
+      state.sel = { type: "cell", i: j * g.nx + i };
+      setTab("map"); renderInspector(); renderAnalysis(); drawMap();
+      status({ cursor: ll(p.lat, p.lon), value: placeName(p) });
+    } else {
+      drawMap();
+      const note = $("#mapnote");
+      note.textContent = t("outside", { place: placeName(p) });
+      note.hidden = false;
+      setTimeout(() => { note.hidden = true; }, 3500);
+    }
+  }
+
+  // ------------------------------------------------------------ boot
+  async function boot() {
+    const saved = store.get("lang");
+    I.setLang(saved || ((navigator.language || "").toLowerCase().startsWith("mn") ? "mn" : "en"));
+    state.theme = store.get("theme") || "system";
+    if (state.theme !== "system") document.documentElement.dataset.theme = state.theme;
+    map.canvas = $("#map"); map.ctx = map.canvas.getContext("2d");
+    surface = new window.TDSurface($("#surf"));
+    buildPalette();
+    applyStatic();
+    renderMenus();
     try {
-      const [index, geo] = await Promise.all([getJSON("data/index.json"), getJSON("data/geo.json")]);
+      const [index, geo] = await Promise.all([loadPayload("index"), loadPayload("geo")]);
       state.index = index; state.geo = geo;
-      state.validation = await getJSON("data/validation.json").catch(() => null);
-      state.screen = index.has_screen ? await getJSON("data/screen-mongolia.json").catch(() => null) : null;
+      const [places, validation, screen] = await Promise.all([loadPayload("places").catch(() => null), loadPayload("validation").catch(() => null),
+        index.has_screen ? loadPayload("screen-mongolia").catch(() => null) : null]);
+      state.places = places ? places.places : []; state.validation = validation; state.screen = screen;
     } catch (err) {
-      $("#summary").innerHTML = `<p class="warn critical"><span class="icon">!</span>Could not load the precomputed data (${esc(err.message)}). Serve the web/ folder over HTTP, for example with <code>python -m http.server</code>.</p>`;
+      $("#summary").innerHTML = `<div class="warn critical"><span class="icon">!</span><p>${esc(t("load_fail", { e: err.message }))}</p></div>`;
       return;
     }
-    buildPicker();
-    const first = location.hash.slice(1);
-    const start = state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m";
+    applyStatic();
     await loadScene("synthetic-truth").catch(() => null);
-    await showScene(state.index.scenes.find((s) => s.id === start) ? start : state.index.scenes[0].id);
-    renderScreen();
-    renderMethod();
-    $("#gen").textContent = `Data generated ${state.index.generated_utc} UTC from ${state.index.data_source}.`;
+    const first = location.hash.slice(1);
+    await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
+    if (!store.get("seenGuide")) { store.set("seenGuide", "1"); showGuide(); }
 
-    $("#scene").addEventListener("change", (e) => showScene(e.target.value));
-    window.addEventListener("hashchange", () => {
-      const id = location.hash.slice(1);
-      if (id && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id);
+    document.addEventListener("click", (e) => {
+      const mb = e.target.closest("[data-menu]");
+      if (mb) { openMenu = openMenu === mb.dataset.menu ? null : mb.dataset.menu; renderMenus(); return; }
+      const mi = e.target.closest("[data-mi]");
+      if (mi) {
+        const [mid, k] = mi.dataset.mi.split(":");
+        const it = state.menuDefs.find((m) => m.id === mid).items[+k];
+        openMenu = null; renderMenus();
+        if (it && it.act) it.act();
+        return;
+      }
+      if (openMenu && !e.target.closest(".menu")) { openMenu = null; renderMenus(); }
+      const go = e.target.closest("[data-go]");
+      if (go) { showScene(go.dataset.go, true).then(() => setTab("map")); return; }
+      const lay = e.target.closest("[data-layer]");
+      if (lay) { setLayer(lay.dataset.layer); return; }
+      const stp = e.target.closest("[data-step]");
+      if (stp) { state.step = +stp.dataset.step; renderPicker(); drawMap(); return; }
+      const tab = e.target.closest("[data-tab]");
+      if (tab) { setTab(tab.dataset.tab); return; }
+      const vw = e.target.closest("[data-view]");
+      if (vw) { setView(vw.dataset.view); return; }
+      const lg = e.target.closest("[data-lang]");
+      if (lg) { setLang(lg.dataset.lang); return; }
+      const fl = e.target.closest("[data-filter]");
+      if (fl) { state.screenFilter = fl.dataset.filter; $$("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", b === fl)); renderScreen(); return; }
+      if (e.target.closest("#unitbtn")) {
+        state.unit = { decade: "year", year: "total", total: "decade" }[state.unit];
+        drawMap(); renderInspector(); return;
+      }
+      if (e.target.id === "modalclose" || e.target.id === "modal") $("#modal").hidden = true;
     });
-    $("#layers").addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-layer]");
-      if (!b) return;
-      state.layer = b.dataset.layer;
-      buildLayers();
-      drawMap();
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { $("#modal").hidden = true; if (openMenu) { openMenu = null; renderMenus(); } }
     });
-    $("#stepsel").addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-step]");
-      if (!b) return;
-      state.step = +b.dataset.step;
-      buildLayers();
-      drawMap();
-    });
+    $("#scene").addEventListener("change", (e) => showScene(e.target.value, true));
+    $("#apply").addEventListener("click", applyYears);
+    $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
+    $("#search").addEventListener("change", (e) => doSearch(e.target.value));
+    $("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(e.target.value); });
     $("#boxmode").addEventListener("click", (e) => {
       map.boxMode = !map.boxMode;
       e.currentTarget.setAttribute("aria-pressed", map.boxMode);
-      map.canvas.parentElement.classList.toggle("box-mode", map.boxMode);
+      e.currentTarget.classList.toggle("primary", map.boxMode);
+      $("#mapwrap").classList.toggle("box-mode", map.boxMode);
     });
-    document.addEventListener("click", (e) => {
-      const g = e.target.closest("[data-go]");
-      if (g) { showScene(g.dataset.go); window.scrollTo({ top: 0, behavior: "smooth" }); }
-      const f = e.target.closest("button[data-filter]");
-      if (f) {
-        state.screenFilter = f.dataset.filter;
-        document.querySelectorAll("button[data-filter]").forEach((b) => b.setAttribute("aria-pressed", b === f));
-        renderScreen();
-      }
+    ["coast", "borders", "places", "stipple"].forEach((k) => $("#ov-" + k).addEventListener("change", (e) => { state.ov[k] = e.target.checked; drawMap(); }));
+    $("#play").addEventListener("click", togglePlay);
+    $("#yearslider").addEventListener("input", (e) => {
+      state.year = annualCube(state.entry).years[+e.target.value];
+      if (state.layer !== "anom") { state.layer = "anom"; renderPicker(); }
+      renderTimeline(); drawMap();
     });
-    map.canvas.addEventListener("pointerdown", onPointerDown);
-    map.canvas.addEventListener("pointermove", onPointerMove);
-    map.canvas.addEventListener("pointerup", onPointerUp);
-    map.canvas.addEventListener("pointerleave", () => { if (!map.drag) hideTip(); });
+    $("#surfmult").addEventListener("input", (e) => { surface.mult = +e.target.value; surface.schedule(); });
+    $("#surfreset").addEventListener("click", () => { surface.reset(); surface.mult = 1; $("#surfmult").value = 1; surface.schedule(); });
+    map.canvas.addEventListener("pointerdown", onDown);
+    map.canvas.addEventListener("pointermove", onMove);
+    map.canvas.addEventListener("pointerup", onUp);
+    map.canvas.addEventListener("pointerleave", () => { if (!map.drag) { hideTip(); status({ cursor: null }); } });
+    window.addEventListener("hashchange", () => {
+      const id = location.hash.slice(1);
+      if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
+    });
     let rz;
-    window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { drawMap(); renderSelection(); renderRegionMeans(); }, 150); });
-    const mq = matchMedia("(prefers-color-scheme: dark)");
-    const retheme = () => { buildPalette(); drawMap(); renderSelection(); renderRegionMeans(); };
-    mq.addEventListener("change", retheme);
+    const onResize = () => { clearTimeout(rz); rz = setTimeout(() => { drawMap(); renderInspector(); renderAnalysis(); }, 120); };
+    window.addEventListener("resize", onResize);
+    if (window.ResizeObserver) new ResizeObserver(onResize).observe($("#mapwrap"));
+    const retheme = () => { buildPalette(); drawMap(); renderInspector(); renderAnalysis(); };
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
     new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
   boot();

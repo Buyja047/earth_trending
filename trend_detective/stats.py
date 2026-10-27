@@ -26,7 +26,8 @@ Methods and their sources
   alpha_FDR = 2 * alpha_global for spatially correlated fields (Wilks 2016,
   BAMS 97:2263).
 * Weatherhead et al. (1998, JGR 103:17149) years-to-detect n* and the
-  minimum detectable trend for the record length (90 % power, 5 % level).
+  minimum detectable trend for the record length (90 % power, 5 % level),
+  scaled for the sampling interval (the published 3.3 assumes monthly data).
 """
 
 from __future__ import annotations
@@ -278,21 +279,29 @@ def step_test_rows(x: np.ndarray, t: np.ndarray, t_break: float):
     return coef[:, 2], p, coef[:, 1]
 
 
-def weatherhead_nstar(sigma, phi, omega):
-    """Years needed to detect trend ``omega`` (units/yr) from monthly noise.
+def _weatherhead_k(step: float) -> float:
+    """3.3 holds for monthly sampling; for sampling every ``step`` years the
+    trend standard error scales by sqrt(12 * step) (annual data: x 3.46)."""
+    return WEATHERHEAD_K * np.sqrt(12.0 * step)
 
-    n* = [3.3 sigma_N / |omega| * sqrt((1+phi)/(1-phi))]^(2/3)
+
+def weatherhead_nstar(sigma, phi, omega, step=1.0 / 12.0):
+    """Years needed to detect trend ``omega`` (units/yr).
+
+    n* = [K sigma_N / |omega| * sqrt((1+phi)/(1-phi))]^(2/3), K = 3.3 for
+    monthly data (Weatherhead et al. 1998); sigma_N and phi describe the noise
+    at the sampling interval ``step`` (years).
     """
     phi = np.clip(phi, -0.95, 0.95)
     with np.errstate(divide="ignore", invalid="ignore"):
-        return (WEATHERHEAD_K * sigma / np.abs(omega)
+        return (_weatherhead_k(step) * sigma / np.abs(omega)
                 * np.sqrt((1 + phi) / (1 - phi))) ** (2.0 / 3.0)
 
 
-def min_detectable_trend(sigma, phi, n_years):
+def min_detectable_trend(sigma, phi, n_years, step=1.0 / 12.0):
     """Smallest |trend| (units/yr) detectable in ``n_years`` (inverse of n*)."""
     phi = np.clip(phi, -0.95, 0.95)
-    return WEATHERHEAD_K * sigma * np.sqrt((1 + phi) / (1 - phi)) / n_years**1.5
+    return _weatherhead_k(step) * sigma * np.sqrt((1 + phi) / (1 - phi)) / n_years**1.5
 
 
 # ----------------------------------------------------------------------------
@@ -344,8 +353,9 @@ def analyze_rows(anom: np.ndarray, t: np.ndarray, alpha: float = 0.05,
 
     b_ols, se_ols, p_ols, r1, ne, sigma = ols_ar1_rows(anom, t)
     span_years = record_years(t)
-    mdt = min_detectable_trend(sigma, r1, span_years)
-    nstar = weatherhead_nstar(sigma, r1, sen)
+    step = float(np.median(np.diff(t)))
+    mdt = min_detectable_trend(sigma, r1, span_years, step)
+    nstar = weatherhead_nstar(sigma, r1, sen, step)
 
     steps = []
     for tb in breaks:

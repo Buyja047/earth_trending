@@ -140,31 +140,47 @@
     return 1 + 2 * total / (n * (n - 1) * (n - 2));
   }
 
-  function orderStat(sorted, pos) {
-    const lo = Math.floor(pos), frac = pos - lo;
-    return frac === 0 ? sorted[lo] : (1 - frac) * sorted[lo] + frac * sorted[lo + 1];
+  // k-th smallest (0-based) by in-place quickselect; O(n) instead of a full sort
+  function kth(a, k) {
+    let lo = 0, hi = a.length - 1;
+    while (lo < hi) {
+      const pivot = a[(lo + hi) >> 1];
+      let i = lo, j = hi;
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) { const tmp = a[i]; a[i] = a[j]; a[j] = tmp; i++; j--; }
+      }
+      if (k <= j) hi = j; else if (k >= i) lo = i; else break;
+    }
+    return a[k];
   }
 
-  function senSlope(x, t, varS, alpha = 0.05) {
-    const n = x.length;
-    const npairs = n * (n - 1) / 2;
-    const sl = new Float64Array(npairs);
+  function orderStat(a, pos) {
+    const lo = Math.floor(pos), frac = pos - lo;
+    const v = kth(a, lo);
+    return frac === 0 ? v : (1 - frac) * v + frac * kth(a, lo + 1);
+  }
+
+  function pairSlopes(x, t) {
+    const n = x.length, sl = new Float64Array(n * (n - 1) / 2);
     let p = 0;
     for (let i = 0; i < n - 1; i++) {
-      for (let j = i + 1; j < n; j++) sl[p++] = (x[j] - x[i]) / (t[j] - t[i]);
+      const xi = x[i], ti = t[i];
+      for (let j = i + 1; j < n; j++) sl[p++] = (x[j] - xi) / (t[j] - ti);
     }
-    sl.sort();
-    const med = 0.5 * (sl[(npairs - 1) >> 1] + sl[npairs >> 1]);
-    let lo = NaN, hi = NaN;
-    if (varS > 0) {
-      const zc = 1.959963984540054; // alpha = 0.05
-      const c = (alpha === 0.05 ? zc : zc) * Math.sqrt(varS);
-      const loPos = Math.min(Math.max((npairs - c) / 2 - 1, 0), npairs - 1);
-      const hiPos = Math.min(Math.max((npairs + c) / 2, 0), npairs - 1);
-      lo = orderStat(sl, loPos);
-      hi = orderStat(sl, hiPos);
-    }
-    return { sen: med, lo, hi };
+    return sl;
+  }
+  const senMedian = (sl) => 0.5 * (kth(sl, (sl.length - 1) >> 1) + kth(sl, sl.length >> 1));
+  // 95 % rank CI of Gilbert (1987) from the pairwise slopes and Var(S)
+  function senCI(sl, varS) {
+    if (!(varS > 0)) return [NaN, NaN];
+    const N = sl.length, c = 1.959963984540054 * Math.sqrt(varS);
+    return [orderStat(sl, Math.min(Math.max((N - c) / 2 - 1, 0), N - 1)), orderStat(sl, Math.min(Math.max((N + c) / 2, 0), N - 1))];
+  }
+  function senSlope(x, t, varS) {
+    const sl = pairSlopes(x, t), [lo, hi] = senCI(sl, varS);
+    return { sen: senMedian(sl), lo, hi };
   }
 
   function olsAr1(x, t) {
@@ -186,14 +202,17 @@
     return { ols: b, se, p, phi: r1, nEff: ne, sigma: Math.sqrt(sse / (n - 2)), intercept: xm - b * tm };
   }
 
-  function minDetectableTrend(sigma, phi, years) {
+  // 3.3 holds for monthly data; sampling every `step` years scales it by sqrt(12 step)
+  function weatherheadK(step) { return WEATHERHEAD_K * Math.sqrt(12 * (step || 1 / 12)); }
+
+  function minDetectableTrend(sigma, phi, years, step) {
     const f = Math.min(0.95, Math.max(-0.95, phi));
-    return WEATHERHEAD_K * sigma * Math.sqrt((1 + f) / (1 - f)) / Math.pow(years, 1.5);
+    return weatherheadK(step) * sigma * Math.sqrt((1 + f) / (1 - f)) / Math.pow(years, 1.5);
   }
 
-  function yearsToDetect(sigma, phi, omega) {
+  function yearsToDetect(sigma, phi, omega, step) {
     const f = Math.min(0.95, Math.max(-0.95, phi));
-    return Math.pow(WEATHERHEAD_K * sigma / Math.abs(omega) * Math.sqrt((1 + f) / (1 - f)), 2 / 3);
+    return Math.pow(weatherheadK(step) * sigma / Math.abs(omega) * Math.sqrt((1 + f) / (1 - f)), 2 / 3);
   }
 
   /** Full battery on one series of anomalies; t in decimal years. Drops NaNs. */
@@ -207,18 +226,21 @@
     const S = mkScore(x);
     const varS = mkVariance(x);
     const pNaive = pTwoSidedNormal(mkZ(S, varS));
-    const sen0 = senSlope(x, t).sen;
-    const factor = ar1VarianceFactor(x, t, sen0);
+    const sl = pairSlopes(x, t);
+    const senMed = senMedian(sl);
+    const factor = ar1VarianceFactor(x, t, senMed);
     const varMk = varS * factor;
     const pMk = pTwoSidedNormal(mkZ(S, varMk));
-    const sen = senSlope(x, t, varMk);
+    const [ciLo, ciHi] = senCI(sl, varMk);
+    const sen = { sen: senMed, lo: ciLo, hi: ciHi };
     const o = olsAr1(x, t);
-    const years = t[n - 1] - t[0] + median(t.slice(1).map((v, i) => v - t[i]));
+    const step = median(t.slice(1).map((v, i) => v - t[i]));
+    const years = t[n - 1] - t[0] + step;
     return {
       n, S, varS, factor, pNaive, pMk, sen: sen.sen, senLo: sen.lo, senHi: sen.hi,
       ols: o.ols, pOls: o.p, phi: o.phi, nEff: o.nEff, sigma: o.sigma,
-      mdt: minDetectableTrend(o.sigma, o.phi, years),
-      nstar: yearsToDetect(o.sigma, o.phi, sen.sen), years,
+      mdt: minDetectableTrend(o.sigma, o.phi, years, step),
+      nstar: yearsToDetect(o.sigma, o.phi, sen.sen, step), years,
       intercept: median(x.map((v, i) => v - sen.sen * t[i])),
     };
   }
@@ -230,7 +252,7 @@
   }
 
   const api = { mkScore, mkVariance, mkZ, pTwoSidedNormal, pTwoSidedT, ranks, lag1,
-    ar1VarianceFactor, senSlope, olsAr1, minDetectableTrend, yearsToDetect, analyze, median };
+    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, analyze, median };
   root.TDStats = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -1,4 +1,4 @@
-"""Monte Carlo check of the local tests, written to web/data/validation.json.
+"""Monte Carlo check of the local tests, written to web/data/validation.js.
 
 For AR(1) noise of several strengths (45 years of monthly data) we count how
 often each test calls a trend significant at 5 % when there is no trend
@@ -8,12 +8,12 @@ detectable trend (power; Weatherhead's formula targets 0.90).
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
 
 from . import stats
+from .payload import write_payload
 
 TESTS = {
     "p_naive": "Mann-Kendall, no correction",
@@ -55,8 +55,8 @@ def run(reps=400, years=45, phis=(0.0, 0.3, 0.6, 0.9), seed=2026) -> dict:
 
 
 if __name__ == "__main__":
-    out = Path(__file__).resolve().parent.parent / "web" / "data" / "validation.json"
+    out = Path(__file__).resolve().parent.parent / "web" / "data" / "validation.js"
     res = run()
-    out.write_text(json.dumps(res, indent=1))
+    write_payload(out, "validation", res)
     for r in res["rows"]:
         print(r)
