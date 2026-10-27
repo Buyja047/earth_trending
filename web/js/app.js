@@ -328,7 +328,10 @@
   }
 
   // ------------------------------------------------------------ 2D map
-  const map = { canvas: null, ctx: null, W: 0, H: 0, g: null, drag: null, boxMode: false, lim: 1 };
+  // view = zoom factor and the lon/lat at the canvas centre; ptrs = active pointers (two of them pinch);
+  // zmax lets one grid cell grow to about 160 px
+  const map = { canvas: null, ctx: null, W: 0, H: 0, g: null, drag: null, pan: null, pinch: null, gesture: false,
+    ptrs: new Map(), raf: 0, boxMode: false, lim: 1, zmax: 8, view: { z: 1, lon: null, lat: null } };
   let surface = null;
   function baseGeom(sc) {
     const g = sc.grid;
@@ -399,45 +402,83 @@
     map.lim = lim;
     renderLegend(lim);
     if (state.view === "surf") { drawSurface(lim); return; }
-    const wrap = $("#mapwrap"), gb0 = baseGeom(sc);
+    paint();
+  }
+  // fit the whole extent into the canvas, then apply the zoom and centre held in map.view
+  function layout() {
+    const gb = baseGeom(state.sc), W = map.W, H = map.H, pad = 10, v = map.view;
+    let w = W - 2 * pad, h = w * gb.aspect;
+    if (h > H - 2 * pad) { h = H - 2 * pad; w = h / gb.aspect; }
+    const dlon = gb.lon1 - gb.lon0, dlat = gb.lat1 - gb.lat0;
+    map.zmax = Math.max(4, Math.min(64, 160 / (w * state.sc.grid.dlon / dlon)));
+    v.z = Math.min(v.z, map.zmax);
+    w *= v.z; h *= v.z;
+    if (v.lon === null) { v.lon = gb.lon0 + dlon / 2; v.lat = gb.lat0 + dlat / 2; }
+    let ox = W / 2 - (v.lon - gb.lon0) / dlon * w, oy = H / 2 - (gb.lat1 - v.lat) / dlat * h;
+    // centre the data while it fits; once larger than the canvas, stop its edges at the padding
+    ox = w <= W - 2 * pad + 1e-6 ? (W - w) / 2 : Math.min(pad, Math.max(W - pad - w, ox));
+    oy = h <= H - 2 * pad + 1e-6 ? (H - h) / 2 : Math.min(pad, Math.max(H - pad - h, oy));
+    v.lon = gb.lon0 + (W / 2 - ox) / w * dlon;
+    v.lat = gb.lat1 - (H / 2 - oy) / h * dlat;
+    map.g = Object.assign(gb, { w, h, ox, oy });
+    $("#zin").disabled = v.z >= map.zmax - 1e-9;
+    $("#zout").disabled = $("#zreset").disabled = v.z <= 1 + 1e-9;
+  }
+  const inkOn = (c) => (0.2126 * toLin(c[0]) + 0.7152 * toLin(c[1]) + 0.0722 * toLin(c[2]) > 0.18 ? "#000" : "#fff");
+  function paint() {
+    const sc = state.sc, wrap = $("#mapwrap"), gb0 = baseGeom(sc);
     // on phones the map gets the height its shape needs instead of filling the pane
     const narrow = matchMedia("(max-width: 760px)").matches;
     const want = narrow ? `${Math.round(wrap.clientWidth * gb0.aspect + 20)}px` : "";
     if (wrap.style.height !== want) wrap.style.height = want;
     const W = wrap.clientWidth, H = wrap.clientHeight;
     if (!W || !H) return;
-    const dpr = window.devicePixelRatio || 1;
-    map.canvas.width = Math.round(W * dpr); map.canvas.height = Math.round(H * dpr);
+    const dpr = window.devicePixelRatio || 1, cwPx = Math.round(W * dpr), chPx = Math.round(H * dpr);
+    if (map.canvas.width !== cwPx || map.canvas.height !== chPx) { map.canvas.width = cwPx; map.canvas.height = chPx; }
     map.W = W; map.H = H;
-    const gb = baseGeom(sc), pad = 10;
-    let w = W - 2 * pad, h = w * gb.aspect;
-    if (h > H - 2 * pad) { h = H - 2 * pad; w = h / gb.aspect; }
-    map.g = Object.assign(gb, { w, h, ox: (W - w) / 2, oy: (H - h) / 2 });
-    const ctx = map.ctx;
+    layout();
+    const ctx = map.ctx, G = map.g, lim = map.lim;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = rgb(pal.bg);
     ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = pal.line;
     ctx.lineWidth = 1;
-    ctx.strokeRect(map.g.ox - 0.5, map.g.oy - 0.5, w + 1, h + 1);
-    const g = sc.grid;
+    ctx.strokeRect(G.ox - 0.5, G.oy - 0.5, G.w + 1, G.h + 1);
+    const g = sc.grid, cw = G.w / (G.lon1 - G.lon0) * g.dlon, ch = G.h / (G.lat1 - G.lat0) * g.dlat;
+    // zoomed in far enough, each cell also shows its value, except where a place is labelled
+    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", pl = placeLayout();
+    ctx.font = `10px ${cssVar("--font-data")}`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (let j = 0; j < g.ny; j++) {
       const ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
+      if (yb < 0 || ya > H) continue;
       for (let i = 0; i < g.nx; i++) {
+        const xa = X(g.lon[i] - g.dlon / 2), xb = X(g.lon[i] + g.dlon / 2);
+        if (xb < 0 || xa > W) continue;
         const k = j * g.nx + i, look = cellLook(k, lim);
         if (!look) continue;
-        const xa = X(g.lon[i] - g.dlon / 2), xb = X(g.lon[i] + g.dlon / 2);
         ctx.fillStyle = rgb(look.col);
         ctx.fillRect(xa, ya, xb - xa + 0.6, yb - ya + 0.6);
+        if (!labels) continue;
+        const v = cellNumber(k);
+        if (v === null || !Number.isFinite(v)) continue;
+        const txt = state.layer === "detect" ? fmt(v, 2) : signed(v, 2), tx = (xa + xb) / 2, ty = (ya + yb) / 2, hw = ctx.measureText(txt).width / 2 + 2;
+        if (hits({ x0: tx - hw, x1: tx + hw, y0: ty - 7, y1: ty + 7 }, pl.taken)) continue;
+        ctx.fillStyle = inkOn(look.col);
+        ctx.fillText(txt, tx, ty);
       }
     }
-    if (state.ov.stipple && map.g.w / g.nx >= 3) {
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    if (state.ov.stipple && cw >= 3) {
       ctx.fillStyle = pal.ink;
-      const r = Math.max(0.8, map.g.w / g.nx / 7);
+      const r = Math.min(3, Math.max(0.8, cw / 7));
       for (let k = 0; k < state.res.status.length; k++) {
         const s = state.res.status[k];
         if (s !== 1 && s !== 2) continue;
-        ctx.beginPath(); ctx.arc(X(g.lon[k % g.nx]), Y(g.lat[Math.floor(k / g.nx)]), r, 0, 2 * Math.PI); ctx.fill();
+        let x = X(g.lon[k % g.nx]), y = Y(g.lat[Math.floor(k / g.nx)]);
+        if (labels) { x -= cw / 2 - 5; y -= ch / 2 - 5; }
+        if (x < -4 || y < -4 || x > W + 4 || y > H + 4) continue;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill();
       }
     }
     if (state.ov.coast) drawLines(state.geo.land, pal.coast, 0.8);
@@ -445,8 +486,35 @@
       if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
       drawLines(state.geo.focus.rings, pal.ink, 1.6);
     }
-    drawPlaces();
+    drawPlaces(pl);
     drawSelection();
+  }
+  function schedulePaint() {
+    if (map.raf) return;
+    map.raf = requestAnimationFrame(() => { map.raf = 0; if (state.view === "map" && state.res) paint(); });
+  }
+  function resetView() { map.view = { z: 1, lon: null, lat: null }; }
+  function viewChanged() { schedulePaint(); hideTip(); status(); }
+  // zoom by factor f keeping the point under (px, py) fixed
+  function zoomAt(px, py, f) {
+    const v = map.view, G = map.g;
+    if (!G) return;
+    const z = Math.max(1, Math.min(map.zmax, v.z * f)), r = z / v.z;
+    if (r === 1) return;
+    const w = G.w * r, h = G.h * r, ox = px - (px - G.ox) * r, oy = py - (py - G.oy) * r;
+    v.z = z;
+    v.lon = G.lon0 + (map.W / 2 - ox) / w * (G.lon1 - G.lon0);
+    v.lat = G.lat1 - (map.H / 2 - oy) / h * (G.lat1 - G.lat0);
+    layout();
+    viewChanged();
+  }
+  function panBy(dx, dy) {
+    const v = map.view, G = map.g;
+    if (!G || (!dx && !dy)) return;
+    v.lon -= dx / G.w * (G.lon1 - G.lon0);
+    v.lat += dy / G.h * (G.lat1 - G.lat0);
+    layout();
+    viewChanged();
   }
   function drawLines(rings, color, width, dash) {
     const ctx = map.ctx;
@@ -465,29 +533,54 @@
   }
   const placeName = (p) => (mn() ? p.mn : p.en);
   const inMap = (lat, lon) => lon >= map.g.lon0 && lon <= map.g.lon1 && lat >= map.g.lat0 && lat <= map.g.lat1;
-  function drawPlaces() {
-    const ctx = map.ctx, sc = state.sc, list = [];
-    if (state.ov.places && sc.region !== "global") list.push(...state.places.filter((p) => p.cc === "MN"));
+  const hits = (r, list) => list.some((q) => r.x0 < q.x1 && r.x1 > q.x0 && r.y0 < q.y1 && r.y1 > q.y0);
+  // where each place marker and label goes; a label that would overlap one already placed is dropped
+  function placeLayout() {
+    const ctx = map.ctx, sc = state.sc, z = map.view.z, list = [];
+    if (state.ov.places) {
+      if (sc.region !== "global") list.push(...state.places.filter((p) => p.cc === "MN"));
+      else if (z >= 2) list.push(...state.places.filter((p) => p.kind === "capital"));
+    }
     if (state.searched && !list.includes(state.searched)) list.push(state.searched);
+    const rank = (p) => (p === state.searched ? 0 : ["capital", "mine", "airfield"].includes(p.kind) ? 1 : 2);
+    list.sort((a, b) => rank(a) - rank(b));
     ctx.font = `11px ${cssVar("--font-ui")}`;
+    const items = [], taken = [];
     for (const p of list) {
       if (!inMap(p.lat, p.lon)) continue;
       const x = X(p.lon), y = Y(p.lat);
-      const labelled = p === state.searched || ["capital", "mine", "airfield"].includes(p.kind);
+      if (x < -8 || y < -8 || x > map.W + 8 || y > map.H + 8) continue;
+      const it = { p, x, y, lx: null };
+      items.push(it);
+      taken.push({ x0: x - 5, x1: x + 5, y0: y - 5, y1: y + 5 });
+      if (rank(p) === 2 && z < 2) continue;
+      const tw = ctx.measureText(placeName(p)).width;
+      // Ulaanbaatar reads best on its left, the southern sites on their right; fall back to the other side
+      const sides = p.kind === "capital" && p.cc === "MN" ? [-1, 1] : [1, -1];
+      for (const sd of sides) {
+        const lx = sd > 0 ? x + 7 : x - 7 - tw, r = { x0: lx - 1, x1: lx + tw + 1, y0: y - 6, y1: y + 7 };
+        if (r.x0 < 2 || r.x1 > map.W - 2 || hits(r, taken.slice(0, -1))) continue;
+        it.lx = lx;
+        taken.push(r);
+        break;
+      }
+    }
+    return { items, taken };
+  }
+  function drawPlaces(pl) {
+    const ctx = map.ctx;
+    ctx.font = `11px ${cssVar("--font-ui")}`;
+    for (const { p, x, y, lx } of pl.items) {
       ctx.fillStyle = pal.ink;
       ctx.strokeStyle = rgb(pal.bg);
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       if (p.kind === "mine" || p.kind === "airfield") ctx.rect(x - 3.5, y - 3.5, 7, 7); else ctx.arc(x, y, p === state.searched ? 5 : 2.6, 0, 2 * Math.PI);
       ctx.fill(); ctx.stroke();
-      if (!labelled) continue;
+      if (lx === null) continue;
       ctx.lineWidth = 3;
-      const right = p.kind === "airfield" || (p.kind === "mine" && p.lon > 106);
-      ctx.textAlign = right ? "left" : "right";
-      const lx = right ? x + 7 : x - 7;
       ctx.strokeText(placeName(p), lx, y + 4);
       ctx.fillText(placeName(p), lx, y + 4);
-      ctx.textAlign = "left";
     }
   }
   function drawSelection() {
@@ -544,14 +637,41 @@
     }
     return c.sen[i] === null ? "–" : `${signed(c.sen[i] * unitFactor())} ${unitText(sc)}`;
   }
+  function cellNumber(k) {
+    const c = state.res.cells, sc = state.sc;
+    switch (state.layer) {
+      case "verdict": return null;
+      case "detect": return c.mdt[k] === null ? null : c.mdt[k] * unitFactor();
+      case "anom": { const cube = annualCube(state.entry); return cube.data[k * cube.ny + cube.years.indexOf(state.year)]; }
+      case "steps": { const st = sc.steps[state.step]; return st && st.step[k] !== null ? st.step[k] : null; }
+      case "truth": return sc.truth ? sc.truth.slope[k] * unitFactor() : null;
+      default: return c.sen[k] === null ? null : c.sen[k] * unitFactor();
+    }
+  }
+  // mouse: drag pans, Shift-drag (or Box select) draws a box, wheel zooms; touch: one finger pans, two pinch
   function onMove(e) {
     if (state.view !== "map" || !state.res) return;
     const p = pointer(e);
+    if (map.ptrs.has(e.pointerId)) map.ptrs.set(e.pointerId, p);
+    if (map.pinch) {
+      if (map.ptrs.size < 2) return;
+      const [a, b] = [...map.ptrs.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      panBy(mx - map.pinch.mx, my - map.pinch.my);
+      zoomAt(mx, my, d / map.pinch.d);
+      map.pinch = { d, mx, my };
+      return;
+    }
+    if (map.pan) {
+      if (!map.pan.moved && Math.hypot(p.x - map.pan.x0, p.y - map.pan.y0) > 5) { map.pan.moved = true; map.canvas.classList.add("panning"); }
+      if (map.pan.moved) { panBy(p.x - map.pan.x, p.y - map.pan.y); map.pan.x = p.x; map.pan.y = p.y; return; }
+    }
     if (map.drag) {
       map.drag.x1 = p.x; map.drag.y1 = p.y;
       if (Math.hypot(p.x - map.drag.x0, p.y - map.drag.y0) > 6) map.drag.moved = true;
-      if (map.drag.moved) { drawMap(); hideTip(); return; }
+      if (map.drag.moved) { schedulePaint(); hideTip(); return; }
     }
+    if (e.pointerType === "touch") return;
     const i = cellAt(p.x, p.y), tip = $("#tip"), st = i >= 0 ? state.res.status[i] : 0;
     if (i < 0 || st === 0) { tip.hidden = true; status({ cursor: null }); return; }
     const g = state.sc.grid, lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx], txt = cellText(i);
@@ -562,21 +682,43 @@
     status({ cursor: ll(LAT(p.y), LON(p.x)), value: txt });
   }
   function onDown(e) {
-    if (state.view !== "map" || (e.pointerType !== "mouse" && !map.boxMode)) return;
+    if (state.view !== "map" || !state.res || (e.pointerType === "mouse" && e.button !== 0)) return;
     const p = pointer(e);
-    map.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
-    map.canvas.setPointerCapture(e.pointerId);
+    map.ptrs.set(e.pointerId, p);
+    try { map.canvas.setPointerCapture(e.pointerId); } catch (err) { /* pointer already released */ }
+    if (map.ptrs.size === 2) {
+      const [a, b] = [...map.ptrs.values()];
+      map.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      map.gesture = true; map.pan = null; map.drag = null;
+      hideTip();
+      return;
+    }
+    if (map.ptrs.size > 2) return;
+    if (map.boxMode || e.shiftKey) map.drag = { x0: p.x, y0: p.y, x1: p.x, y1: p.y, moved: false };
+    else map.pan = { x0: p.x, y0: p.y, x: p.x, y: p.y, moved: false };
+  }
+  function releasePointer(e) {
+    const had = map.ptrs.delete(e.pointerId);
+    if (map.ptrs.size < 2) map.pinch = null;
+    map.canvas.classList.remove("panning");
+    return had;
   }
   function onUp(e) {
-    if (state.view !== "map" || !state.res) return;
-    const p = pointer(e), d = map.drag;
-    map.drag = null;
+    if (!releasePointer(e) || state.view !== "map" || !state.res) return;
+    // after a pinch, wait until every finger is up before a tap can select again
+    if (map.gesture) { if (!map.ptrs.size) map.gesture = false; map.pan = null; map.drag = null; return; }
+    const p = pointer(e), d = map.drag, pan = map.pan;
+    map.drag = null; map.pan = null;
     if (d && d.moved) selectBox(d);
-    else {
+    else if (!(pan && pan.moved)) {
       const i = cellAt(p.x, p.y);
       if (i >= 0 && state.res.status[i] !== 0) { state.sel = { type: "cell", i }; renderInspector(); renderAnalysis(); }
     }
-    drawMap();
+    paint();
+  }
+  function onCancel(e) {
+    releasePointer(e);
+    if (!map.ptrs.size) { map.gesture = false; map.pan = null; map.drag = null; schedulePaint(); }
   }
   function selectBox(d) {
     const g = state.sc.grid, st = state.res.status;
@@ -596,12 +738,22 @@
   }
 
   // ------------------------------------------------------------ layer picker, legend, timeline, status bar
-  function renderPicker() {
+  function availLayers() {
     const sc = state.sc;
-    const avail = LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth));
+    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth));
+  }
+  const layerIcon = (l) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>`;
+  function renderPicker() {
+    const avail = availLayers();
     if (!avail.includes(state.layer)) state.layer = "trend";
-    $("#picker").innerHTML = avail.map((l) => `<button type="button" data-layer="${l}" aria-pressed="${l === state.layer}"><svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>${esc(t(LAYER_KEY[l]))}</button>`).join("") +
-      (state.layer === "steps" && sc.steps.length > 1 ? sc.steps.map((s, k) => `<button type="button" data-step="${k}" aria-pressed="${k === state.step}">${esc(s.label.slice(0, 7))}</button>`).join("") : "");
+    $("#layerbtn").innerHTML = `${layerIcon(state.layer)}<span><span class="muted">${esc(t("layer_btn"))}:</span> <b>${esc(t(LAYER_KEY[state.layer]))}</b></span><span class="caret" aria-hidden="true">▾</span>`;
+    $("#picker").innerHTML = avail.map((l) => `<button type="button" role="menuitemradio" data-layer="${l}" aria-checked="${l === state.layer}">${layerIcon(l)}<span><b>${esc(t(LAYER_KEY[l]))}</b><small>${esc(t(LAYER_KEY[l] + "_d"))}</small></span></button>`).join("");
+  }
+  function setLayerMenu(open, focus) {
+    const menu = $("#picker");
+    menu.hidden = !open;
+    $("#layerbtn").setAttribute("aria-expanded", open);
+    if (open && focus) (menu.querySelector('[aria-checked="true"]') || menu.querySelector("button")).focus();
   }
   function countStatus(k) { let n = 0; for (const s of state.res.status) if (s === k) n++; return n; }
   function renderLegend(lim) {
@@ -622,14 +774,18 @@
     let what = t("lg_sen"), note = "", unit = unitBtn;
     if (state.layer === "trend") note = t("lg_full", { a: fmt(2 * state.alpha) });
     if (state.layer === "naive") note = t("lg_naive", { a: state.alpha });
-    if (state.layer === "steps") { what = t("lg_step"); note = t("lg_stepnote"); unit = esc(unitLabel(sc.units)); }
+    let dates = "";
+    if (state.layer === "steps") {
+      what = t("lg_step"); note = t("lg_stepnote"); unit = esc(unitLabel(sc.units));
+      if (sc.steps.length > 1) dates = `<span class="seg" role="group">${sc.steps.map((s, k) => `<button type="button" data-step="${k}" aria-pressed="${k === state.step}">${esc(s.label.slice(0, 7))}</button>`).join("")}</span>`;
+    }
     if (state.layer === "truth") what = t("lg_truth");
     if (state.layer === "anom") {
       const cube = annualCube(state.entry);
       what = t("lg_anom", { y: state.year }); unit = esc(unitLabel(sc.units));
       note = t("lg_anomnote", { y0: cube.years[0], y1: cube.years[cube.years.length - 1] });
     }
-    el.innerHTML = `<span><b>${esc(what)}</b></span>
+    el.innerHTML = `<span><b>${esc(what)}</b></span>${dates}
       <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${stops})"></span>
       <span class="ticks"><span>${signed(invert ? lim : -lim)}</span><span>0</span><span>${signed(invert ? -lim : lim)}</span></span></span>
       ${unit}<span class="muted">${esc(invert ? t("lg_inc") : t("lg_dec"))} ← → ${esc(invert ? t("lg_dec") : t("lg_inc"))}</span>
@@ -672,6 +828,7 @@
       `<span>${esc(t("st_period"))}: <b>${state.y0}–${state.y1}</b></span>`,
       `<span>α = <b>${state.alpha}</b> · FDR p* = <b>${fmt(r.pstar, 2)}</b></span>`,
       `<span>${esc(t("st_cells"))}: <b>${nf(r.counts.valid)}</b></span>`,
+      `<span>${esc(t("st_zoom"))}: <b>×${fmt(map.view.z, 2)}</b></span>`,
     ].join("");
   }
 
@@ -1165,7 +1322,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         { label: t("an_full"), act: () => preset("full") }, { label: t("an_30"), act: () => preset(30) },
         { label: t("an_20"), act: () => preset(20) }, { label: t("an_2001"), act: () => preset(2001) }, "-",
         ...[0.1, 0.05, 0.01].map((a) => ({ label: t("an_alpha", { a }), cls: ck(Math.abs(state.alpha - a) < 1e-9), act: () => { $("#alpha").value = a.toFixed(2); setAlpha(a); } })), "-",
-        ...LAYERS.filter((l) => sc && (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth)).map((l) => ({ label: t(LAYER_KEY[l]), cls: ck(state.layer === l), act: () => setLayer(l) }))] },
+        ...(sc ? availLayers() : []).map((l) => ({ label: t(LAYER_KEY[l]), cls: ck(state.layer === l), act: () => setLayer(l) }))] },
       { id: "help", label: t("m_help"), items: [
         { label: t("help_guide"), act: showGuide }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
     ];
@@ -1189,8 +1346,6 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     for (const s of state.index.scenes) { if (!groups.has(s.group)) groups.set(s.group, []); groups.get(s.group).push(s); }
     $("#tree-scenes").innerHTML = [...groups].map(([g, list]) => `<details open><summary>${esc(I.group(g))}</summary>${list.map((s) =>
       `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
-    $("#scene").innerHTML = [...groups].map(([g, list]) => `<optgroup label="${esc(I.group(g))}">${list.map((s) => `<option value="${s.id}">${esc(sceneTitle(s))}</option>`).join("")}</optgroup>`).join("");
-    if (state.sc) $("#scene").value = state.sc.id;
   }
   function fillYears() {
     const [a, b] = fullRange();
@@ -1202,6 +1357,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     document.documentElement.lang = mn() ? "mn" : "en";
     $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
     $$("[data-i18n-ph]").forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
+    $$("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); el.setAttribute("aria-label", el.title); });
     $$("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.lang === L()));
     $("#placelist").innerHTML = state.places.map((p) => `<option value="${esc(placeName(p))}"></option>`).join("");
   }
@@ -1217,6 +1373,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     stopPlay();
     const entry = await loadScene(id), prev = state.sc;
     state.entry = entry; state.sc = entry.sc; state.sel = null; state.step = 0; state.year = null;
+    if (!prev || prev.region !== entry.sc.region) resetView();
     const [a, b] = fullRange();
     if (!keepYears || !prev) { state.y0 = a; state.y1 = b; } else {
       state.y0 = Math.max(a, Math.min(state.y0, b - 9));
@@ -1248,7 +1405,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   function setLayer(l) { state.layer = l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
   function setView(v) {
     state.view = v;
-    $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf";
+    $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf"; $("#zoomctl").hidden = v !== "map";
     hideTip();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === v));
     renderMenus();
@@ -1257,6 +1414,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   function setTab(tab) {
     state.tab = tab;
     ["map", "analysis", "screen", "method"].forEach((k) => { $("#doc-" + k).hidden = k !== tab; });
+    $("#layerdd").hidden = tab !== "map";
+    if (tab !== "map") setLayerMenu(false);
     $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab));
     if (tab === "map") requestAnimationFrame(drawMap);
     renderAnalysis(); renderScreen(); renderMethod();
@@ -1286,6 +1445,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     const g = state.sc.grid, i = Math.floor((p.lon - (g.lon[0] - g.dlon / 2)) / g.dlon), j = Math.floor((p.lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
     if (i >= 0 && j >= 0 && i < g.nx && j < g.ny && state.res.status[j * g.nx + i] !== 0) {
       state.sel = { type: "cell", i: j * g.nx + i };
+      Object.assign(map.view, { z: Math.max(map.view.z, state.sc.region === "global" ? 4 : 2), lon: p.lon, lat: p.lat });
       setTab("map"); renderInspector(); renderAnalysis(); drawMap();
       status({ cursor: ll(p.lat, p.lon), value: placeName(p) });
     } else {
@@ -1336,12 +1496,14 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         return;
       }
       if (openMenu && !e.target.closest(".menu")) { openMenu = null; renderMenus(); }
+      if (e.target.closest("#layerbtn")) { setLayerMenu($("#picker").hidden, e.detail === 0); return; }
+      if (!$("#picker").hidden && !e.target.closest("#picker")) setLayerMenu(false);
       const go = e.target.closest("[data-go]");
       if (go) { showScene(go.dataset.go, true).then(() => setTab("map")); return; }
       const lay = e.target.closest("[data-layer]");
-      if (lay) { setLayer(lay.dataset.layer); return; }
+      if (lay) { setLayer(lay.dataset.layer); setLayerMenu(false); if (e.detail === 0) $("#layerbtn").focus(); return; }
       const stp = e.target.closest("[data-step]");
-      if (stp) { state.step = +stp.dataset.step; renderPicker(); drawMap(); return; }
+      if (stp) { state.step = +stp.dataset.step; drawMap(); return; }
       const tab = e.target.closest("[data-tab]");
       if (tab) { setTab(tab.dataset.tab); return; }
       const vw = e.target.closest("[data-view]");
@@ -1357,9 +1519,17 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       if (e.target.id === "modalclose" || e.target.id === "modal") $("#modal").hidden = true;
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { $("#modal").hidden = true; if (openMenu) { openMenu = null; renderMenus(); } }
+      if (e.key === "Escape") {
+        $("#modal").hidden = true;
+        if (openMenu) { openMenu = null; renderMenus(); }
+        if (!$("#picker").hidden) { setLayerMenu(false); $("#layerbtn").focus(); }
+      }
+      if (!$("#picker").hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        const items = $$("#picker button"), n = items.length, k = items.indexOf(document.activeElement), down = e.key === "ArrowDown";
+        items[k < 0 ? (down ? 0 : n - 1) : (k + (down ? 1 : -1) + n) % n].focus();
+        e.preventDefault();
+      }
     });
-    $("#scene").addEventListener("change", (e) => showScene(e.target.value, true));
     $("#apply").addEventListener("click", applyYears);
     $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
     $("#search").addEventListener("change", (e) => doSearch(e.target.value));
@@ -1382,7 +1552,29 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     map.canvas.addEventListener("pointerdown", onDown);
     map.canvas.addEventListener("pointermove", onMove);
     map.canvas.addEventListener("pointerup", onUp);
-    map.canvas.addEventListener("pointerleave", () => { if (!map.drag) { hideTip(); status({ cursor: null }); } });
+    map.canvas.addEventListener("pointercancel", onCancel);
+    map.canvas.addEventListener("pointerleave", () => { if (!map.drag && !map.pan) { hideTip(); status({ cursor: null }); } });
+    map.canvas.addEventListener("wheel", (e) => {
+      if (state.view !== "map" || !state.res) return;
+      e.preventDefault();
+      const p = pointer(e), dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+      zoomAt(p.x, p.y, Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.002)));
+    }, { passive: false });
+    map.canvas.addEventListener("dblclick", (e) => { if (state.view === "map" && state.res) { const p = pointer(e); zoomAt(p.x, p.y, e.shiftKey ? 0.5 : 2); } });
+    map.canvas.addEventListener("keydown", (e) => {
+      if (state.view !== "map" || !state.res) return;
+      const k = e.key, step = 60;
+      if (k === "+" || k === "=") zoomAt(map.W / 2, map.H / 2, 1.5);
+      else if (k === "-" || k === "_") zoomAt(map.W / 2, map.H / 2, 1 / 1.5);
+      else if (k === "0") { resetView(); paint(); status(); }
+      else if (k === "ArrowLeft" || k === "ArrowRight") panBy(k === "ArrowLeft" ? step : -step, 0);
+      else if (k === "ArrowUp" || k === "ArrowDown") panBy(0, k === "ArrowUp" ? step : -step);
+      else return;
+      e.preventDefault();
+    });
+    $("#zin").addEventListener("click", () => zoomAt(map.W / 2, map.H / 2, 2));
+    $("#zout").addEventListener("click", () => zoomAt(map.W / 2, map.H / 2, 0.5));
+    $("#zreset").addEventListener("click", () => { resetView(); paint(); status(); });
     window.addEventListener("hashchange", () => {
       const id = location.hash.slice(1);
       if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);

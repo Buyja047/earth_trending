@@ -25,8 +25,6 @@
   </header>
 
   <div class="toolbar gut">
-    <label><span data-i18n="tb_dataset">Dataset</span> <select id="scene"></select></label>
-    <span class="tsep" aria-hidden="true"></span>
     <label><span data-i18n="tb_from">Years</span> <select id="y0" aria-label="Start year"></select></label>
     <label><span data-i18n="tb_to">to</span> <select id="y1" aria-label="End year"></select></label>
     <button type="button" class="btn primary" id="apply" data-i18n="tb_apply">Apply</button>
@@ -57,19 +55,29 @@
     </aside>
 
     <main class="center">
-      <div class="doctabs" role="tablist">
-        <button type="button" role="tab" data-tab="map" data-i18n="tab_map">Map</button>
-        <button type="button" role="tab" data-tab="analysis" data-i18n="tab_analysis">Analysis</button>
-        <button type="button" role="tab" data-tab="screen" data-i18n="tab_screen">Variable ranking</button>
-        <button type="button" role="tab" data-tab="method" data-i18n="tab_method">Method</button>
+      <div class="docbar">
+        <div class="doctabs" role="tablist">
+          <button type="button" role="tab" data-tab="map" data-i18n="tab_map">Map</button>
+          <button type="button" role="tab" data-tab="analysis" data-i18n="tab_analysis">Analysis</button>
+          <button type="button" role="tab" data-tab="screen" data-i18n="tab_screen">Variable ranking</button>
+          <button type="button" role="tab" data-tab="method" data-i18n="tab_method">Method</button>
+        </div>
+        <div class="layerdd" id="layerdd">
+          <button type="button" class="layerbtn" id="layerbtn" aria-haspopup="menu" aria-expanded="false" aria-controls="picker"></button>
+          <div class="layermenu" id="picker" role="menu" aria-label="Map layer" hidden></div>
+        </div>
       </div>
 
       <section class="doc" id="doc-map" role="tabpanel">
-        <div class="picker" id="picker" role="group" aria-label="Map layer"></div>
         <div class="mapwrap" id="mapwrap">
-          <canvas id="map" aria-label="Trend map"></canvas>
+          <canvas id="map" tabindex="0" aria-label="Trend map"></canvas>
           <canvas id="surf" aria-label="3D surface of the trend field" hidden></canvas>
           <div class="mapnote" id="mapnote" hidden></div>
+          <div class="zoomctl" id="zoomctl" role="group" aria-label="Zoom">
+            <button type="button" id="zin" data-i18n-title="zoom_in" aria-label="Zoom in">+</button>
+            <button type="button" id="zout" data-i18n-title="zoom_out" aria-label="Zoom out">−</button>
+            <button type="button" id="zreset" data-i18n-title="zoom_reset" aria-label="Whole map">⤢</button>
+          </div>
           <div class="surfctl" id="surfctl" hidden>
             <label><span data-i18n="sf_height">Height ×</span> <input type="range" id="surfmult" min="0.2" max="4" step="0.1" value="1"></label>
             <button type="button" class="btn" id="surfreset" data-i18n="sf_reset">Reset view</button>

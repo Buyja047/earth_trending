@@ -37,23 +37,29 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 
 ## What you can do in the viewer
 
-- **Datasets** (left panel): global MERRA-2 temperature, precipitation, soil
-  wetness, sea ice and ozone (1981–2025); Mongolia temperature, precipitation,
-  soil wetness, wind, snow (1981–2025), CERES aerosol and IMERG precipitation
-  (2001–2025); a known-truth test field.
-- **Layers** (right edge of the map, as on windy.com): FDR-tested trend, naive
-  trend, verdict, smallest detectable trend, year-by-year anomaly, data-source
-  steps.
+- **Datasets** (layer manager on the left, the one place to pick data): global
+  MERRA-2 temperature, precipitation, soil wetness, sea ice and ozone
+  (1981–2025); Mongolia temperature, precipitation, soil wetness, wind, snow
+  (1981–2025), CERES aerosol and IMERG precipitation (2001–2025); a
+  known-truth test field.
+- **Layers** (the *Layer ▾* button at the end of the tab row, so nothing
+  covers the map): FDR-tested trend, naive trend, verdict, smallest detectable
+  trend, year-by-year anomaly, data-source steps, each with a one-line
+  explanation.
+- **Zoom and pan**: mouse wheel, two-finger pinch, double-click or the + / −
+  buttons; drag to move; ⤢ shows the whole map. Zoomed in, each cell prints its
+  value and every town in Mongolia (or every capital on the globe) is
+  labelled. Keyboard: + − 0 and the arrow keys on the focused map.
 - **Timeline** under the map: press ▶ to play the anomalies year by year.
 - **Years**: pick a start and end year and press Apply. Every trend, test,
   false-discovery threshold and count is recomputed in the browser (monthly
   values for Mongolia, annual means for the globe). Change α the same way.
-- **Click a cell** for its time series and statistics; **drag a box** to
-  average a region (on touch screens switch on *Box select* first).
+- **Click a cell** for its time series and statistics; **Shift-drag a box**
+  to average a region (or switch on *Box select*, also on touch screens).
 - **3D surface** (toolbar or View menu): the trend field as a landscape; drag
   to rotate, scroll to zoom, change the height.
 - **Search** Mongolian aimag centres, Oyu Tolgoi, the Tavan Tolgoi airfield
-  and world capitals (GeoNames).
+  and world capitals (GeoNames); the map zooms to the place.
 - **Analysis tab**: area means, the start/end-year triangle, case notes, and
   cross-checks (MERRA-2 vs GPM IMERG precipitation; MERRA-2 vs NSIDC sea ice).
 - **Variable ranking tab**: 91 MERRA-2 and CERES variables over Mongolia.
