@@ -975,7 +975,7 @@
     const unitBtn = `<button type="button" class="unitbtn" id="unitbtn" title="${esc(t("lg_unit_hint"))}">${esc(unitText(sc))}</button>`;
     if (state.layer === "verdict") {
       const cols = verdictColors();
-      el.innerHTML = [1, 2, 3, 4, 5, 6].map((k) => `<span><i class="sw" style="background:${rgb(cols[k])}"></i>${esc(t("v" + k))} <span class="num muted">${nf(countStatus(k))}</span></span>`).join("");
+      el.innerHTML = [1, 2, 3, 4, 5, 6].map((k) => `<span><i class="sw" style="background:${rgb(cols[k])}"></i>${esc(t("v" + k))} <span class="num muted">${nf(countStatus(k))}</span></span>`).join("") + csvBtn("cells");
       return;
     }
     if (state.layer === "emerge") {
@@ -988,12 +988,12 @@
         <span class="ticks pos">${pNow > 24 ? tick(e0, 0) : "<span></span>"}${tick(state.y1, pNow)}${pNow < 76 ? tick(CAP_YEAR, 100) : "<span></span>"}</span></span>
         <span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("ey_after", { y: CAP_YEAR }))} / ${esc(t("ey_none"))}</span>
         <span class="num muted">${esc(t("ey_counts", { a: nf(a), b: nf(b), c: nf(c), y1: state.y1, cap: CAP_YEAR }))}</span>
-        <span class="muted">${esc(t("lg_emergenote"))}</span>`;
+        <span class="muted">${esc(t("lg_emergenote"))}</span>${csvBtn("cells")}`;
       return;
     }
     if (state.layer === "detect") {
       el.innerHTML = `<span><b>${esc(t("lg_detect"))}</b></span><span><span class="ramp" style="display:block;background:linear-gradient(90deg,${rgb(pal.seq[0])},${rgb(pal.seq[128])},${rgb(pal.seq[255])})"></span>
-        <span class="ticks"><span>0</span><span>${fmt(lim / 2)}</span><span>≥${fmt(lim)}</span></span></span>${unitBtn}`;
+        <span class="ticks"><span>0</span><span>${fmt(lim / 2)}</span><span>≥${fmt(lim)}</span></span></span>${unitBtn}${csvBtn("cells")}`;
       return;
     }
     const invert = WATER_VARS.has(sc.var);
@@ -1015,7 +1015,7 @@
     el.innerHTML = `<span><b>${esc(what)}</b></span>${dates}
       <span><span class="ramp" style="display:block;background:linear-gradient(90deg,${stops})"></span>
       <span class="ticks"><span>${signed(invert ? lim : -lim)}</span><span>0</span><span>${signed(invert ? -lim : lim)}</span></span></span>
-      ${unit}<span class="muted">${esc(invert ? t("lg_inc") : t("lg_dec"))} ← → ${esc(invert ? t("lg_dec") : t("lg_inc"))}</span>
+      ${unit}<span class="muted">${esc(invert ? t("lg_inc") : t("lg_dec"))} ← → ${esc(invert ? t("lg_dec") : t("lg_inc"))}</span>${csvBtn("cells")}
       <span class="muted">${note}</span>`;
   }
   function renderTimeline() {
@@ -1240,6 +1240,7 @@
 
   function renderInspector() {
     const sc = state.sc, el = $("#inspector"), sel = state.sel;
+    state.exportSeries = null;
     if (!sel) { el.innerHTML = `<p class="eyebrow">${esc(t("d_selection"))}</p><p class="muted">${esc(t("sel_hint"))}</p>`; return; }
     const tt = seriesTimes(sc), cube = annualCube(state.entry);
     if (sel.type === "cell") {
@@ -1253,7 +1254,7 @@
       const ann = { years: cube.years, vals: Array.from(cube.data.subarray(i * cube.ny, (i + 1) * cube.ny)) };
       const sub = subsetAnnual(ann.years, ann.vals, state.y0, state.y1);
       const intercept = S.median(sub.vs.map((v, k) => v - sen * sub.ys[k]).filter(Number.isFinite));
-      el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}
+      el.innerHTML = `<p class="eyebrow eyebtn">${esc(t("d_cell"))} ${ll(lat, lon)} ${csvBtn("series")}</p>${pill(st)}
         <div><span class="big">${signed(c.sen[i] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
         <div id="cellchart"></div>
         ${statsList({ sen: c.sen[i], lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
@@ -1262,6 +1263,10 @@
           (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
       seriesChart($("#cellchart"), { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
         trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept }, markers: markers(sc), window: chartWindow(), label: "cell series" });
+      const used = sc.series.kind === "monthly" ? monthlyWindow(y, sc.series.start, state.y0, state.y1) : (() => { const a = subsetAnnual(cube.years, ann.vals, state.y0, state.y1); return { x: a.vs, t: a.ys }; })();
+      state.exportSeries = { what: `cell_${llTag(lat, lon)}`, where: [["cell_lat", lat], ["cell_lon", lon]], x: used.x, t: used.t, pre: !state.res.custom,
+        stats: { sen: c.sen[i], sen_lo: c.sen_lo[i], sen_hi: c.sen_hi[i], p_naive: c.p_naive[i], p_mk: c.p_mk[i], p_ols: c.p_ols[i], phi: c.phi[i],
+          sigma: c.sigma[i], mdt: c.mdt[i], nstar: c.nstar[i], detect: detectArr()[i], verdict: st } };
       if (cmpReady()) el.insertAdjacentHTML("beforeend", cmpCellBlock(lon, lat));
       return;
     }
@@ -1281,6 +1286,7 @@
       }
       const win = monthlyWindow(Array.from(mAcc, (v, q) => (mW[q] ? v / mW[q] : NaN)), sc.series.start, state.y0, state.y1);
       r = S.analyze(win.x, win.t);
+      if (r) r.used = win;
       kind = t("kind_monthly");
     } else {
       const sub = subsetAnnual(cube.years, annVals, state.y0, state.y1);
@@ -1290,7 +1296,11 @@
     if (!r) { el.innerHTML = `<p class="muted">${esc(t("tri_need"))}</p>`; return; }
     const [lonA, latA, lonB, latB] = sel.bounds;
     const st = r.pMk < state.alpha ? (r.pOls < state.alpha ? 1 : 2) : (r.nstar > r.years ? 4 : 5);
-    el.innerHTML = `<p class="eyebrow">${esc(t("d_box", { a: ll(latA, lonA), b: ll(latB, lonB) }))}</p>
+    const used = sc.series.kind === "monthly" ? r.used : (() => { const a = subsetAnnual(cube.years, annVals, state.y0, state.y1); return { x: a.vs, t: a.ys }; })();
+    state.exportSeries = { what: "box", where: [["box_west", lonA], ["box_south", latA], ["box_east", lonB], ["box_north", latB], ["box_cells", sel.cells.length]],
+      x: used.x, t: used.t, stats: { sen: r.sen * 10, sen_lo: r.senLo * 10, sen_hi: r.senHi * 10, p_naive: r.pNaive, p_mk: r.pMk, p_ols: r.pOls,
+        phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, detect: detectYear(r.nstar, r.sen * 10, r.senLo * 10, r.senHi * 10, r.phi, r.n), verdict: st } };
+    el.innerHTML = `<p class="eyebrow eyebtn">${esc(t("d_box", { a: ll(latA, lonA), b: ll(latB, lonB) }))} ${csvBtn("series")}</p>
       <p class="small muted">${esc(t("box_note", { n: nf(sel.cells.length), kind }))}</p>${pill(st)}
       <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
       <div id="cellchart"></div>
@@ -1348,6 +1358,111 @@
       ${cells}<p class="small muted">${esc(t("cmp_nodiff"))}</p></div>`;
   }
 
+  // ------------------------------------------------------------ CSV export
+  // Column names and verdicts are in English whatever the interface language, so files read the same
+  // everywhere; "# key: value" lines on top carry the context (pandas: read_csv(path, comment="#")).
+  const csvBtn = (what, k) => `<button type="button" class="csvbtn" data-csv="${what}"${k ? ` data-k="${k}"` : ""} title="${esc(t("csv_title"))}">⤓ ${esc(t("csv"))}</button>`;
+  const llTag = (lat, lon) => `${Math.abs(lat).toFixed(2)}${lat >= 0 ? "N" : "S"}_${Math.abs(lon).toFixed(3)}${lon >= 0 ? "E" : "W"}`;
+  function csvCell(v) {
+    if (v === null || v === undefined || (typeof v === "number" && Number.isNaN(v))) return "";
+    if (v === Infinity) return "never";
+    const s = typeof v === "number" ? String(+v.toPrecision(10)) : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  // "# key: value" lines are read whole, so no quoting there
+  const metaVal = (v) => (typeof v === "number" ? csvCell(v) : String(v ?? "").replace(/[\r\n]+/g, " "));
+  // decimal time (mid-month or mid-year) back to YYYY-MM or YYYY
+  const tLabel = (tv, monthly) => (monthly ? `${Math.floor(tv)}-${String(Math.floor((tv - Math.floor(tv)) * 12 + 1e-6) + 1).padStart(2, "0")}` : String(Math.floor(tv)));
+  function csvMeta(extra) {
+    const sc = state.sc, r = state.res;
+    const meta = [["tool", "Trend Detective"], ["generated_utc", new Date().toISOString().slice(0, 19) + "Z"],
+      ["page", `${location.href.split("#")[0]}#${sc.id}`], ["dataset", `${sc.id}: ${sc.title}`], ["product", sc.product_name],
+      ["variable", `${sc.var} (${sc.long_name || sc.title})`], ["units", sc.units], ["region", sc.region_name],
+      ["years", `${state.y0}-${state.y1}`], ["alpha", state.alpha], ["alpha_fdr", 2 * state.alpha], ["fdr_p_threshold", r.pstar],
+      ["trend_method", "Theil-Sen slope per decade; CI 95 %; p_corrected = Mann-Kendall with the Hamed-Rao correction (AR(1)); p_ols_ar1 = OLS with AR(1) effective n (Santer 2000)"],
+      ["detectable_by_method", "start year + ceil(n*) - 1, n* = years for 90 % detection at 5 % (Weatherhead et al. 1998), if the trend continues; low/high from the Sen CI and e^+-B"]];
+    if (sc.live) meta.push(["read_live", `${sc.live_info.read} from NASA POWER on AWS`]);
+    return meta.concat(extra || []).map(([k, v]) => `# ${k}: ${metaVal(v)}`);
+  }
+  const VERDICT_EN = (code) => I.en("v" + code);
+  function csvCells() {
+    const sc = state.sc, g = sc.grid, c = state.res.cells, st = state.res.status, det = detectArr();
+    const rows = [["lat", "lon", "verdict_code", "verdict", "trend_per_decade", "trend_ci_low", "trend_ci_high", "p_naive", "p_corrected", "p_ols_ar1",
+      "significant_fdr", "phi", "noise_sd", "min_detectable_trend_per_decade", "years_to_detect", "detectable_by", "detectable_by_low", "detectable_by_high", "mean_value"]];
+    for (let k = 0; k < st.length; k++) {
+      const s = st[k], ok = s >= 1 && s <= 5, d = det[k];
+      rows.push([g.lat[Math.floor(k / g.nx)], g.lon[k % g.nx], s, VERDICT_EN(s), ok ? c.sen[k] : null, ok ? c.sen_lo[k] : null, ok ? c.sen_hi[k] : null,
+        ok ? c.p_naive[k] : null, ok ? c.p_mk[k] : null, ok ? c.p_ols[k] : null, ok ? (s === 1 || s === 2 ? 1 : 0) : null, ok ? c.phi[k] : null,
+        ok ? c.sigma[k] : null, ok ? c.mdt[k] : null, ok ? c.nstar[k] : null, d ? d.y : null, d ? d.lo : null, d ? d.hi : null, c.clim_mean[k]]);
+    }
+    const k = state.res.counts;
+    return { name: `cells`, meta: [["rows", "one per grid cell (centre lat/lon); verdict_code 0 = no data, 6 = months missing"],
+      ["cells_tested", k.valid], ["cells_significant_fdr", k.fdr]], rows };
+  }
+  function csvSeries(x, tt, stats, where, what, pre) {
+    const sc = state.sc, monthly = sc.series.kind === "monthly" && tt.length > 1 && tt[1] - tt[0] < 0.5;
+    const s = stats || {}, d = s.detect;
+    const meta = where.concat([
+      ["values", monthly ? "monthly anomalies, calendar-month means of the chosen years removed (the input to the statistics)"
+        : "annual-mean anomalies of the chosen years (the input to the statistics)"],
+      ["statistics_from", pre ? "full-precision data when the dataset was built; the values below are the page's rounded copy, so a recomputation from them can differ in the 3rd-4th significant digit"
+        : "exactly the values in this file, computed in the browser"],
+      ["trend_per_decade", s.sen], ["trend_ci_low", s.sen_lo], ["trend_ci_high", s.sen_hi], ["p_naive", s.p_naive], ["p_corrected", s.p_mk],
+      ["p_ols_ar1", s.p_ols], ["phi", s.phi], ["noise_sd", s.sigma], ["min_detectable_trend_per_decade", s.mdt], ["years_to_detect", s.nstar],
+      ["detectable_by", d ? `${csvCell(d.y)} (range ${csvCell(d.lo)} to ${csvCell(d.hi)})` : ""]].concat(s.verdict !== undefined ? [["verdict", VERDICT_EN(s.verdict)]] : []));
+    const rows = [[monthly ? "month" : "year", "anomaly"]];
+    tt.forEach((tv, q) => rows.push([tLabel(tv, monthly), Number.isFinite(x[q]) ? x[q] : null]));
+    return { name: what, meta, rows };
+  }
+  function csvRegion(k) {
+    const sc = state.sc, rm = sc.region_means[k], s = state.res.regionStats[k];
+    const w = monthlyWindow(rm.monthly, rm.monthly_start, state.y0, state.y1);
+    const d = s ? detectYear(s.nstar, s.sen, s.sen_lo, s.sen_hi, s.phi, s.n) : null;
+    return csvSeries(w.x, w.t, s && { sen: s.sen, sen_lo: s.sen_lo, sen_hi: s.sen_hi, p_naive: s.p_naive, p_mk: s.p_mk, p_ols: s.p_ols_ar1,
+      phi: s.phi, sigma: s.sigma, mdt: s.mdt, nstar: s.nstar, detect: d }, [["area", `${rm.name}; ${rm.how === "area_sum" ? "area sum" : "cos-latitude weighted mean"}`]], rm.key, !state.res.custom);
+  }
+  function csvScreen() {
+    const rows = [["variable", "long_name", "units", "source", "start_year", "end_year", "trend_per_decade", "trend_ci_low", "trend_ci_high",
+      "change_in_noise_sd", "change_percent_of_mean", "p_naive", "p_corrected", "significant_fdr"]];
+    for (const r of screenRows()) {
+      const s = r.stats || {};
+      rows.push([r.var, r.long_name, r.units, r.product, r.start, state.y1, s.sen, s.sen_lo, s.sen_hi, r.change_sd, r.change_pct, s.p_naive, s.p_mk, r.fdr ? 1 : 0]);
+    }
+    return { name: "screen", meta: [["rows", "every screened variable, area mean over Mongolia; significant_fdr from a variable-level FDR (variables are correlated: a guide, not a test)"]], rows };
+  }
+  async function exportCsv(what, k) {
+    const sc = state.sc;
+    let out;
+    if (what === "cells") out = csvCells();
+    else if (what === "series") {
+      const e = state.exportSeries;
+      if (!e) { modal(`<p>${esc(t("csv_none"))}</p>`); return; }
+      out = csvSeries(e.x, e.t, e.stats, e.where, e.what, e.pre);
+    } else if (what === "region") out = csvRegion(k);
+    else if (what === "screen") out = csvScreen();
+    else return;
+    const head = what === "screen" ? csvMeta().filter((l) => /^# (tool|generated_utc|page|years|alpha)/.test(l)) : csvMeta();
+    const text = head.concat(out.meta.map(([a, v]) => `# ${a}: ${metaVal(v)}`), out.rows.map((r) => r.map(csvCell).join(","))).join("\r\n") + "\r\n";
+    const base = what === "screen" ? "trend-detective_screen-mongolia" : `trend-detective_${sc.id}_${state.y0}-${state.y1}_${out.name}`;
+    await saveFile(`${base}.csv`, text);
+  }
+  // the claude.ai page saves through its downloads capability (the viewer confirms); elsewhere a link download.
+  // Asked for at start-up so the answer is in by the first click; null (no runtime, or not granted) means a link.
+  const dlWhen = window.claude && typeof window.claude.use === "function"
+    ? Promise.race([Promise.resolve(window.claude.use("downloads")).catch(() => null), new Promise((r) => setTimeout(() => r(null), 10000))])
+    : Promise.resolve(null);
+  async function saveFile(filename, text) {
+    const dlCap = await dlWhen;
+    const data = "\ufeff" + text;               // byte-order mark so spreadsheet programs read UTF-8
+    if (dlCap) {
+      try { await dlCap.save({ filename, data }); return; } catch (e) { if (e && (e.code === "declined" || e.code === "rate_limited")) return; }
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: "text/csv;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: filename });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
   // ------------------------------------------------------------ analysis document
   function renderAnalysis() {
     if (state.tab !== "analysis" || !state.res) return;
@@ -1356,7 +1471,7 @@
       const s = state.res.regionStats[k];
       if (!s) return `<div class="rm"><h3>${esc(regionName(rm))}</h3><p class="muted">${esc(t("tri_need"))}</p></div>`;
       const steps = state.res.custom ? "" : (s.steps || []).map((st) => `<dt>${esc(t("s_step", { d: st.label.slice(0, 7) }))}</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)})</dd>`).join("");
-      return `<div class="rm"><h3>${esc(regionName(rm))}</h3>
+      return `<div class="rm"><h3 class="eyebtn">${esc(regionName(rm))} ${csvBtn("region", k)}</h3>
         <div><span class="big">${signed(s.sen)}</span> <span class="muted">${esc(unitLabel(rm.units))} ${esc(t("unit_decade"))} · ${esc(t("rm_mean"))} ${fmt(rm.raw_mean)} ${esc(unitLabel(rm.units))}</span></div>
         <div id="rmchart${k}"></div>
         <dl class="kv"><dt>${esc(t("rm_ci"))}</dt><dd>[${fmt(s.sen_lo)}, ${fmt(s.sen_hi)}]</dd>
@@ -1515,7 +1630,7 @@
     const rows = all.filter((r) => f === "all" || (f === "fdr" && r.fdr) || r.kind === f);
     const sceneFor = (r) => (state.index.scenes.find((s) => s.region === "mongolia" && s.var === r.var && s.product === r.product &&
       s.period.start.slice(0, 4) === (r.kind === "mission" ? "2001" : "1981")) || {}).id;
-    $("#screen-meta").textContent = t("sc_meta", { n: all.length, y0: state.y0, y1: state.y1 });
+    $("#screen-meta").innerHTML = `${esc(t("sc_meta", { n: all.length, y0: state.y0, y1: state.y1 }))} ${csvBtn("screen")}`;
     $("#screen-head").innerHTML = `<tr>${["h_var", "h_src", "h_years", "h_trend", "h_ci", "h_sd", "h_pct", "h_pn", "h_pc", "h_fdr", "h_ann"].map((k, i) => `<th class="${i >= 2 && i <= 8 ? "n" : ""}">${esc(t(k))}</th>`).join("")}</tr>`;
     $("#screen-body").innerHTML = rows.map((r) => {
       const s = r.stats, id = sceneFor(r);
@@ -1616,7 +1731,9 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     return [
       { id: "file", label: t("m_file"), items: [
         { label: t("file_repo"), href: REPO }, { label: t("file_zip"), href: REPO + "/archive/refs/heads/main.zip" },
-        { label: t("file_live"), act: openLive }, { label: t("file_run"), act: () => setTab("method") }] },
+        { label: t("file_live"), act: openLive }, "-",
+        { label: t("file_csv_map"), act: () => exportCsv("cells") }, { label: t("file_csv_sel"), act: () => exportCsv("series") }, "-",
+        { label: t("file_run"), act: () => setTab("method") }] },
       { id: "view", label: t("m_view"), items: [
         { label: t("view_map"), cls: ck(v === "map"), act: () => setView("map") }, { label: t("view_surf"), cls: ck(v === "surf"), act: () => setView("surf") },
         { label: t("view_cmp"), cls: ck(cmp.on), act: () => { if (state.view !== "map") setView("map"); setCompare(!cmp.on); } }, "-",
@@ -1925,6 +2042,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         state.unit = { decade: "year", year: "total", total: "decade" }[state.unit];
         drawMap(); renderInspector(); return;
       }
+      const csvb = e.target.closest("[data-csv]");
+      if (csvb) { exportCsv(csvb.dataset.csv, +csvb.dataset.k || 0); return; }
       if (e.target.closest("[data-cmp]")) { if (state.view !== "map") setView("map"); setCompare(!cmp.on); return; }
       if (e.target.closest("[data-cmp-close]")) { setCompare(false); return; }
       if (e.target.id === "cmp-apply") { cmpApply(); return; }

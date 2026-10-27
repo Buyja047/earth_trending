@@ -90,6 +90,13 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 - **Variable ranking tab**: 91 MERRA-2 and CERES variables over Mongolia.
 - **Method tab**: how significance is decided, with a Monte Carlo check.
 - **Legend**: click the unit to switch between per decade, per year and total.
+- **Download as CSV** (*⤓ CSV* buttons, or the File menu): the map table
+  (one row per cell: trend, 95 % interval, the three p-values, FDR flag,
+  verdict, smallest detectable trend, year detectable), the series of a
+  clicked cell or box, an area mean, or the variable ranking. The numbers are
+  the ones on screen for the chosen years and α; `# key: value` lines on top
+  record dataset, units, years and method (`pandas.read_csv(f, comment="#")`).
+  Columns are in English in both languages.
 - **View menu**: light, dark or system theme; hide side panels.
 
 ## What it does

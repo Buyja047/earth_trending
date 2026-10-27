@@ -208,6 +208,30 @@ stores monthly series (Mongolia), on annual means otherwise (globe), followed
 by the map-wide FDR at the chosen alpha. Step tests, cross-checks and case
 notes stay on the full record and say so.
 
+## Exported tables (CSV)
+
+Every *⤓ CSV* file holds exactly what the viewer shows for the current
+dataset, years and α, so a reader can check or reuse it elsewhere. The map
+table has one row per grid cell (cell-centre latitude and longitude) with
+Sen slope and 95 % interval per decade, the naive, Hamed-Rao-corrected and
+OLS + AR(1) p-values, the FDR flag (`significant_fdr`, at α_FDR = 2α), the
+verdict code and text, φ, noise SD, the smallest detectable trend, n\* and
+the year-detectable estimate with its range; cells without data are kept with
+empty fields so the grid stays complete. A series file holds the anomalies
+the statistics were computed from (monthly anomalies re-deseasonalised within
+the chosen years, or annual means) with the statistics in its header.
+
+For the full record of a precomputed dataset the statistics come from the
+Python build on full-precision data, while the page carries a rounded copy of
+each series (16-bit steps, 0.00036 °C for Mongolian T2M). Recomputing from
+that copy can therefore differ in the third or fourth significant digit
+(0.12172 against 0.1218 °C/decade for the Ulaanbaatar cell); the file says
+so in `statistics_from`. For chosen years, boxes and live analyses the
+statistics are computed from exactly the values in the file, and our test
+recomputes them from the file to the last digit. The map table's
+`trend_per_decade` equals the dataset's stored values for all 1,272
+Mongolian cells, and its FDR flags reproduce the on-screen count (1,101).
+
 ## Why not the published Hamed-Rao test
 
 We first implemented Hamed-Rao exactly as published (and as in

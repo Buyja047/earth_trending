@@ -38,6 +38,8 @@
     cmp_title: "Left and right halves", cmp_row_trend: "Area-mean trend [95% CI]", cmp_row_p: "p, corrected",
     cmp_row_fdr: "Cells significant after FDR / tested",
     cmp_nodiff: "No p-value is given for the difference between the halves: two windows of one record, or two products over the same place, are not independent samples, so a standard two-sample test would overstate the evidence.",
+    csv: "CSV", csv_title: "Download as CSV", file_csv_map: "Download map table (CSV)", file_csv_sel: "Download selected series (CSV)",
+    csv_none: "Click a cell or draw a box first.",
     tb_from: "Years", tb_to: "to", tb_apply: "Apply", tb_search: "Search a place…",
     tb_box: "Box select", tb_view: "View",
     p_layers: "Layer manager", p_datasets: "Datasets", p_overlays: "Overlays", p_details: "Details",
@@ -169,6 +171,8 @@
     cmp_title: "Зүүн ба баруун тал", cmp_row_trend: "Бүсийн дундаж чиг [95% завсар]", cmp_row_p: "p, засварласан",
     cmp_row_fdr: "FDR-ийн дараа ач холбогдолтой / шалгасан нүд",
     cmp_nodiff: "Хоёр талын зөрүүнд p-утга өгөхгүй: нэг бүртгэлийн хоёр хугацаа, эсвэл нэг газрын хоёр бүтээгдэхүүн бие даасан түүвэр биш тул энгийн хоёр түүврийн тест нотолгоог хэтрүүлнэ.",
+    csv: "CSV", csv_title: "CSV хэлбэрээр татах", file_csv_map: "Газрын зургийн хүснэгт татах (CSV)", file_csv_sel: "Сонгосон цуваа татах (CSV)",
+    csv_none: "Эхлээд нүд дарах эсвэл хайрцаг зурна уу.",
     tb_from: "Он", tb_to: "–", tb_apply: "Хэрэглэх", tb_search: "Газар хайх…",
     tb_box: "Хайрцгаар сонгох", tb_view: "Харагдац",
     p_layers: "Давхаргын менежер", p_datasets: "Өгөгдлүүд", p_overlays: "Нэмэлт давхарга", p_details: "Дэлгэрэнгүй",
@@ -286,6 +290,7 @@
       if (typeof s === "string" && vars) s = s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
       return s;
     },
+    en(key) { return EN[key] ?? key; },
     group(g) { return ((lang === "mn" ? MN : EN).groups || {})[g] || g; },
     sceneTitle(id, fallback) { return lang === "mn" ? (SCENE_MN[id] || fallback) : fallback; },
     unit(u) { return lang === "mn" ? (UNIT_MN[u] ?? u) : u; },
