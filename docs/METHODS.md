@@ -138,6 +138,36 @@ FDR and detectability as the precomputed scenes.
   holds tens of thousands of cells. The claude.ai preview of the page may not
   be allowed to reach AWS; the downloaded `TrendDetective.html` is.
 
+## Dust over Mongolia (MERRA-2 aerosols, GES DISC)
+
+NASA POWER carries no dust variables (its catalog has only CERES total aerosol
+optical depth, 2001 onward). Dust comes from the MERRA-2 monthly aerosol
+collection M2TMNXAER 5.12.4 at GES DISC (CMR C1276812866-GES_DISC; variables
+from CMR: DUSMASS, DUSMASS25, DUCMASS, DUEXTTAU among others), on the same
+0.5° × 0.625° grid as the POWER MERRA-2 store.
+
+- **Access.** GES DISC requires an Earthdata Login with the "NASA GESDISC
+  DATA ARCHIVE" application approved (stated on GES DISC's own archive pages).
+  Files are 80 MB per month, so `trend_detective/gesdisc.py` lists granules
+  through the public CMR API and asks Cloud OPeNDAP (DAP4) for the box only;
+  an unusable answer falls back to the whole file, and `dust-check` compares
+  both for one month before a build relies on the subset. GES DISC's on-premise
+  servers close "no earlier than September 30th 2026"; the code uses the
+  Earthdata Cloud URLs that CMR lists.
+- **Why the step tests matter here.** MERRA-2 aerosols are model fields nudged
+  by assimilated aerosol optical depth, and the observations changed (GMAO
+  technical report by Randles et al., Table 3.1): AVHRR over ocean only until
+  August 2002; MISR over bright surfaces (deserts) February 2000 – June 2014;
+  MODIS Terra from March 2000 and Aqua from August 2002; AERONET about 1999 –
+  October 2014. Over the Gobi, dust is therefore unconstrained by observations
+  before 2000, constrained by MISR from 2000 to mid-2014, and much less after.
+  Steps are tested at 2000-03, 2002-08 and 2014-07; a trend that disappears
+  once those steps are allowed for should not be reported as a dust trend.
+- **Independent check.** CERES total aerosol optical depth (2001 onward, scene
+  `mn-aod`) is a different quantity (all aerosols, not dust alone) but can be
+  set beside `mn-dust-aod` with *Compare*; agreement in sign and timing is
+  supporting evidence, not equality.
+
 ## Comparing two halves of the map
 
 *Compare* draws a second dataset, or the same dataset for other years, on the

@@ -9,13 +9,14 @@ the trend triangle).
 from __future__ import annotations
 
 import base64
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-from . import analysis, catalog, grid, nsidc, power, stats
+from . import analysis, catalog, gesdisc, grid, nsidc, power, stats
 from .geo import load_focus_rings, points_in_rings
 from .payload import read_payload, write_payload
 from .synthetic import dipole_field
@@ -69,6 +70,10 @@ SCENES = [
               group="Mongolia 1981-2025", case="mongolia", aggregates=["focus"]),
     SceneSpec("mn-aod", "Aerosol optical depth 550 nm", "syn1deg", "AOD_55_ADJ", "mongolia",
               start="2001-01", group="Mongolia 2001-2025", case="dust", aggregates=["focus"]),
+    SceneSpec("mn-dust", "Dust at the surface (MERRA-2)", "merra2aer", "DUSMASS", "mongolia",
+              group="Mongolia 1981-2025", case="dust", aggregates=["focus"]),
+    SceneSpec("mn-dust-aod", "Dust optical depth 550 nm (MERRA-2)", "merra2aer", "DUEXTTAU",
+              "mongolia", group="Mongolia 1981-2025", case="dust", aggregates=["focus"]),
     SceneSpec("mn-precip-m2-2001", "Precipitation, MERRA-2 (model)", "merra2", "PRECTOTCORR",
               "mongolia", start="2001-01", group="Mongolia 2001-2025", case="crosscheck",
               aggregates=["focus"]),
@@ -278,7 +283,8 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
 
 def build_spec(spec: SceneSpec, out_dir: Path, focus_rings, built: dict) -> dict:
     region = REGIONS[spec.region]
-    da = power.load(spec.product, spec.var, region["bbox"], spec.start, spec.end, spec.coarsen)
+    loader = gesdisc.load if spec.product == "merra2aer" else power.load
+    da = loader(spec.product, spec.var, region["bbox"], spec.start, spec.end, spec.coarsen)
     values, lat, lon = da.values, da["lat"].values, da["lon"].values
     if spec.regrid_like:
         ref = built[spec.regrid_like]
@@ -464,6 +470,14 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
     wanted |= {s.regrid_like for s in SCENES if s.id in wanted and s.regrid_like}
     for spec in SCENES:
         if spec.id not in wanted:
+            continue
+        if spec.product == "merra2aer" and not os.environ.get("EARTHDATA_TOKEN"):
+            prev = out_dir / f"{spec.id}.js"
+            if prev.exists():  # keep the last build made with a token
+                built[spec.id] = read_payload(prev)
+                print(f"kept {spec.id}: EARTHDATA_TOKEN not set, previous build reused", flush=True)
+            else:
+                print(f"skipped {spec.id}: needs an Earthdata Login token in EARTHDATA_TOKEN", flush=True)
             continue
         t0 = time.time()
         built[spec.id] = build_spec(spec, out_dir, focus, built)

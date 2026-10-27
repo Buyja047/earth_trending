@@ -5,6 +5,7 @@
   vars       list the monthly variables of a product, optionally filtered
   furniture  rebuild coastlines (world-atlas) and searchable places (GeoNames)
   catalog    rebuild the variable catalog the viewer uses for live analysis
+  dust-check read one month of MERRA-2 dust both ways (needs EARTHDATA_TOKEN)
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from . import analysis, catalog, power
 from .geo import build_geo, build_places
+from .gesdisc import verify as verify_dust
 from .livecat import build_catalog
 from .scenes import _breaks, _stats_json, build_all
 
@@ -49,6 +51,7 @@ def main(argv=None):
     f.add_argument("--geonames", type=Path, help="dir with GeoNames MN.txt and cities15000.txt")
 
     sub.add_parser("catalog", help="rebuild web/data/power-catalog.js (live analysis)")
+    sub.add_parser("dust-check", help="check GES DISC access and the server-side subset")
 
     a = ap.parse_args(argv)
     if a.cmd == "build":
@@ -68,6 +71,8 @@ def main(argv=None):
             if a.grep.lower() in text.lower():
                 flag = "" if catalog.screenable(r["var"]) else "  (not screened)"
                 print(text + flag)
+    elif a.cmd == "dust-check":
+        print(json.dumps(verify_dust(), indent=2))
     elif a.cmd == "catalog":
         cat = build_catalog(ROOT / "web" / "data" / "power-catalog.js")
         for p, e in cat["products"].items():

@@ -33,6 +33,14 @@ PRODUCTS = {
         "record_start": "1978-11",
         "url": "https://nsidc.org/data/g02135",
     },
+    "merra2aer": {
+        "name": "MERRA-2 aerosol diagnostics (GES DISC, M2TMNXAER)",
+        "kind": "model",
+        "source": "NASA GMAO MERRA-2 with aerosol data assimilation (Randles et al. 2017)",
+        "native_res": "0.5 deg x 0.625 deg",
+        "record_start": "1980-01",
+        "url": "https://disc.gsfc.nasa.gov/datacollection/M2TMNXAER_5.12.4.html",
+    },
     "imerg": {
         "name": "GPM IMERG (via NASA POWER v10)",
         "kind": "mission",
@@ -45,6 +53,8 @@ PRODUCTS = {
 
 LAND_VARS = {"GWETROOT", "GWETTOP", "GWETPROF", "SNODP", "FRSNO", "EVLAND", "PRECSNOLAND",
              "TSOIL1", "TSOIL2", "TSOIL3", "TSOIL4", "TSOIL5", "TSOIL6"}
+
+AEROSOL_VARS = ["DUSMASS", "DUSMASS25", "DUCMASS", "DUEXTTAU"]
 
 TRANSITIONS = [
     {
@@ -109,6 +119,24 @@ TRANSITIONS = [
                   "ice edge slightly inboard, under 0.15 million km2 less extent in the south",
     },
     {
+        "products": ["merra2aer"], "vars": AEROSOL_VARS, "date": "2000-03", "verified": True,
+        "label": "Aerosol optical depth assimilation over land begins (MISR over bright "
+                 "surfaces from Feb 2000, MODIS Terra from Mar 2000; before, AVHRR over ocean only)",
+        "source": "Randles et al., GMAO technical report on the MERRA-2 aerosol assimilation "
+                  "(gmao.gsfc.nasa.gov/pubs/docs/Randles887.pdf), Table 3.1",
+    },
+    {
+        "products": ["merra2aer"], "vars": AEROSOL_VARS, "date": "2002-08", "verified": True,
+        "label": "MODIS Aqua AOD assimilation begins; AVHRR (ocean) ends",
+        "source": "Randles et al., GMAO technical report, Table 3.1",
+    },
+    {
+        "products": ["merra2aer"], "vars": AEROSOL_VARS, "date": "2014-07", "verified": True,
+        "label": "MISR AOD over bright surfaces (deserts) no longer assimilated after June 2014; "
+                 "AERONET ends October 2014",
+        "source": "Randles et al., GMAO technical report, Table 3.1 (MISR Feb 2000-Jun 2014)",
+    },
+    {
         "products": ["imerg"], "vars": ["IMERG_PRECTOT"], "date": "2014-06", "verified": True,
         "label": "Calibration switches from TRMM to the GPM Core Observatory",
         "source": "NASA GPM: precipitation-rate histograms show a seam at the start of June 2014",
@@ -116,6 +144,12 @@ TRANSITIONS = [
 ]
 
 NOTES = {
+    ("merra2aer", None): (
+        "MERRA-2 aerosols are model fields nudged by assimilated aerosol optical depth: none "
+        "over land before 2000, MISR over bright deserts only from February 2000 to June "
+        "2014 (Randles et al. 2017). Over the Gobi a dust trend crossing 2000 or 2014 can "
+        "come from the change in observations; the step tests at those dates check this."
+    ),
     ("merra2", "PRECTOTCORR"): (
         "Observation-corrected precipitation: gauge-based (CPCU) at low and middle latitudes, "
         "CMAP over Africa, tapering to model precipitation between 42.5 and 62.5 deg and "

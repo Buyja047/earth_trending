@@ -118,7 +118,27 @@ Needs Python 3.10+ and an internet connection.
 | 1. Install once | double-click `install_analysis.bat` | `bash install_analysis.sh` |
 | 2. Rebuild `web/data` (20–30 min) | double-click `run_analysis.bat` | `bash run_analysis.sh` |
 
-Then open `TrendDetective.html` again. For developers:
+Then open `TrendDetective.html` again.
+
+### Dust over Mongolia (needs a free Earthdata Login)
+
+NASA POWER has no dust variables, so the dust scenes (`mn-dust`: surface dust
+concentration, `mn-dust-aod`: dust optical depth) read MERRA-2 aerosol
+diagnostics from NASA GES DISC, which requires an account:
+
+1. Register at https://urs.earthdata.nasa.gov and, under Applications →
+   Authorized Apps, approve **NASA GESDISC DATA ARCHIVE**.
+2. Generate a user token (valid 60 days) and provide it as the environment
+   variable `EARTHDATA_TOKEN` (in a Claude Code cloud environment: as a secret
+   in the environment settings, then start a new session).
+3. `python -m trend_detective dust-check` reads one month two ways
+   (server-side subset and whole file) and must report a difference of 0.
+4. `python -m trend_detective build --only mn-dust mn-dust-aod --no-screen`
+   (about 540 small requests per scene).
+
+Without the token, `build` skips these scenes (or keeps a previous build).
+
+For developers:
 
 ```bash
 pip install -r requirements.txt
