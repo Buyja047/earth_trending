@@ -93,16 +93,24 @@ cells whose planted trend is below the detectable size.
    42 % of native cells south of 60 S are missing. A trend computed on the
    remaining values would be censored. The tool detects partially missing
    cells and excludes them with an explanation.
-2. **Sea-ice boundary data.** MERRA-2 sea ice is a boundary condition whose
-   source changed in Jan 1982 (AMIP II -> Reynolds OISST) and Apr 2006
-   (-> OSTIA) per the UCAR Climate Data Guide citing Bosilovich et al. (2015).
-   In a Canadian Arctic Archipelago box, January ice fraction jumps from
-   0.39-0.40 (2003-04) to 0.45-0.46 (2005-09), which is not physical for
-   saturated winter ice. The MERRA-2 Antarctic sea-ice area trend
-   (+0.19 million km2/decade, 1981-2025) conflicts with NSIDC's Sea Ice Index,
-   whose 2023 lows turned the long-term Antarctic annual trend slightly
-   negative. NSIDC governs for sea ice; the single check is to run this tool
-   on NSIDC G02135.
+2. **Sea-ice boundary data, checked against NSIDC.** MERRA-2 sea ice is a
+   boundary condition copied from other analyses. Over 1981-2025 its Antarctic
+   area rises +0.19 million km2/decade (corrected p 0.039), while the NSIDC
+   Sea Ice Index (G02135 v4, the record built for this purpose) gives -0.03
+   (95 % CI -0.16 to +0.11, p 0.66): no detectable trend. MERRA-2 minus NSIDC
+   anomalies trend +0.25/decade (p 0.0003) and jump by +0.86 million km2 in
+   January 2005 (p 8e-7); with that step allowed for, the excess is -0.04.
+   January 2005 is when the sea-ice input inside Reynolds OISST, which
+   MERRA-2 uses until April 2006, switched from NASA GSFC to NCEP (UCAR
+   Climate Data Guide and NOAA NCEI OISST pages). The jump was found in the
+   data first and then matched to that documentation, so the date was not
+   chosen blind; the documented AMIP II -> Reynolds (Jan 1982) and
+   Reynolds -> OSTIA (Apr 2006) switches are tested as well. The Arctic
+   agrees in both records (MERRA-2 -0.31, NSIDC area -0.28 million
+   km2/decade; difference +0.00, p 0.97). Conclusion: the MERRA-2 Antarctic
+   gain is a data artifact; NSIDC governs. NSIDC itself switched its input
+   from SSMIS to AMSR2 on 1 Jan 2025 (NSIDC user notice); that step is tested
+   in its own series and is not significant (p 0.24).
 3. **Precipitation taper.** MERRA-2 corrected precipitation is gauge-based at
    low and middle latitudes and tapers to model precipitation between 42.5
    and 62.5 deg (Reichle et al. 2017). Mongolia lies in the taper zone.

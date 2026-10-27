@@ -704,11 +704,43 @@
     el.innerHTML = fn ? fn(sc) : `<p class="muted">No case notes for this scene.</p>`;
   }
 
+  function renderReference(ref) {
+    $("#compare-eyebrow").textContent = "Checked against an independent record";
+    $("#compare-title").textContent = `Cross-check: MERRA-2 sea ice against ${ref.name}`;
+    const body = $("#compare-body");
+    body.innerHTML = `<p class="prose">MERRA-2 copies its sea ice from other analyses. NSIDC builds a consistent satellite record for this purpose. Subtracting NSIDC's anomalies from MERRA-2's removes the weather and climate both records share, so a jump in the difference at a documented data-source change points to an artifact.</p>` +
+      ref.hemispheres.map((h, k) => {
+        const d = h.difference, steps = d.steps.map((st) => `<dt>${esc(st.label.split(":")[0])} step in the difference</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)}), trend after: ${signed(st.trend_with_step)}</dd>`).join("");
+        return `<div class="rm"><h3>${esc(h.name)} sea-ice area, million km² per decade</h3>
+          <div class="cmp">
+            <div class="chip"><b>${signed(h.nsidc_area.sen)}</b><span>NSIDC (p ${fmtP(h.nsidc_area.p_mk)}; extent ${signed(h.nsidc_extent.sen)})</span></div>
+            <div class="chip"><b>${signed(h.merra2_area.sen)}</b><span>MERRA-2 (p ${fmtP(h.merra2_area.p_mk)})</span></div>
+            <div class="chip"><b>${signed(d.sen)}</b><span>MERRA-2 minus NSIDC (p ${fmtP(d.p_mk)})</span></div>
+            <div class="chip"><b>${fmt(h.anomaly_correlation, 2)}</b><span>correlation of monthly anomalies</span></div>
+          </div>
+          <div id="refchart${k}"></div>
+          <dl class="kv">${steps}</dl></div>`;
+      }).join("") +
+      `<p class="small muted">NSIDC months missing: Dec 1987 and Jan 1988. NSIDC switched from SSMIS to AMSR2 input on 1 Jan 2025, tested as a step in its own series. Source: <a href="${esc(ref.url)}" target="_blank" rel="noopener">${esc(ref.url)}</a></p>`;
+    ref.hemispheres.forEach((h, k) => {
+      const t = h.difference_monthly.map((_, q) => h.monthly_start + q / 12);
+      const y = h.difference_monthly.map((v) => v === null ? NaN : v);
+      const d = h.difference;
+      const intercept = S.median(y.map((v, q) => v - d.sen / 10 * t[q]).filter(Number.isFinite));
+      seriesChart($("#refchart" + k), { t, y, ann: { years: h.annual_years, vals: h.difference_annual.map((v) => v === null ? NaN : v) },
+        unit: "million km²", height: 150, trend: { sen: d.sen / 10, lo: d.sen_lo / 10, hi: d.sen_hi / 10, intercept },
+        markers: d.steps.map((st) => ({ t: st.t_break, short: st.label.split(":")[0] })), label: `${h.name} MERRA-2 minus NSIDC` });
+    });
+  }
+
   function renderCompare() {
     const el = $("#compare");
+    if (state.sc.reference) { el.hidden = false; renderReference(state.sc.reference); return; }
     const comps = (state.index.comparisons || []).filter((c) => c.a === state.sc.id || c.b === state.sc.id);
     if (!comps.length) { el.hidden = true; return; }
     el.hidden = false;
+    $("#compare-eyebrow").textContent = "Model or satellites?";
+    $("#compare-title").textContent = "Cross-check: MERRA-2 against GPM IMERG";
     const c = comps[0];
     const a = c.region_trend_a, b = c.region_trend_b;
     $("#compare-body").innerHTML = `<p class="prose">The same question asked of a model (MERRA-2) and of satellites (GPM IMERG), on the same 0.5° × 0.625° grid, 2001–2025.</p>
@@ -777,10 +809,11 @@
       <p>Switch between <b>Trend, naive p&lt;0.05</b> and <b>Trend, FDR-tested</b>: the naive map scatters significance across empty ocean. Open <b>Planted truth</b> to see what is really there. The Method section scores both maps.</p></div>`,
     "sea-ice": (sc) => {
       const ar = rmStat(sc, "arctic_area"), an = rmStat(sc, "antarctic_area");
-      const st = stepOf(an, "2006-04");
-      return `<div class="prose"><p><b>Same variable, opposite directions.</b> Arctic sea-ice area: ${signed(ar.sen)} million km² per decade (corrected p ${fmtP(ar.p_mk)}). Antarctic: ${signed(an.sen)} (corrected p ${fmtP(an.p_mk)}, naive p ${fmtP(an.p_naive)}, OLS-AR(1) p ${fmtP(an.p_ols_ar1)}).</p>
-      <p>The Antarctic series has strong memory (φ ≈ ${fmt(an.phi, 2)}), so the naive test overstates confidence by many orders of magnitude, and the two honest tests disagree about whether the gain is significant at all.</p>
-      <p><b>Source conflict.</b> MERRA-2 sea ice is a boundary condition taken from other analyses; its source changed in Jan 1982 and Apr 2006 (UCAR Climate Data Guide, citing Bosilovich et al. 2015).${st ? ` The Antarctic area jumps by ${signed(st.step)} million km² at the April 2006 switch (p ${fmtP(st.p_step)}); allowing for that step turns the trend to ${signed(st.trend_with_step)} per decade.` : ""} NSIDC's Sea Ice Index, the record built for this purpose, reported that the 2023 lows turned the long-term Antarctic annual trend from slightly positive to slightly negative. NSIDC governs for sea ice, so treat the MERRA-2 Antarctic gain as unconfirmed. A real expansion around 2006–2014 could also produce part of that step. The single check that settles it: run this tool on NSIDC G02135 monthly data.</p></div>`;
+      const ref = sc.reference && sc.reference.hemispheres.find((h) => h.key === "S");
+      const st = ref && stepOf(ref.difference, "2005-01");
+      return `<div class="prose"><p><b>Same variable, opposite directions?</b> In MERRA-2, Arctic sea-ice area changes by ${signed(ar.sen)} million km² per decade (corrected p ${fmtP(ar.p_mk)}) and Antarctic area by ${signed(an.sen)} (corrected p ${fmtP(an.p_mk)}, naive p ${fmtP(an.p_naive)}).</p>
+      ${ref ? `<p><b>The Antarctic gain does not survive the cross-check.</b> NSIDC's Sea Ice Index gives ${signed(ref.nsidc_area.sen)} (p ${fmtP(ref.nsidc_area.p_mk)}): no detectable trend. MERRA-2 minus NSIDC trends by ${signed(ref.difference.sen)} per decade (p ${fmtP(ref.difference.p_mk)}).${st ? ` The difference jumps by ${signed(st.step)} million km² in January 2005 (p ${fmtP(st.p_step)}), when the sea-ice input inside Reynolds OISST, which MERRA-2 uses, switched from NASA GSFC to NCEP. With that one step allowed for, the excess trend drops to ${signed(st.trend_with_step)} per decade.` : ""} NSIDC governs: the Antarctic shows no significant 1981–2025 trend, and the MERRA-2 gain is a data artifact.</p>` : ""}
+      <p>The Arctic decline is real in both records; see the cross-check below. The tool first found the January 2005 jump in the data and then matched it to the documentation, so that date is now tested alongside the 1982 and 2006 source changes for every MERRA-2 sea-ice, skin and air temperature scene.</p></div>`;
     },
     ozone: (sc) => {
       const flagged = sc.steps[0] ? sc.steps[0].flagged : 0;

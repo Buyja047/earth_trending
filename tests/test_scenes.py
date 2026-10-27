@@ -20,3 +20,15 @@ def test_box_regrid_averages_fine_cells():
     v = np.arange(8, dtype=float).reshape(1, 2, 4)
     out = box_regrid(v, lat_src, lon_src, np.array([0.5]), np.array([0.5, 1.5]))
     np.testing.assert_allclose(out[0, 0], [np.mean([0, 1, 4, 5]), np.mean([2, 3, 6, 7])])
+
+
+def test_nsidc_csv_parsing_maps_missing_to_nan():
+    from trend_detective.nsidc import parse_monthly_csv
+
+    text = ("year, mo,source_dataset, region, extent,   area\n"
+            "1987, 12,         -9999,      S,  -9999,  -9999\n"
+            "2025,  1,    NSIDC-0803,      S,   4.69,   2.84\n")
+    rows = parse_monthly_csv(text)
+    assert rows[(1987, 12)][0] == ""
+    assert np.isnan(rows[(1987, 12)][1]) and np.isnan(rows[(1987, 12)][2])
+    assert rows[(2025, 1)] == ("NSIDC-0803", 4.69, 2.84)

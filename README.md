@@ -12,7 +12,8 @@ record length and data-source changes are taken into account.
 
 - **Reads real NASA data** from the public NASA POWER v10 analysis-ready Zarr
   stores on AWS Open Data (no login): MERRA-2 reanalysis (model, 1981-),
-  CERES SYN1deg (satellites, 2001-) and GPM IMERG precipitation (satellites, 1998-).
+  CERES SYN1deg (satellites, 2001-) and GPM IMERG precipitation (satellites, 1998-),
+  plus the NSIDC Sea Ice Index (G02135 v4) as an independent sea-ice reference.
 - **Tests every grid cell** with an autocorrelation-corrected Mann-Kendall
   test, a Theil-Sen slope with confidence interval, and an independent
   OLS + AR(1) check.
@@ -28,7 +29,8 @@ record length and data-source changes are taken into account.
   sea ice; wetting vs drying soils).
 - **Screens every variable** in a region (Mongolia: 94 MERRA-2 and CERES
   variables) and ranks them by change relative to noise.
-- **Cross-checks a model against satellites** (MERRA-2 vs GPM IMERG precipitation).
+- **Cross-checks a model against independent records** (MERRA-2 vs GPM IMERG
+  precipitation; MERRA-2 vs NSIDC Sea Ice Index).
 - **Validates itself**: a known-truth synthetic map and a Monte Carlo table of
   false-positive and detection rates ship with the viewer.
 
@@ -62,6 +64,7 @@ trend_detective/
   grid.py        area weights, connected opposite-sign regions
   power.py       NASA POWER Zarr access (anonymous HTTPS, cached)
   catalog.py     products, documented data-source transitions, notes
+  nsidc.py       NSIDC Sea Ice Index monthly extent and area
   scenes.py      scene definitions, variable screen, model-vs-satellite comparison
   synthetic.py   known-truth test fields
   validation.py  Monte Carlo size/power table
@@ -82,8 +85,11 @@ See the viewer and `docs/METHODS.md`. Highlights:
   stays at 5 %.
 - NASA POWER masks total ozone below 200 DU, which removes the Antarctic
   ozone hole; the tool detects this and refuses to compute censored trends.
-- MERRA-2 Antarctic sea-ice area trends conflict with NSIDC; the tool shows
-  the source changes behind MERRA-2's sea-ice boundary data.
+- MERRA-2 shows Antarctic sea ice growing (+0.19 million km2/decade); the
+  NSIDC Sea Ice Index shows no trend (-0.03). The difference jumps by +0.86
+  million km2 in January 2005 (p 8e-7), when the sea-ice input inside the
+  Reynolds SST analysis used by MERRA-2 changed source. The viewer shows this
+  cross-check on the sea-ice scene.
 
 ## Монгол хураангуй
 

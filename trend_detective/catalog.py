@@ -25,6 +25,14 @@ PRODUCTS = {
         "record_start": "2001-01",
         "url": "https://registry.opendata.aws/nasa-power/",
     },
+    "nsidc": {
+        "name": "NSIDC Sea Ice Index v4 (G02135)",
+        "kind": "mission",
+        "source": "NOAA@NSIDC passive microwave record (SMMR, SSM/I, SSMIS, AMSR2)",
+        "native_res": "25 km",
+        "record_start": "1978-11",
+        "url": "https://nsidc.org/data/g02135",
+    },
     "imerg": {
         "name": "GPM IMERG (via NASA POWER v10)",
         "kind": "mission",
@@ -75,10 +83,30 @@ TRANSITIONS = [
                   "1980-1981; Reynolds et al. (2007) 1982-Mar 2006; OSTIA Apr 2006-present",
     },
     {
+        "products": ["merra2"], "vars": ["FRSEAICE", "TS", "T2M"], "date": "2005-01",
+        "verified": True,
+        "label": "Sea-ice input inside Reynolds OISST: NASA GSFC -> NCEP analysis",
+        "source": "UCAR Climate Data Guide and NOAA NCEI OISST pages: GSFC sea ice up to "
+                  "2004, NCEP from 2005. Found first as a jump in MERRA-2 minus NSIDC, "
+                  "then confirmed in the documentation",
+    },
+    {
+        "products": ["merra2"], "vars": ["FRSEAICE"], "date": None, "verified": False,
+        "label": "NCEP sea-ice algorithm changes in 1997, 2004, 2006, 2009 and 2011 "
+                 "(months not confirmed)",
+        "source": "UCAR Climate Data Guide, OISST sea ice: no adjustments for these switches",
+    },
+    {
         "products": ["merra2"], "vars": ["FRSEAICE", "TS", "T2M"], "date": "2006-04",
         "verified": True,
         "label": "SST/sea-ice boundary data: Reynolds OISST -> OSTIA",
         "source": "UCAR Climate Data Guide (citing Bosilovich et al. 2015, sec. 8)",
+    },
+    {
+        "products": ["nsidc"], "vars": ["area", "extent"], "date": "2025-01", "verified": True,
+        "label": "Sea Ice Index v4: input switches from SSMIS to AMSR2",
+        "source": "NSIDC user notice: AMSR2 (NSIDC-0803) from 1 Jan 2025; AMSR2 places the "
+                  "ice edge slightly inboard, under 0.15 million km2 less extent in the south",
     },
     {
         "products": ["imerg"], "vars": ["IMERG_PRECTOT"], "date": "2014-06", "verified": True,

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import analysis, catalog, grid, power, stats
+from . import analysis, catalog, grid, nsidc, power, stats
 from .geo import load_focus_rings, points_in_rings
 from .synthetic import dipole_field
 
@@ -40,6 +40,7 @@ class SceneSpec:
     case: str | None = None
     regrid_like: str | None = None  # scene id whose grid this one is averaged onto
     aggregates: list = field(default_factory=list)
+    reference: str | None = None  # independent record to check the scene against
 
 
 SCENES = [
@@ -52,7 +53,8 @@ SCENES = [
     SceneSpec("global-soil", "Root-zone soil wetness", "merra2", "GWETROOT", "global", coarsen=4,
               group="Globe 1981-2025", case="wet-dry", aggregates=["globe", "nh", "sh"]),
     SceneSpec("global-seaice", "Sea-ice fraction", "merra2", "FRSEAICE", "global", coarsen=4,
-              group="Globe 1981-2025", case="sea-ice", aggregates=["arctic_area", "antarctic_area"]),
+              group="Globe 1981-2025", case="sea-ice", aggregates=["arctic_area", "antarctic_area"],
+              reference="nsidc"),
     SceneSpec("global-ozone", "Total column ozone", "merra2", "TO3", "global", coarsen=4,
               group="Globe 1981-2025", case="ozone", aggregates=["globe"]),
     SceneSpec("mn-t2m", "Air temperature at 2 m", "merra2", "T2M", "mongolia",
@@ -172,7 +174,7 @@ def _breaks(product, var):
 
 
 def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_rings,
-                breaks, transition_notes, aggregates, truth=None) -> dict:
+                breaks, transition_notes, aggregates, truth=None, extra=None) -> dict:
     lat = np.asarray(lat, float)
     lon = np.asarray(lon, float)
     dlat, dlon = _edges(lat), _edges(lon)
@@ -198,7 +200,10 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
     region_means = []
     for key in aggregates:
         name, mask, how = _aggregate_masks(key, lat, lon, focus_rings)
-        mask = mask & res["valid"].reshape(ny, nx)
+        if how == "area_sum":  # a cell that is always ice-covered still counts toward area
+            mask = mask & np.isfinite(values).all(axis=0)
+        else:
+            mask = mask & res["valid"].reshape(ny, nx)
         if not mask.any():
             continue
         series = analysis.region_series(values, times, lat, mask, how, area)
@@ -271,6 +276,8 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
                             "fdp": round(fp / max(tp + fp, 1), 3),
                             "power": round(tp / max(tp + fn, 1), 3)}
         out["truth"] = {"slope": _num(truth.ravel() * 10), "scores": scores}
+    if extra:
+        out.update(extra)
     (out_dir / f"{sid}.json").write_text(json.dumps(out, separators=(",", ":")))
     return out
 
@@ -300,8 +307,53 @@ def build_spec(spec: SceneSpec, out_dir: Path, focus_rings, built: dict) -> dict
                       if spec.coarsen > 1 else
                       ("averaged onto the MERRA-2 grid" if spec.regrid_like else "native grid")),
     }
+    extra = None
+    if spec.reference == "nsidc":
+        extra = {"reference": nsidc_reference(values, da["time"].values, lat, lon, breaks)}
     return write_scene(spec_meta, values, da["time"].values, lat, lon, out_dir, focus_rings,
-                       breaks, tnotes, spec.aggregates)
+                       breaks, tnotes, spec.aggregates, extra=extra)
+
+
+def nsidc_reference(values, times, lat, lon, merra_breaks) -> dict:
+    """Check MERRA-2 hemispheric sea-ice area against the NSIDC Sea Ice Index.
+
+    Differencing the two anomaly series removes the weather and climate
+    variability they share, so a step in MERRA-2 minus NSIDC at a documented
+    data-source change is evidence of an artifact rather than of real change.
+    """
+    lat = np.asarray(lat, float)
+    area = grid.cell_area_km2(lat, _edges(lat), _edges(np.asarray(lon, float)))
+    complete = np.isfinite(values).all(axis=0)
+    t = stats.decimal_year(times)
+    nsidc_breaks, _ = _breaks("nsidc", "area")
+    out = {"name": catalog.PRODUCTS["nsidc"]["name"], "url": catalog.PRODUCTS["nsidc"]["url"],
+           "hemispheres": []}
+    for hemi, name, sel in (("S", "Antarctic", lat < 0), ("N", "Arctic", lat > 0)):
+        m2 = analysis.region_series(values, times, lat, sel[:, None] & complete, "area_sum", area) / 1e6
+        ref = nsidc.monthly_series(hemi, times)
+        r_m2 = analysis.analyze_region(m2, times, merra_breaks)
+        r_area = analysis.analyze_region(ref["area"], times, nsidc_breaks)
+        r_ext = analysis.analyze_region(ref["extent"], times, nsidc_breaks)
+        diff = r_m2["anom"] - r_area["anom"]
+        d = stats.analyze_series(diff, t, breaks=[b for b, _ in merra_breaks])
+        for st, (_, label) in zip(d["steps"], merra_breaks):
+            st["label"] = label
+        ok = np.isfinite(diff)
+        years, d_ann = analysis.annual_means(np.where(ok, diff, np.nan), t)
+        out["hemispheres"].append({
+            "key": hemi, "name": name,
+            "merra2_area": _stats_json(r_m2["stats"]), "nsidc_area": _stats_json(r_area["stats"]),
+            "nsidc_extent": _stats_json(r_ext["stats"]),
+            "merra2_mean": float(f"{np.nanmean(m2):.4g}"),
+            "nsidc_mean": float(f"{np.nanmean(ref['area']):.4g}"),
+            "anomaly_correlation": round(float(np.corrcoef(r_m2["anom"][ok], r_area["anom"][ok])[0, 1]), 3),
+            "difference": _stats_json(d),
+            "difference_monthly": _num(diff), "monthly_start": float(t[0]),
+            "difference_annual": _num(d_ann), "annual_years": years.tolist(),
+            "missing_months": int((~ok).sum()),
+            "sources": sorted(set(s for s in ref["source"] if s)),
+        })
+    return out
 
 
 def build_synthetic(out_dir: Path) -> dict:
@@ -411,7 +463,7 @@ def screen_region(out_dir: Path, focus_rings, bbox=REGIONS["mongolia"]["bbox"],
 def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limit=None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     focus = load_focus_rings(geo_path)
-    built, index = {}, []
+    built = {}
     syn = build_synthetic(out_dir)
     built[syn["id"]] = syn
     wanted = set(only or [s.id for s in SCENES])
@@ -423,11 +475,23 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
         built[spec.id] = build_spec(spec, out_dir, focus, built)
         print(f"built {spec.id} in {time.time() - t0:.0f}s  counts={built[spec.id]['counts']}",
               flush=True)
-    for sc in built.values():
-        index.append({k: sc[k] for k in ("id", "title", "group", "case", "product", "product_name",
-                                          "kind", "var", "long_name", "units", "region",
-                                          "region_name", "counts", "period")})
+    keys = ("id", "title", "group", "case", "product", "product_name", "kind", "var",
+            "long_name", "units", "region", "region_name", "counts", "period")
+    entries = {sc["id"]: {k: sc[k] for k in keys} for sc in built.values()}
     comps = [compare(built[a], built[b]) for a, b in COMPARISONS if a in built and b in built]
+    old_index = out_dir / "index.json"
+    if only and old_index.exists():  # partial rebuild: keep what was not rebuilt
+        prev = json.loads(old_index.read_text())
+        merged = {e["id"]: e for e in prev["scenes"]}
+        merged.update(entries)
+        order = [s.id for s in SCENES]
+        entries = {i: merged[i] for i in ["synthetic-truth", *order] if i in merged}
+        done = {(c["a"], c["b"]) for c in comps}
+        comps += [c for c in prev.get("comparisons", []) if (c["a"], c["b"]) not in done]
+        screen_kept = prev.get("has_screen", False)
+    else:
+        screen_kept = False
+    index = list(entries.values())
     if screen:
         screen_region(out_dir, focus, limit=screen_limit)
     idx = {
@@ -437,7 +501,7 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
         "comparisons": comps,
         "products": catalog.PRODUCTS,
         "transitions": catalog.TRANSITIONS,
-        "has_screen": screen,
+        "has_screen": screen or screen_kept,
     }
     (out_dir / "index.json").write_text(json.dumps(idx, separators=(",", ":"), indent=None))
     return idx
