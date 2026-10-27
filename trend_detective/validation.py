@@ -55,7 +55,28 @@ def run(reps=400, years=45, phis=(0.0, 0.3, 0.6, 0.9), seed=2026) -> dict:
         })
     mc_se = round(float(np.sqrt(0.05 * 0.95 / reps)), 4)
     return {"reps": reps, "years": years, "seed": seed, "mc_standard_error_at_5pct": mc_se,
-            "tests": TESTS, "rows": rows, "detection": run_detection(reps, years, seed + 1)}
+            "tests": TESTS, "rows": rows, "detection": run_detection(reps, years, seed + 1),
+            "one_per_year": run_one_per_year(seed=seed + 2)}
+
+
+def run_one_per_year(reps=2000, lengths=(44, 25), phis=(0.0, 0.3, 0.6), seed=2028) -> dict:
+    """False-positive rates when there is one value per year (annual means or one season).
+
+    phi is now the memory from one year to the next. With 20-45 values the AR(1)
+    correction is estimated from few points, so the test is checked separately
+    from the monthly case. ``agree`` is the share flagged by the corrected
+    Mann-Kendall and OLS + AR(1) tests together, with the same sign.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    for n in lengths:
+        t = 1981 + np.arange(n) + 0.5
+        for phi in phis:
+            r = stats.analyze_rows(ar1(rng, n, phi, reps), t)
+            both = (r["p_mk"] < 0.05) & (r["p_ols_ar1"] < 0.05) & (np.sign(r["sen"]) == np.sign(r["ols"]))
+            rows.append({"n": n, "phi": phi, "size": {k: round(float(np.mean(r[k] < 0.05)), 3) for k in ("p_naive", "p_mk", "p_ols_ar1")},
+                         "agree": round(float(np.mean(both)), 3)})
+    return {"reps": reps, "seed": seed, "mc_standard_error_at_5pct": round(float(np.sqrt(0.05 * 0.95 / reps)), 4), "rows": rows}
 
 
 def run_detection(reps=400, years=45, seed=2027) -> dict:
@@ -95,5 +116,5 @@ if __name__ == "__main__":
     out = Path(__file__).resolve().parent.parent / "web" / "data" / "validation.js"
     res = run()
     write_payload(out, "validation", res)
-    for r in res["rows"] + res["detection"]["rows"]:
+    for r in res["rows"] + res["detection"]["rows"] + res["one_per_year"]["rows"]:
         print(r)

@@ -208,6 +208,71 @@ stores monthly series (Mongolia), on annual means otherwise (globe), followed
 by the map-wide FDR at the chosen alpha. Step tests, cross-checks and case
 notes stay on the full record and say so.
 
+## Seasons and single months
+
+The *Months* control replaces each year's twelve values by the mean of the
+chosen months, then runs the same battery (Hamed-Rao Mann-Kendall, Theil-Sen,
+OLS + AR(1), Weatherhead n\*, map-wide FDR) on that one-value-per-year
+series. Only datasets that keep monthly values per cell offer it (Mongolia and
+live analyses); the global datasets store annual means per cell.
+
+- **Which year a season belongs to.** A season that crosses New Year counts in
+  the year of its last month: Dec–Feb 1990 is December 1989 to February 1990.
+  This matches NOAA CPC's Oceanic Niño Index file (`oni.ascii.txt`), whose
+  first row "DJF 1950" is the December 1949 to February 1950 season
+  (climate.gov describes the series as starting in DJF 1949–50). CPC labels a
+  season by its middle month, which gives the same year for Dec–Feb and
+  Nov–Mar, the two choices here that cross New Year. Software differs here:
+  pandas' `resample("QS-DEC")` labels the same season by its December
+  timestamp (1989), so compare labels before comparing numbers. A Dec–Feb
+  analysis of a record that starts in January 1981 therefore starts in 1982.
+- **Missing months.** A season value needs all of its months; one missing month
+  leaves that year empty rather than averaging a different part of the seasonal
+  cycle.
+- **Exact arithmetic.** The page stores each series as 16-bit integers times a
+  scale. Season means are taken on the integers and scaled afterwards, so two
+  years with the same stored sum get identical means and Mann-Kendall's ties
+  stay ties. Rounding the means to 32-bit floats instead moved S by up to 3 and
+  p by up to 12 % in single cells. With integer means the browser matches an
+  independent Python implementation (`analysis.season_means`, grouping by label
+  instead of index arithmetic) to the last digit of the exported CSV for all
+  1,272 Mongolian T2M cells in Mar–May and Dec–Feb and for snow in Jun–Aug
+  (`tests/test_js_season.py`).
+- **Cells that never change.** Mean snow depth over Jun–Aug is the same in
+  every year in 206 of 1,272 cells (no summer snow at all). Such a series has no trend to test; it is left out of the test
+  and of the counts, and the summary says how many.
+- **How reliable the test is with one value per year.** Here φ is the memory
+  from one year to the next, estimated from 20–45 points. Monte Carlo
+  (`validation.run_one_per_year`, 2,000 trend-free AR(1) series per row) gives
+  these false-positive rates at the 5 % level:
+
+  | Years | φ | Uncorrected MK | Corrected MK (used) | OLS + AR(1) | Both, same sign |
+  |---|---|---|---|---|---|
+  | 44 | 0.0 | 4.5 % | 3.8 % | 3.9 % | 3.0 % |
+  | 44 | 0.3 | 13.4 % | 5.8 % | 6.2 % | 4.6 % |
+  | 44 | 0.6 | 32.3 % | 9.4 % | 9.6 % | 8.3 % |
+  | 25 | 0.0 | 5.1 % | 4.1 % | 4.4 % | 2.9 % |
+  | 25 | 0.3 | 13.8 % | 8.4 % | 9.4 % | 7.2 % |
+  | 25 | 0.6 | 28.7 % | 11.9 % | 12.9 % | 10.8 % |
+
+  So the corrected test is close to nominal when consecutive years are
+  unrelated and somewhat liberal when they are alike, more so for short
+  windows. Over Mongolia the median year-to-year φ of season means is about
+  −0.1 to 0.3 depending on variable and season (90th percentile 0.5–0.6 for
+  soil wetness in Dec–Feb and Sep–Nov and for wind in Jun–Aug). The verdict "parametric test agrees"
+  requires both tests, which trims the excess. The monthly analysis keeps its
+  own, better calibrated check (table above).
+- **Trying several seasons is itself a multiple test.** The FDR controls false
+  discoveries among the cells of one map, not across the 18 month choices a
+  reader can try. Choose the season for a physical reason before looking, or
+  report every season you looked at. Season results are recomputed in the
+  browser; the step tests at documented source changes stay on the full record.
+
+Example, MERRA-2 T2M over Mongolia 1981–2025: the country mean warmed
++0.28 °C/decade in Mar–May (95 % CI 0.054 to 0.565, corrected p 0.019; 737 of
+1,272 cells after FDR) against +0.19 for the whole year, while Dec–Feb shows
+−0.06 (p 0.70; no cell after FDR).
+
 ## Exported tables (CSV)
 
 Every *⤓ CSV* file holds exactly what the viewer shows for the current

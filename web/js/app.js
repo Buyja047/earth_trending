@@ -4,7 +4,7 @@
  * disk (file://) or served over HTTP. */
 (function () {
   "use strict";
-  const S = window.TDStats, I = window.TDI18N;
+  const S = window.TDStats, I = window.TDI18N, SEA = window.TDSeason;
   const t = (k, v) => I.t(k, v);
   const $ = (sel, el = document) => el.querySelector(sel);
   const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
@@ -44,7 +44,7 @@
   const state = {
     index: null, geo: null, places: [], validation: null, screen: null, cache: {},
     entry: null, sc: null, res: null, layer: "trend", step: 0, view: "map", tab: "map",
-    y0: null, y1: null, alpha: 0.05, sel: null, year: null, playing: null, unit: "decade",
+    y0: null, y1: null, alpha: 0.05, season: "all", sel: null, year: null, playing: null, unit: "decade",
     theme: "system", screenFilter: "all", searched: null, busy: false,
     // background imagery (NASA GIBS); "none" keeps the viewer fully offline
     base: "none", baseDate: new Date(Date.now() - 864e5).toISOString().slice(0, 10), baseGrey: true, baseAlpha: 0.75,
@@ -167,13 +167,13 @@
     if (state.cache[id]) return state.cache[id];
     const sc = await loadPayload(id);
     const bin = atob(sc.series.b64);
-    const vals = new Float32Array(bin.length / 2);
+    const vals = new Float32Array(bin.length / 2), raw = new Int16Array(bin.length / 2);
     for (let k = 0, q = 0; k < vals.length; k++, q += 2) {
-      const raw = ((bin.charCodeAt(q) | (bin.charCodeAt(q + 1) << 8)) << 16) >> 16;
-      vals[k] = raw === -32768 ? NaN : raw * sc.series.scale;
+      raw[k] = ((bin.charCodeAt(q) | (bin.charCodeAt(q + 1) << 8)) << 16) >> 16;
+      vals[k] = raw[k] === -32768 ? NaN : raw[k] * sc.series.scale;
     }
     delete sc.series.b64;
-    const entry = { sc, vals };
+    const entry = { sc, vals, raw };
     state.cache[id] = entry;
     return entry;
   }
@@ -185,12 +185,26 @@
     const n = state.sc.series.n;
     return state.entry.vals.subarray(i * n, (i + 1) * n);
   }
-  // per-cell calendar-year means, computed once per scene
+  // the months filter in force for a scene: only scenes that keep monthly values per cell can be cut by season
+  function seasonOf(sc) {
+    const p = SEA.byId(state.season);
+    return p.id !== "all" && sc && sc.series.kind === "monthly" ? p : null;
+  }
+  // per-cell calendar-year means (or season means when a season is chosen), computed once per scene and season
   function annualCube(entry) {
-    if (entry.annual) return entry.annual;
+    const se = seasonOf(entry.sc), key = se ? se.id : "year";
+    entry.cubes = entry.cubes || {};
+    if (entry.cubes[key]) return entry.cubes[key];
     const sc = entry.sc, n = sc.series.n, ncell = sc.grid.nx * sc.grid.ny;
-    let years, data, ny;
-    if (sc.series.kind === "annual") {
+    let years, data, ny, off = 0.5;
+    if (se) {
+      const pl = SEA.plan(n, sc.series.start, se.m0, se.m1);
+      years = pl.years; ny = years.length; off = pl.off;
+      // in double precision from the stored integers (live scenes: from the values read), so rounding
+      // never makes or breaks a tie between two years and Mann-Kendall's S is the exact one
+      data = new Float64Array(ncell * ny);
+      for (let c = 0; c < ncell; c++) data.set(entry.raw ? SEA.apply(entry.raw, pl, c * n, sc.series.scale) : SEA.apply(entry.vals, pl, c * n), c * ny);
+    } else if (sc.series.kind === "annual") {
       ny = n; years = Array.from({ length: n }, (_, k) => sc.series.start + k);
       data = entry.vals;
     } else {
@@ -209,8 +223,8 @@
     const abs = [];
     for (let k = 0; k < data.length; k += 7) if (Number.isFinite(data[k])) abs.push(Math.abs(data[k]));
     abs.sort((a, b) => a - b);
-    entry.annual = { years, data, ny, lim: niceLim(abs[Math.floor(abs.length * 0.98)] || 1) };
-    return entry.annual;
+    entry.cubes[key] = { years, data, ny, off, lim: niceLim(abs[Math.floor(abs.length * 0.98)] || 1) };
+    return entry.cubes[key];
   }
   function niceLim(q) {
     const p = Math.pow(10, Math.floor(Math.log10(q || 1)));
@@ -274,17 +288,24 @@
     for (let k = 0; k < x.length; k++) x[k] -= cnt[k % 12] ? sum[k % 12] / cnt[k % 12] : 0;
     return { x, t: tt };
   }
-  function subsetAnnual(years, vals, y0, y1) {
+  // values of years y0..y1, timed at the middle of the year (or of the season: `off`)
+  function subsetAnnual(years, vals, y0, y1, off = 0.5) {
     const ys = [], vs = [];
-    years.forEach((y, k) => { if (y >= y0 && y <= y1) { ys.push(y + 0.5); vs.push(vals[k] === null ? NaN : vals[k]); } });
+    years.forEach((y, k) => { if (y >= y0 && y <= y1) { ys.push(y + off); vs.push(vals[k] === null ? NaN : vals[k]); } });
     return { ys, vs };
+  }
+  // an area mean's yearly values: calendar-year means, or the chosen season's means from its monthly series
+  function regionYears(rm, sc = state.sc) {
+    const se = seasonOf(sc);
+    if (se) return SEA.series(rm.monthly, rm.monthly_start, se.m0, se.m1);
+    return { years: rm.annual_years, vals: rm.annual.map((v) => (v === null ? NaN : v)), off: 0.5 };
   }
 
   async function computeResults() { state.res = await computeFor(state.sc, state.entry, state.y0, state.y1, state.alpha); }
   // every per-cell statistic for one scene and window; precomputed values when the window is the full record
   async function computeFor(sc, entry, y0, y1, alpha) {
-    const years = y1 - y0 + 1, full = y0 === +sc.period.start.slice(0, 4) && y1 === +sc.period.end.slice(0, 4);
-    if (full && !sc.live) {
+    const se = seasonOf(sc), full = y0 === +sc.period.start.slice(0, 4) && y1 === +sc.period.end.slice(0, 4);
+    if (full && !sc.live && !se) {
       const cells = sc.cells;
       const exact = Math.abs(alpha - 0.05) < 1e-9;
       const cl = exact ? { status: Int8Array.from(cells.status), counts: Object.assign({}, sc.counts), pstar: sc.p_star }
@@ -293,13 +314,17 @@
       return { custom: false, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years: sc.period.years,
         regionStats: sc.region_means.map((rm) => rm.stats) };
     }
-    const cube = annualCube(entry), i0 = cube.years.indexOf(y0);
-    const tt = Array.from({ length: years }, (_, k) => y0 + k + 0.5);
-    const ncell = sc.grid.nx * sc.grid.ny, monthly = sc.series.kind === "monthly", n = sc.series.n;
+    // yearly values (calendar years or seasons) inside the window; a season over New Year can start a year late
+    const cube = annualCube(entry), i0 = cube.years.findIndex((y) => y >= y0);
+    const ny = i0 < 0 ? 0 : cube.years.filter((y) => y >= y0 && y <= y1).length;
+    const tt = cube.years.slice(i0, i0 + ny).map((y) => y + cube.off);
+    const ncell = sc.grid.nx * sc.grid.ny, monthly = sc.series.kind === "monthly" && !se, n = sc.series.n;
+    const years = monthly ? y1 - y0 + 1 : ny;
     const cells = {};
     ["sen", "sen_lo", "sen_hi", "p_naive", "p_mk", "p_ols", "phi", "sigma", "mdt", "nstar", "ols", "p_hr_empirical"].forEach((k) => { cells[k] = new Array(ncell).fill(null); });
     cells.clim_mean = sc.cells.clim_mean;
-    const base = sc.cells.status, busy = $("#busy");
+    // a cell whose values never change in these years (no snow at all in July) has no trend to test: left out
+    const base = Int8Array.from(sc.cells.status), flat = new Set(), busy = $("#busy");
     busy.hidden = false;
     state.busy = true;
     let tick = performance.now();
@@ -309,7 +334,8 @@
         if (monthly) {
           const w = monthlyWindow(entry.vals.subarray(c * n, (c + 1) * n), sc.series.start, y0, y1);
           r = S.analyze(w.x, w.t);
-        } else r = S.analyze(Array.from(cube.data.subarray(c * cube.ny + i0, c * cube.ny + i0 + years)), tt);
+        } else r = S.analyze(Array.from(cube.data.subarray(c * cube.ny + i0, c * cube.ny + i0 + ny)), tt);
+        if (r && !(r.varS > 0)) { flat.add(c); base[c] = 0; r = null; }
         if (r) {
           cells.sen[c] = r.sen * 10; cells.sen_lo[c] = r.senLo * 10; cells.sen_hi[c] = r.senHi * 10;
           cells.p_naive[c] = r.pNaive; cells.p_mk[c] = r.pMk; cells.p_ols[c] = r.pOls; cells.phi[c] = r.phi;
@@ -327,10 +353,14 @@
     const cl = classify(cells, base, alpha, years);
     cl.counts.step_flagged = sc.counts.step_flagged;
     const regionStats = sc.region_means.map((rm) => {
-      const w = monthlyWindow(rm.monthly, rm.monthly_start, y0, y1);
-      return statsFromJS(S.analyze(w.x, w.t));
+      // area means keep monthly series for every scene, so they use them unless a season is chosen
+      if (!se) { const w = monthlyWindow(rm.monthly, rm.monthly_start, y0, y1); return statsFromJS(S.analyze(w.x, w.t)); }
+      const ry = regionYears(rm, sc), sub = subsetAnnual(ry.years, ry.vals, y0, y1, ry.off);
+      return statsFromJS(S.analyze(sub.vs, sub.ys));
     });
-    return { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly };
+    cl.counts.flat = flat.size;
+    return { custom: true, cells, status: cl.status, counts: cl.counts, pstar: cl.pstar, years, regionStats, monthly, flat,
+      season: se ? se.id : null, y0eff: monthly ? y0 : cube.years[i0] };
   }
 
   // ------------------------------------------------------------ split-view compare
@@ -409,7 +439,7 @@
   // side labels and the drag handle follow the divider
   function placeCmp() {
     if (!cmpReady()) return;
-    const x = Math.round(map.W * cmp.x), lbl = (sc, y0, y1) => `${sceneTitle(sc)} · ${y0}–${y1}`;
+    const x = Math.round(map.W * cmp.x), lbl = (sc, y0, y1) => `${sceneTitle(sc)} · ${yrsText(sc, y0, y1)}`;
     const h = $("#cmphandle");
     h.style.left = x + "px";
     h.setAttribute("aria-valuenow", Math.round(100 * cmp.x));
@@ -437,7 +467,8 @@
   function detectYear(nstar, sen, lo, hi, phi, m) {
     if (nstar === null || nstar === undefined || !Number.isFinite(nstar) || !sen || !m) return null;
     const r = S.detectionRange(nstar, sen, lo, hi, phi, m);
-    const yr = (n) => (Number.isFinite(n) ? state.y0 + Math.max(1, Math.ceil(n)) - 1 : Infinity);
+    const first = (state.res && state.res.y0eff) || state.y0;
+    const yr = (n) => (Number.isFinite(n) ? first + Math.max(1, Math.ceil(n)) - 1 : Infinity);
     return { n: nstar, y: yr(nstar), lo: yr(r.lo), hi: yr(r.hi) };
   }
   function detectArr() {
@@ -1052,7 +1083,7 @@
       `<span>${esc(t("st_cursor"))}: <b>${x.cursor ? esc(x.cursor) : "–"}</b></span>`,
       `<span>${esc(t("st_value"))}: <b>${x.cursor && x.value ? esc(x.value) : "–"}</b></span>`,
       `<span>${esc(sceneTitle(sc))}</span>`,
-      `<span>${esc(t("st_period"))}: <b>${state.y0}–${state.y1}</b></span>`,
+      `<span>${esc(t("st_period"))}: <b>${esc(yrsText())}</b></span>`,
       `<span>α = <b>${state.alpha}</b> · FDR p* = <b>${fmt(r.pstar, 2)}</b></span>`,
       `<span>${esc(t("st_cells"))}: <b>${nf(r.counts.valid)}</b></span>`,
       `<span>${esc(t("st_zoom"))}: <b>×${fmt(map.view.z, 2)}</b></span>`,
@@ -1149,7 +1180,7 @@
       s += `<rect x="${x}" y="${y}" width="${cs}" height="${cs}" fill="${rgb(divColor(c.slope, lim, invert))}" data-a="${c.a}" data-b="${c.b}" data-s="${c.slope}" data-p="${c.p}"/>`;
       if (c.p < 0.05 && cs >= 5) s += `<circle cx="${x + cs / 2}" cy="${y + cs / 2}" r="${Math.max(1, cs / 6)}" fill="var(--bg)" pointer-events="none"/>`;
     }
-    const a0 = years.indexOf(state.y0), b0 = years.indexOf(state.y1);
+    const a0 = years.indexOf(Math.max(state.y0, years[0])), b0 = years.indexOf(state.y1);
     if (a0 >= 0 && b0 >= 0) s += `<rect x="${m.l + a0 * cs}" y="${m.t + (n - 1 - b0) * cs}" width="${cs}" height="${cs}" fill="none" stroke="var(--ink)" stroke-width="2" pointer-events="none"/>`;
     for (let k = 0; k < n; k += 10) {
       s += `<text x="${m.l + k * cs + cs / 2}" y="${H - 14}" text-anchor="middle">${years[k]}</text><text x="${m.l - 4}" y="${m.t + (n - 1 - k) * cs + cs / 2 + 4}" text-anchor="end">${years[k]}</text>`;
@@ -1175,11 +1206,24 @@
     const cols = verdictColors();
     return `<span class="pill"><i style="background:${cols[st] ? rgb(cols[st]) : "transparent"}"></i>${esc(t("v" + (st || 0)))}</span>`;
   }
-  const periodText = () => t(state.sc.live ? "period_live" : isFull() ? "period_full" : "period_custom",
-    { y0: state.y0, y1: state.y1, kind: t(state.sc.series.kind === "monthly" ? "kind_monthly" : "kind_annual") });
+  // "Mar–May", "March"; long adds the season's name: "Mar–May (spring)"
+  function seasonText(p, long) {
+    if (!p || p.id === "all") return t("se_all");
+    const named = long && ["djf", "mam", "jja", "son"].includes(p.id) ? ` (${t("se_" + p.id)})` : "";
+    if (mn()) return (p.m0 === p.m1 ? `${p.m0}-р сар` : `${p.m0}–${p.m1}-р сар`) + named;
+    const M = t("months").split(" ");
+    return (p.m0 === p.m1 ? M[p.m0 - 1] : `${M[p.m0 - 1].slice(0, 3)}–${M[p.m1 - 1].slice(0, 3)}`) + named;
+  }
+  // "1981–2025" or "1981–2025, Mar–May"
+  const yrsText = (sc = state.sc, y0 = state.y0, y1 = state.y1) => { const se = seasonOf(sc); return `${y0}–${y1}${se ? ", " + seasonText(se) : ""}`; };
+  const periodText = () => {
+    const se = seasonOf(state.sc);
+    return t(state.sc.live && !se ? "period_live" : isFull() && !se ? "period_full" : "period_custom",
+      { y0: state.y0, y1: state.y1, kind: se ? t("kind_season", { s: seasonText(se) }) : t(state.sc.series.kind === "monthly" ? "kind_monthly" : "kind_annual") });
+  };
   function renderSummary() {
     const sc = state.sc, r = state.res, k = r.counts, el = $("#summary");
-    const rm = sc.region_means[0], rs = r.regionStats[0], title = sceneTitle(sc), yrs = `${state.y0}–${state.y1}`;
+    const rm = sc.region_means[0], rs = r.regionStats[0], title = sceneTitle(sc), yrs = yrsText();
     let head;
     if (mn()) {
       head = `<b>${esc(title)}</b>, ${esc(sceneRegion(sc))}, ${yrs}. ${nf(k.valid)} нүдний <strong>${nf(k.fdr)}</strong> нь FDR тестийг давсан чигтэй (${nf(k.fdr_up)} өсөлт, ${nf(k.fdr_down)} бууралт); энгийн тест <strong>${nf(k.naive)}</strong> нүдийг тэмдэглэх байсан.`;
@@ -1205,6 +1249,12 @@
         ? `${nf(sc.counts.gappy)} нүдэнд зарим сар дутуу тул нөхөж тооцолгүй хассан. Нийлүүлэгч [${sc.valid_min}, ${sc.valid_max}] мужаас гадуурх утгыг хасдаг тул дутуу сарууд нь бодит туйлын утга байж болно; тэдгээрийг хасаад тооцсон чиг цензурдсан болно.`
         : (sc.data_warnings || [])[0] || "" });
     }
+    const se = seasonOf(sc);
+    if (se) {
+      warns.push({ sev: "", w: t("season_warn", { s: seasonText(se) }) });
+      if (r.y0eff > state.y0) warns.push({ sev: "", w: t("season_first", { s: seasonText(se), y: r.y0eff, p: state.y0 - 1 }) });
+    } else if (state.season !== "all") warns.push({ sev: "", w: t("season_na") });
+    if (k.flat) warns.push({ sev: "", w: t("flat_cells", { n: nf(k.flat) }) });
     (sc.notes || []).forEach((w) => warns.push({ sev: "", w: noteText(w) }));
     (sc.live ? [] : sc.transitions || []).filter((tr) => !tr.verified).forEach((tr) => warns.push({ sev: "", w: mn() ? noteText(tr.label) : `${tr.label}. Not tested: date unconfirmed.` }));
     el.innerHTML = `<p class="eyebrow">${esc(t("d_dataset"))}</p><h3>${esc(title)}</h3>
@@ -1247,23 +1297,25 @@
       const c = state.res.cells, i = sel.i, g = sc.grid, st = state.res.status[i];
       const lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx];
       if (st === 6 || c.sen[i] === null) {
-        el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}<p class="muted">${esc(t("gappy_cell"))}</p>`;
+        el.innerHTML = `<p class="eyebrow">${esc(t("d_cell"))} ${ll(lat, lon)}</p>${pill(st)}<p class="muted">${esc(t(state.res.flat && state.res.flat.has(i) ? "flat_cell" : "gappy_cell"))}</p>`;
         return;
       }
       const y = Array.from(cellSeries(i)), sen = c.sen[i] / 10;
-      const ann = { years: cube.years, vals: Array.from(cube.data.subarray(i * cube.ny, (i + 1) * cube.ny)) };
-      const sub = subsetAnnual(ann.years, ann.vals, state.y0, state.y1);
+      const ann = { years: cube.years, vals: Array.from(cube.data.subarray(i * cube.ny, (i + 1) * cube.ny)) }, se = seasonOf(sc);
+      const sub = subsetAnnual(ann.years, ann.vals, state.y0, state.y1, cube.off);
       const intercept = S.median(sub.vs.map((v, k) => v - sen * sub.ys[k]).filter(Number.isFinite));
       el.innerHTML = `<p class="eyebrow eyebtn">${esc(t("d_cell"))} ${ll(lat, lon)} ${csvBtn("series")}</p>${pill(st)}
         <div><span class="big">${signed(c.sen[i] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
         <div id="cellchart"></div>
         ${statsList({ sen: c.sen[i], lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
           mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years, m: cellSamples() }, sc,
-          `<dt>${esc(t("s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
+          `<dt>${esc(t(se ? "s_mean_all" : "s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
           (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
-      seriesChart($("#cellchart"), { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual", unit: unitLabel(sc.units),
-        trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept }, markers: markers(sc), window: chartWindow(), label: "cell series" });
-      const used = sc.series.kind === "monthly" ? monthlyWindow(y, sc.series.start, state.y0, state.y1) : (() => { const a = subsetAnnual(cube.years, ann.vals, state.y0, state.y1); return { x: a.vs, t: a.ys }; })();
+      const chart = se ? { t: cube.years.map((v) => v + cube.off), y: ann.vals, annual: true }
+        : { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual" };
+      seriesChart($("#cellchart"), Object.assign(chart, { unit: unitLabel(sc.units),
+        trend: { sen, lo: c.sen_lo[i] / 10, hi: c.sen_hi[i] / 10, intercept }, markers: markers(sc), window: chartWindow(), label: "cell series" }));
+      const used = sc.series.kind === "monthly" && !se ? monthlyWindow(y, sc.series.start, state.y0, state.y1) : { x: sub.vs, t: sub.ys };
       state.exportSeries = { what: `cell_${llTag(lat, lon)}`, where: [["cell_lat", lat], ["cell_lon", lon]], x: used.x, t: used.t, pre: !state.res.custom,
         stats: { sen: c.sen[i], sen_lo: c.sen_lo[i], sen_hi: c.sen_hi[i], p_naive: c.p_naive[i], p_mk: c.p_mk[i], p_ols: c.p_ols[i], phi: c.phi[i],
           sigma: c.sigma[i], mdt: c.mdt[i], nstar: c.nstar[i], detect: detectArr()[i], verdict: st } };
@@ -1278,7 +1330,8 @@
     }
     const annVals = Array.from(acc, (v, q) => (ws[q] ? v / ws[q] : NaN));
     let r, kind;
-    if (sc.series.kind === "monthly") {
+    const se = seasonOf(sc);
+    if (sc.series.kind === "monthly" && !se) {
       const n = sc.series.n, mAcc = new Float64Array(n), mW = new Float64Array(n);
       for (const k of sel.cells) {
         const w = Math.cos(g.lat[Math.floor(k / g.nx)] * Math.PI / 180), y = cellSeries(k);
@@ -1289,14 +1342,14 @@
       if (r) r.used = win;
       kind = t("kind_monthly");
     } else {
-      const sub = subsetAnnual(cube.years, annVals, state.y0, state.y1);
+      const sub = subsetAnnual(cube.years, annVals, state.y0, state.y1, cube.off);
       r = S.analyze(sub.vs, sub.ys);
-      kind = t("kind_annual");
+      kind = se ? t("kind_season", { s: seasonText(se) }) : t("kind_annual");
     }
-    if (!r) { el.innerHTML = `<p class="muted">${esc(t("tri_need"))}</p>`; return; }
+    if (!r || !(r.varS > 0)) { el.innerHTML = `<p class="muted">${esc(t(r ? "flat_cell" : "tri_need"))}</p>`; return; }
     const [lonA, latA, lonB, latB] = sel.bounds;
     const st = r.pMk < state.alpha ? (r.pOls < state.alpha ? 1 : 2) : (r.nstar > r.years ? 4 : 5);
-    const used = sc.series.kind === "monthly" ? r.used : (() => { const a = subsetAnnual(cube.years, annVals, state.y0, state.y1); return { x: a.vs, t: a.ys }; })();
+    const used = sc.series.kind === "monthly" && !se ? r.used : (() => { const a = subsetAnnual(cube.years, annVals, state.y0, state.y1, cube.off); return { x: a.vs, t: a.ys }; })();
     state.exportSeries = { what: "box", where: [["box_west", lonA], ["box_south", latA], ["box_east", lonB], ["box_north", latB], ["box_cells", sel.cells.length]],
       x: used.x, t: used.t, stats: { sen: r.sen * 10, sen_lo: r.senLo * 10, sen_hi: r.senHi * 10, p_naive: r.pNaive, p_mk: r.pMk, p_ols: r.pOls,
         phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, detect: detectYear(r.nstar, r.sen * 10, r.senLo * 10, r.senHi * 10, r.phi, r.n), verdict: st } };
@@ -1305,7 +1358,7 @@
       <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
       <div id="cellchart"></div>
       ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}`;
-    seriesChart($("#cellchart"), { t: cube.years.map((v) => v + 0.5), y: annVals, annual: true, unit: unitLabel(sc.units),
+    seriesChart($("#cellchart"), { t: cube.years.map((v) => v + cube.off), y: annVals, annual: true, unit: unitLabel(sc.units),
       trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
   }
 
@@ -1314,7 +1367,7 @@
     const k = cmpCellAt(lon, lat);
     return withSide(() => {
       const sc = state.sc, c = state.res.cells, st = k < 0 ? 0 : state.res.status[k];
-      const head = `<div class="section cmpcell"><p class="eyebrow">${esc(t("cmp_right"))} · ${esc(sceneTitle(sc))} · ${state.y0}–${state.y1}</p>`;
+      const head = `<div class="section cmpcell"><p class="eyebrow">${esc(t("cmp_right"))} · ${esc(sceneTitle(sc))} · ${esc(yrsText())}</p>`;
       if (k < 0 || !st || st === 6 || c.sen[k] === null) return head + `${pill(st)}</div>`;
       return head + `${pill(st)}<div><span class="big">${signed(c.sen[k] * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
         <dl class="kv"><dt>${esc(t("s_ci"))}</dt><dd>[${fmt(c.sen_lo[k] * unitFactor())}, ${fmt(c.sen_hi[k] * unitFactor())}]</dd>
@@ -1378,13 +1431,19 @@
     const meta = [["tool", "Trend Detective"], ["generated_utc", new Date().toISOString().slice(0, 19) + "Z"],
       ["page", `${location.href.split("#")[0]}#${sc.id}`], ["dataset", `${sc.id}: ${sc.title}`], ["product", sc.product_name],
       ["variable", `${sc.var} (${sc.long_name || sc.title})`], ["units", sc.units], ["region", sc.region_name],
-      ["years", `${state.y0}-${state.y1}`], ["alpha", state.alpha], ["alpha_fdr", 2 * state.alpha], ["fdr_p_threshold", r.pstar],
+      ["years", `${state.y0}-${state.y1}`], ["months", seasonCsv(sc)], ["alpha", state.alpha], ["alpha_fdr", 2 * state.alpha], ["fdr_p_threshold", r.pstar],
       ["trend_method", "Theil-Sen slope per decade; CI 95 %; p_corrected = Mann-Kendall with the Hamed-Rao correction (AR(1)); p_ols_ar1 = OLS with AR(1) effective n (Santer 2000)"],
       ["detectable_by_method", "start year + ceil(n*) - 1, n* = years for 90 % detection at 5 % (Weatherhead et al. 1998), if the trend continues; low/high from the Sen CI and e^+-B"]];
     if (sc.live) meta.push(["read_live", `${sc.live_info.read} from NASA POWER on AWS`]);
     return meta.concat(extra || []).map(([k, v]) => `# ${k}: ${metaVal(v)}`);
   }
   const VERDICT_EN = (code) => I.en("v" + code);
+  function seasonCsv(sc) {
+    const se = seasonOf(sc);
+    if (!se) return sc.series.kind === "monthly" ? "all (monthly values)" : "all (annual means)";
+    const M = I.en("months").split(" "), name = SEA.months(se.m0, se.m1).map((m) => M[m - 1].slice(0, 3)).join("-");
+    return `${name}: one mean per year${se.m0 > se.m1 ? ", counted in the year of its last month" : ""}; a year with any of these months missing is left out`;
+  }
   function csvCells() {
     const sc = state.sc, g = sc.grid, c = state.res.cells, st = state.res.status, det = detectArr();
     const rows = [["lat", "lon", "verdict_code", "verdict", "trend_per_decade", "trend_ci_low", "trend_ci_high", "p_naive", "p_corrected", "p_ols_ar1",
@@ -1396,7 +1455,7 @@
         ok ? c.sigma[k] : null, ok ? c.mdt[k] : null, ok ? c.nstar[k] : null, d ? d.y : null, d ? d.lo : null, d ? d.hi : null, c.clim_mean[k]]);
     }
     const k = state.res.counts;
-    return { name: `cells`, meta: [["rows", "one per grid cell (centre lat/lon); verdict_code 0 = no data, 6 = months missing"],
+    return { name: `cells`, meta: [["rows", "one per grid cell (centre lat/lon); verdict_code 0 = no data, 6 = months missing; mean_value = mean of all months of the record"],
       ["cells_tested", k.valid], ["cells_significant_fdr", k.fdr]], rows };
   }
   function csvSeries(x, tt, stats, where, what, pre) {
@@ -1404,7 +1463,8 @@
     const s = stats || {}, d = s.detect;
     const meta = where.concat([
       ["values", monthly ? "monthly anomalies, calendar-month means of the chosen years removed (the input to the statistics)"
-        : "annual-mean anomalies of the chosen years (the input to the statistics)"],
+        : seasonOf(sc) ? "season means of the monthly anomalies (departures from the whole record's calendar-month means), one per year (the input to the statistics)"
+          : "annual means as anomalies (the input to the statistics)"],
       ["statistics_from", pre ? "full-precision data when the dataset was built; the values below are the page's rounded copy, so a recomputation from them can differ in the 3rd-4th significant digit"
         : "exactly the values in this file, computed in the browser"],
       ["trend_per_decade", s.sen], ["trend_ci_low", s.sen_lo], ["trend_ci_high", s.sen_hi], ["p_naive", s.p_naive], ["p_corrected", s.p_mk],
@@ -1416,7 +1476,8 @@
   }
   function csvRegion(k) {
     const sc = state.sc, rm = sc.region_means[k], s = state.res.regionStats[k];
-    const w = monthlyWindow(rm.monthly, rm.monthly_start, state.y0, state.y1);
+    const ry = seasonOf(sc) && regionYears(rm), sub = ry && subsetAnnual(ry.years, ry.vals, state.y0, state.y1, ry.off);
+    const w = ry ? { x: sub.vs, t: sub.ys } : monthlyWindow(rm.monthly, rm.monthly_start, state.y0, state.y1);
     const d = s ? detectYear(s.nstar, s.sen, s.sen_lo, s.sen_hi, s.phi, s.n) : null;
     return csvSeries(w.x, w.t, s && { sen: s.sen, sen_lo: s.sen_lo, sen_hi: s.sen_hi, p_naive: s.p_naive, p_mk: s.p_mk, p_ols: s.p_ols_ar1,
       phi: s.phi, sigma: s.sigma, mdt: s.mdt, nstar: s.nstar, detect: d }, [["area", `${rm.name}; ${rm.how === "area_sum" ? "area sum" : "cos-latitude weighted mean"}`]], rm.key, !state.res.custom);
@@ -1443,7 +1504,7 @@
     else return;
     const head = what === "screen" ? csvMeta().filter((l) => /^# (tool|generated_utc|page|years|alpha)/.test(l)) : csvMeta();
     const text = head.concat(out.meta.map(([a, v]) => `# ${a}: ${metaVal(v)}`), out.rows.map((r) => r.map(csvCell).join(","))).join("\r\n") + "\r\n";
-    const base = what === "screen" ? "trend-detective_screen-mongolia" : `trend-detective_${sc.id}_${state.y0}-${state.y1}_${out.name}`;
+    const se = seasonOf(sc), base = what === "screen" ? "trend-detective_screen-mongolia" : `trend-detective_${sc.id}_${state.y0}-${state.y1}${se ? "_" + SEA.letters(se.m0, se.m1) : ""}_${out.name}`;
     await saveFile(`${base}.csv`, text);
   }
   // the claude.ai page saves through its downloads capability (the viewer confirms); elsewhere a link download.
@@ -1472,7 +1533,7 @@
       if (!s) return `<div class="rm"><h3>${esc(regionName(rm))}</h3><p class="muted">${esc(t("tri_need"))}</p></div>`;
       const steps = state.res.custom ? "" : (s.steps || []).map((st) => `<dt>${esc(t("s_step", { d: st.label.slice(0, 7) }))}</dt><dd>${signed(st.step)} (p ${fmtP(st.p_step)})</dd>`).join("");
       return `<div class="rm"><h3 class="eyebtn">${esc(regionName(rm))} ${csvBtn("region", k)}</h3>
-        <div><span class="big">${signed(s.sen)}</span> <span class="muted">${esc(unitLabel(rm.units))} ${esc(t("unit_decade"))} · ${esc(t("rm_mean"))} ${fmt(rm.raw_mean)} ${esc(unitLabel(rm.units))}</span></div>
+        <div><span class="big">${signed(s.sen)}</span> <span class="muted">${esc(unitLabel(rm.units))} ${esc(t("unit_decade"))} · ${esc(t(seasonOf(sc) ? "rm_mean_all" : "rm_mean"))} ${fmt(rm.raw_mean)} ${esc(unitLabel(rm.units))}</span></div>
         <div id="rmchart${k}"></div>
         <dl class="kv"><dt>${esc(t("rm_ci"))}</dt><dd>[${fmt(s.sen_lo)}, ${fmt(s.sen_hi)}]</dd>
         <dt>${esc(t("rm_p"))}</dt><dd>${fmtP(s.p_naive)} → ${fmtP(s.p_mk)} → ${fmtP(s.p_ols_ar1)}</dd>
@@ -1483,9 +1544,10 @@
       const s = state.res.regionStats[k], host = $("#rmchart" + k);
       if (!s || !host) return;
       const tm = rm.monthly.map((_, q) => rm.monthly_start + q / 12), y = rm.monthly.map((v) => (v === null ? NaN : v));
-      const sub = subsetAnnual(rm.annual_years, rm.annual, state.y0, state.y1);
+      const ry = regionYears(rm), sub = subsetAnnual(ry.years, ry.vals, state.y0, state.y1, ry.off);
       const intercept = S.median(sub.vs.map((v, q) => v - s.sen / 10 * sub.ys[q]).filter(Number.isFinite));
-      seriesChart(host, { t: tm, y, ann: { years: rm.annual_years, vals: rm.annual.map((v) => (v === null ? NaN : v)) }, unit: unitLabel(rm.units), height: 140,
+      const chart = seasonOf(sc) ? { t: ry.years.map((v) => v + ry.off), y: ry.vals, annual: true } : { t: tm, y, ann: { years: ry.years, vals: ry.vals } };
+      seriesChart(host, { ...chart, unit: unitLabel(rm.units), height: 140,
         trend: { sen: s.sen / 10, lo: s.sen_lo / 10, hi: s.sen_hi / 10, intercept }, markers: markers(sc), window: chartWindow(), label: regionName(rm) });
     });
     let tri = null;
@@ -1496,7 +1558,8 @@
         title: `${t("d_cell")} ${ll(g.lat[Math.floor(sel.i / g.nx)], g.lon[sel.i % g.nx])}`, unit: sc.units };
     } else if (sc.region_means[0]) {
       const rm = sc.region_means[0];
-      tri = { years: rm.annual_years, vals: rm.annual, title: regionName(rm), unit: rm.units };
+      const ry = regionYears(rm);
+      tri = { years: ry.years, vals: ry.vals, title: regionName(rm), unit: rm.units };
     }
     if (tri) {
       $("#tri-title").textContent = tri.title;
@@ -1630,7 +1693,7 @@
     const rows = all.filter((r) => f === "all" || (f === "fdr" && r.fdr) || r.kind === f);
     const sceneFor = (r) => (state.index.scenes.find((s) => s.region === "mongolia" && s.var === r.var && s.product === r.product &&
       s.period.start.slice(0, 4) === (r.kind === "mission" ? "2001" : "1981")) || {}).id;
-    $("#screen-meta").innerHTML = `${esc(t("sc_meta", { n: all.length, y0: state.y0, y1: state.y1 }))} ${csvBtn("screen")}`;
+    $("#screen-meta").innerHTML = `${esc(t("sc_meta", { n: all.length, y0: state.y0, y1: state.y1 }))}${state.season !== "all" ? " " + esc(t("sc_season", { s: seasonText(SEA.byId(state.season)) })) : ""} ${csvBtn("screen")}`;
     $("#screen-head").innerHTML = `<tr>${["h_var", "h_src", "h_years", "h_trend", "h_ci", "h_sd", "h_pct", "h_pn", "h_pc", "h_fdr", "h_ann"].map((k, i) => `<th class="${i >= 2 && i <= 8 ? "n" : ""}">${esc(t(k))}</th>`).join("")}</tr>`;
     $("#screen-body").innerHTML = rows.map((r) => {
       const s = r.stats, id = sceneFor(r);
@@ -1659,6 +1722,14 @@
     const table = v ? `<div class="tablewrap"><table><thead><tr><th>${mn() ? "Шуугианы санах ой φ" : "Noise memory φ"}</th>${keys.map((k) => `<th class="n">${esc(mn() ? TEST_MN[k] : v.tests[k])}</th>`).join("")}<th class="n">${mn() ? "Sen завсрын хамралт" : "Sen CI coverage"}</th></tr></thead><tbody>
       ${v.rows.map((r) => `<tr><td class="num">${r.phi}</td>${keys.map((k) => `<td class="n">${(100 * r.size[k]).toFixed(1)}% <span class="muted">/ ${(100 * r.power_at_mdt[k]).toFixed(0)}%</span></td>`).join("")}<td class="n">${(100 * r.sen_ci_coverage).toFixed(0)}%</td></tr>`).join("")}</tbody></table></div>
       <p class="small muted">${mn() ? `Нүд бүрт: чиг байхгүй үеийн хуурамч эерэг хувь (зорилт 5%) / чиг нь Weatherhead-ийн хамгийн бага илрэх хэмжээтэй тэнцүү үеийн илрүүлэлтийн хувь (зорилт 90%). Мөр бүрт 45 жилийн сарын ${v.reps} симуляц; Монте-Карлогийн стандарт алдаа 5% орчимд ±${(100 * v.mc_standard_error_at_5pct).toFixed(1)} пункт.` : `Each cell: false-positive rate with no trend (target 5%) / detection rate when the trend equals the Weatherhead minimum detectable trend (target 90%). ${v.reps} simulated 45-year monthly records per row; Monte Carlo standard error ±${(100 * v.mc_standard_error_at_5pct).toFixed(1)} points at 5%.`}</p>` : "";
+    // one value per year (annual means or one season): the AR(1) correction rests on 20-45 points
+    const oy = v && v.one_per_year;
+    const oneYear = oy ? `<h3>${mn() ? "Жилд нэг утгатай үед (жилийн дундаж эсвэл нэг улирал)" : "One value per year (annual means or one season)"}</h3>
+      <div class="tablewrap"><table><thead><tr>${(mn() ? ["Он", "Онуудын хоорондох φ", "Засваргүй MK", "Засварласан MK (ашигласан)", "OLS + AR(1)", "Хоёулаа, нэг чиглэлд"]
+        : ["Years", "Year-to-year φ", "Uncorrected MK", "Corrected MK (used)", "OLS + AR(1)", "Both, same sign"]).map((h, k) => `<th${k > 1 ? ' class="n"' : ""}>${h}</th>`).join("")}</tr></thead><tbody>
+      ${oy.rows.map((r) => `<tr><td class="num">${r.n}</td><td class="num">${r.phi}</td>${["p_naive", "p_mk", "p_ols_ar1"].map((k) => `<td class="n">${(100 * r.size[k]).toFixed(1)}%</td>`).join("")}<td class="n">${(100 * r.agree).toFixed(1)}%</td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted">${mn() ? `Чиг байхгүй үеийн хуурамч эерэг хувь (зорилт 5%), мөр бүрт ${oy.reps} симуляц, стандарт алдаа ±${(100 * oy.mc_standard_error_at_5pct).toFixed(1)} пункт. Цөөн цэгээс φ-г үнэлдэг тул дараалсан онууд төстэй үед тест α-аас арай олныг тэмдэглэнэ; хоёр тест санал нийлэхийг шаардах нь үүнийг багасгадаг. Монголын улирлын дунджийн φ-ийн медиан хувьсагч, улирлаас хамаарч ойролцоогоор −0.1-ээс 0.3.`
+        : `False-positive rate with no trend (target 5%), ${oy.reps} simulations per row, standard error ±${(100 * oy.mc_standard_error_at_5pct).toFixed(1)} points. With φ estimated from few points the test flags somewhat more than α when consecutive years are alike; requiring both tests to agree reduces it. Over Mongolia the median φ of season means is about −0.1 to 0.3, depending on variable and season.`}</p>` : "";
     const truth = tr ? (mn()
       ? `<p>Үнэн нь мэдэгдэх талбар дээр энгийн газрын зурагт тэмдэглэгдсэн нүднүүдийн <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> нь худал илрэлт; FDR-ийн дараа <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (зорилт ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). Үнэ нь чадал: жинхэнэ чигтэй нүднүүдийн ${Math.round(100 * tr.scores.fdr.power)}%-ийг FDR олдог бол энгийн газрын зураг ${Math.round(100 * tr.scores.naive.power)}%; алдсан ихэнх нь суулгасан чиг нь илрэх хэмжээнээс бага нүднүүд.</p>`
       : `<p>On the known-truth field, <b>${Math.round(100 * tr.scores.naive.fdp)}%</b> of cells flagged by the naive map are false discoveries; after FDR it is <b>${Math.round(100 * tr.scores.fdr.fdp)}%</b> (target ≤ ${Math.round(100 * syn.sc.alpha_fdr)}%). The price is power: ${Math.round(100 * tr.scores.fdr.power)}% of truly trending cells are found, versus ${Math.round(100 * tr.scores.naive.power)}% by the naive map; most misses are cells whose planted trend is below the detectable size.</p>`) : "";
@@ -1696,10 +1767,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>Бүх хүчинтэй нүдэнд Benjamini-Hochberg-ийн худал илрэлтийн хувь (FDR), орон зайн хамааралтай талбарт α<sub>FDR</sub> = 2 × α (Wilks 2016).</li>
           <li>Дутуу сартай нүдийг нөхөхгүй, хасна, шалтгааныг нь хэлнэ.</li>
           <li>Сонгосон онуудаар бүх тест, FDR, тоог таны хөтөч дээр дахин тооцно: сарын утга хадгалсан өгөгдөлд (Монгол) сарын утгаас, бусад (дэлхий) жилийн дунджаас.</li>
+          <li>Сарын шүүлтүүр (Монгол, шууд шинжилгээ): сонгосон сарын дунджийг жил бүр нэг утга болгоод ижил тестүүдийг хийнэ. Шинэ жилийг дамнасан улирал сүүлийн сарынхаа онд тооцогдоно (12–2-р сар 1990 = 1989 оны 12-р сараас 1990 оны 2-р сар); сар нь дутуу онг хасна.</li>
           <li>Хараат бус бүртгэлтэй хөндлөн шалгалт: MERRA-2 ба IMERG хур тунадас; MERRA-2 ба NSIDC далайн мөс.</li>
           <li>Шууд шинжилгээ: MERRA-2-ын 472, CERES-ийн 848 хувьсагчийг AWS дээрх NASA POWER-ээс хөтөч шууд уншина. Задлагчийг numcodecs ба xarray-тай бит тус бүрээр тулгасан; Монгол дээр урьдчилан тооцсон Python-ы үр дүнг давтдаг (T2M +0.1942 °C/арван жил, p 0.00239). Шууд горимд алхамын тест хийхгүй.</li></ul></div>
       </div>
-      <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${truth}${emergeCard}
+      <h3>Орон нутгийн тестийн Монте-Карло шалгалт</h3>${table}${oneYear}${truth}${emergeCard}
       <div class="card"><h3>Өөрийн шинжилгээг ажиллуулах</h3><p class="prose">Python 3.10+ суулгаад агуулахын хавтсанд суулгах скриптийг ажиллуулна (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), дараа нь:</p>${run}</div>
       <p class="small muted">Өгөгдөл: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth (world-atlas, ISC). Дэлгэрэнгүй: docs/METHODS.md.</p>`
       : `
@@ -1716,10 +1788,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
           <li>Benjamini-Hochberg false discovery rate over all valid cells, with α<sub>FDR</sub> = 2 × α for spatially correlated fields (Wilks 2016).</li>
           <li>Cells with missing months are excluded, never gap-filled, and the tool says why.</li>
           <li>For chosen years, every test, the FDR and every count are recomputed in your browser, from monthly values where the dataset stores them (Mongolia) and from annual means otherwise (globe).</li>
+          <li>Months filter (Mongolia, live analyses): the chosen months are averaged into one value per year and the same tests run on those. A season over New Year counts in the year of its last month (Dec–Feb 1990 = December 1989 to February 1990); a year missing any of the months is left out.</li>
           <li>Cross-checks against independent records: MERRA-2 vs IMERG precipitation; MERRA-2 vs NSIDC sea ice.</li>
           <li>Live analysis: the browser reads any of 472 MERRA-2 or 848 CERES variables straight from NASA POWER on AWS. The decoder matches numcodecs and xarray bit for bit, and over Mongolia it reproduces the precomputed Python results (T2M +0.1942 °C/decade, p 0.00239). Step tests are not run live.</li></ul></div>
       </div>
-      <h3>Monte Carlo check of the local tests</h3>${table}${truth}${emergeCard}
+      <h3>Monte Carlo check of the local tests</h3>${table}${oneYear}${truth}${emergeCard}
       <div class="card"><h3>Run your own analysis</h3><p class="prose">Install Python 3.10+, then run the install script in the repository folder (Windows: <code>install_analysis.bat</code>, macOS/Linux: <code>install_analysis.sh</code>), then:</p>${run}</div>
       <p class="small muted">Data: NASA POWER v10 (AWS Open Data, CC BY 4.0), NSIDC Sea Ice Index G02135 v4, GeoNames (CC BY 4.0), Natural Earth via world-atlas (ISC). Details: docs/METHODS.md.</p>`;
   }
@@ -1777,6 +1850,12 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#y0").innerHTML = opts(state.y0);
     $("#y1").innerHTML = opts(state.y1);
   }
+  function fillSeason() {
+    const sel = $("#season"), ok = state.sc && state.sc.series.kind === "monthly";
+    sel.innerHTML = SEA.PRESETS.map((p, k) => `${k === 1 || k === 7 ? '<option disabled>──────</option>' : ""}<option value="${p.id}"${p.id === state.season ? " selected" : ""}>${esc(seasonText(p, true))}</option>`).join("");
+    sel.disabled = !ok;
+    sel.title = ok ? t("tb_season_title") : t("season_na");
+  }
   function applyStatic() {
     document.documentElement.lang = mn() ? "mn" : "en";
     $$("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
@@ -1788,7 +1867,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
 
   // ------------------------------------------------------------ actions
   function renderAll() {
-    renderMenus(); buildTree(); fillYears(); renderPicker(); renderCmpBar(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
+    renderMenus(); buildTree(); fillYears(); fillSeason(); renderPicker(); renderCmpBar(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
     renderAnalysis(); renderScreen(); renderMethod(); status();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
     $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
@@ -1826,6 +1905,14 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     else if (p === 2001) { $("#y0").value = Math.max(a, 2001); $("#y1").value = b; }
     else { $("#y0").value = Math.max(a, b - p + 1); $("#y1").value = b; }
     applyYears();
+  }
+  async function setSeason(id) {
+    stopPlay();
+    state.season = SEA.byId(id).id;
+    state.year = null;
+    await computeResults();
+    if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
+    renderAll();
   }
   async function setAlpha(a) {
     state.alpha = a;
@@ -2072,6 +2159,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#modal").addEventListener("input", (e) => { if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#modal").addEventListener("change", (e) => { if (e.target.id === "lv-prod") liveFillProduct(false); else if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
+    $("#season").addEventListener("change", (e) => setSeason(e.target.value));
     $("#search").addEventListener("change", (e) => doSearch(e.target.value));
     $("#search").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(e.target.value); });
     $("#boxmode").addEventListener("click", (e) => {

@@ -128,6 +128,23 @@ def analyze_region(series: np.ndarray, times, breaks=()) -> dict:
             "years": years, "stats": res}
 
 
+def season_means(anom: np.ndarray, t: np.ndarray, m0: int, m1: int) -> tuple[np.ndarray, np.ndarray]:
+    """Means of months m0..m1 (wrapping over December) along the last axis, one per season year.
+
+    A season over New Year belongs to the year of its last month (Dec-Feb 1990 = Dec 1989 to
+    Feb 1990). Only seasons with all their months in the record are kept; a missing value makes
+    that season NaN. Mirrors web/js/season.js by grouping instead of index arithmetic.
+    """
+    want = [(m - 1) % 12 + 1 for m in range(m0, m0 + ((m1 - m0) % 12) + 1)]
+    yr = np.floor(np.asarray(t) + 1e-9).astype(int)
+    mon = np.floor((np.asarray(t) - yr) * 12 + 1e-6).astype(int) + 1
+    label = np.where((m0 > m1) & (mon >= m0), yr + 1, yr)
+    keep = np.isin(mon, want)
+    years = [y for y in np.unique(label[keep]) if np.sum(keep & (label == y)) == len(want)]
+    out = np.stack([anom[..., keep & (label == y)].mean(axis=-1) for y in years], axis=-1)
+    return np.array(years), out
+
+
 def annual_means(anom: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Calendar-year means of monthly anomalies along the last axis (full years only)."""
     yr = np.floor(t).astype(int)
