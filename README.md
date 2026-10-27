@@ -76,6 +76,13 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   value and every town in Mongolia (or every capital on the globe) is
   labelled. Keyboard: + − 0 and the arrow keys on the focused map.
 - **Timeline** under the map: press ▶ to play the anomalies year by year.
+- **Months** (toolbar, next to the years): analyse one season or one month
+  instead of the whole year: Dec–Feb, Mar–May, Jun–Aug, Sep–Nov, Nov–Mar,
+  May–Sep or any single month. Each year contributes the mean of those months
+  and every test, count, map layer, chart and CSV follows. Works on the
+  Mongolian datasets and live analyses (they keep monthly values per cell).
+  Mongolia, 1981–2025: spring (Mar–May) warmed +0.28 °C/decade (737 of 1,272
+  cells after FDR), winter (Dec–Feb) shows no detectable trend (−0.06, p 0.70).
 - **Years**: pick a start and end year and press Apply. Every trend, test,
   false-discovery threshold and count is recomputed in the browser (monthly
   values for Mongolia, annual means for the globe). Change α the same way.
@@ -90,6 +97,13 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 - **Variable ranking tab**: 91 MERRA-2 and CERES variables over Mongolia.
 - **Method tab**: how significance is decided, with a Monte Carlo check.
 - **Legend**: click the unit to switch between per decade, per year and total.
+- **Download as CSV** (*⤓ CSV* buttons, or the File menu): the map table
+  (one row per cell: trend, 95 % interval, the three p-values, FDR flag,
+  verdict, smallest detectable trend, year detectable), the series of a
+  clicked cell or box, an area mean, or the variable ranking. The numbers are
+  the ones on screen for the chosen years and α; `# key: value` lines on top
+  record dataset, units, years and method (`pandas.read_csv(f, comment="#")`).
+  Columns are in English in both languages.
 - **View menu**: light, dark or system theme; hide side panels.
 
 ## What it does
@@ -162,9 +176,10 @@ TrendDetective.html   double-click to open the viewer
 web/                  viewer (index.html, css/, js/, data/*.js)
   js/zarr.js, live.js live reading of NASA POWER Zarr chunks (Blosc/zstd) in the browser
   js/basemap.js       NASA GIBS imagery tiles (WMTS, EPSG:4326)
+  js/season.js        season / single-month means (mirrors analysis.season_means)
 trend_detective/
   stats.py            per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
-  analysis.py         field analysis, verdicts, region means
+  analysis.py         field analysis, verdicts, region means, annual and season means
   scenes.py           scene definitions, variable screen, cross-checks
   power.py, nsidc.py  data access (NASA POWER Zarr, NSIDC Sea Ice Index)
   catalog.py          products and documented data-source transitions

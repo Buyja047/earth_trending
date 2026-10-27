@@ -22,7 +22,7 @@ def main(out: str) -> None:
     css = (WEB / "css" / "app.css").read_text()
     js = "\n".join((WEB / "js" / f).read_text()
                    for f in ("stats.js", "i18n.js", "surface.js", "basemap.js", "vendor/fzstd.js", "zarr.js", "live.js",
-                             "app.js"))
+                             "season.js", "app.js"))
     page = "\n".join([title, *metas, *fonts, f"<style>\n{css}</style>", body,
                       f"<script>\n{js}</script>"])
     Path(out).write_text(page)

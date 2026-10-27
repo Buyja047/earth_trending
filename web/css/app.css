@@ -192,6 +192,10 @@ p { margin: 0; }
 .legendbar .seg button { padding: 1px 7px; font: 11px var(--font-data); }
 .legendbar .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--line-strong); vertical-align: -2px; margin-right: 5px; }
 .unitbtn { border: 1px dashed var(--line-strong); background: none; cursor: pointer; padding: 1px 6px; }
+.csvbtn { border: 1px solid var(--line-strong); background: var(--bg); cursor: pointer; padding: 0 6px; font: 600 11px/1.6 var(--font-ui);
+  letter-spacing: 0; text-transform: none; color: var(--ink); vertical-align: 1px; }
+.csvbtn:hover { background: var(--sel-bg); color: var(--sel-ink); }
+.eyebtn .csvbtn { margin-left: 6px; }
 .timeline { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel); }
 .timeline input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: var(--ink); }
 .playbtn { width: 32px; height: 26px; border: 1px solid var(--line-strong); background: var(--bg); cursor: pointer; }
