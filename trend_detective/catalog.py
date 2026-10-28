@@ -44,8 +44,8 @@ PRODUCTS = {
     "merra2daily": {
         "name": "MERRA-2 daily indices (via NASA POWER v10)",
         "kind": "model",
-        "source": "Counts of days from the NASA POWER daily MERRA-2 store: snow depth, corrected precipitation, "
-                  "daily maximum 10 m wind",
+        "source": "Counts of days from the NASA POWER daily MERRA-2 store: snow-cover fraction, corrected "
+                  "precipitation, daily maximum 10 m wind",
         "native_res": "0.5 deg x 0.625 deg",
         "record_start": "1981-01",
         "url": "https://registry.opendata.aws/nasa-power/",
@@ -166,7 +166,10 @@ NOTES = {
         "hourly 10 m wind at or above the threshold. AP-42 13.2.5 puts the wind-erosion threshold of mine "
         "surfaces at 10-27 m/s in gusts, and hourly cell means are smoother, so compare the 6, 8 and 10 m/s "
         "versions: a trend that holds for all three does not hang on the threshold. Pits and haul roads "
-        "that are cleared of snow can still emit dust in winter (Wang et al. 2022)."
+        "that are cleared of snow can still emit dust in winter (Wang et al. 2022). Checked against Sentinel-5P's "
+        "UV aerosol index (2018-2025, scripts/check_dust_s5p.py): in spring over the South Gobi, dust-prone days "
+        "read higher than calmer snow-free days of the same cell and month, and the index rises with wind speed; "
+        "only about one dust-prone day in six shows a clear plume, so it marks dust-favourable weather, not dust."
     ),
     ("merra2daily", "R10MM"): (
         "A ~50 km cell's daily total smooths out cloudbursts: Ulaanbaatar's flash floods come from 10-40 mm "

@@ -95,7 +95,11 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   - Checks: the MERRA-2 snow cover was calibrated against MODIS. Over Mongolia
     the dust-prone-day decline sits before 1992, a MERRA-2 production-stream
     boundary, so it is reported as unconfirmed. Over Ulaanbaatar, IMERG
-    confirms the rise in the wettest day.
+    confirms the rise in the wettest day. Against Sentinel-5P's UV aerosol
+    index (2018–2025, day by day), dust-prone days over the South Gobi read
+    higher than calmer days, and the index rises with wind speed. Only about
+    one in six shows a clear plume, so the index means "dust likely", not
+    "dust seen" (`scripts/check_dust_s5p.py`).
   - Details: `docs/METHODS.md`. Licences of every data source:
     `docs/DATA_LICENSES.md`.
 - **Years**: pick a start and end year and press Apply. Every trend, test,
@@ -236,6 +240,10 @@ allowed, list this repository under References.
   GIBS, used to check MERRA-2 snow and to place the Tavan Tolgoi pit ("Contains
   modified Copernicus Sentinel data 2025"). Full table, including what was read
   but not redistributed (Esri Wayback, journal articles): `docs/DATA_LICENSES.md`.
+- Sentinel-5P TROPOMI UV aerosol index, DLR daily L3 composites (CC BY 4.0;
+  "Contains modified Copernicus Sentinel data 2018–2025 processed by DLR"; L2
+  from NASA TropOMAER). Used only for the dust check; the gridded data are not
+  stored in the repository.
 - NSIDC Sea Ice Index, G02135 v4, doi:10.7265/a98x-0f50.
 - Places: GeoNames, CC BY 4.0. Coastlines and borders: Natural Earth via
   `world-atlas` 2.0.2 (ISC).

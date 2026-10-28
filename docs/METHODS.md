@@ -338,7 +338,8 @@ of dust-prone days remain an upper estimate.
   South Gobi, -0.458 country-wide in March–May). Total AOD over Mongolia is not a
   dust measure (smoke and haze build up in calm weather, windy days ventilate
   them), so this is no confirmation either way. The index describes weather
-  that allows dust, not dust that was observed.
+  that allows dust, not dust that was observed. The day-by-day Sentinel-5P
+  check below is the closer test.
 * **Rain indices rise, and IMERG agrees over Ulaanbaatar.** In the MERRA-2 cell over
   Ulaanbaatar the wettest day of the month rose +0.39 mm per decade in
   2001–2025 (p 0.0987). GPM IMERG averaged over the same cell gives
@@ -375,6 +376,106 @@ as AERMOD; in Jalayer et al. (2026) the 24-h PM10 limit was exceeded only
 within 0.8–1.4 km of the crushers. Winter dust from cleared pits and roads
 under a low boundary layer (Wang et al. 2022) is not captured, because the
 index counts natural snow cover.
+
+### Satellite check: Sentinel-5P UV aerosol index (2018–2025)
+
+MERRA-2's wind, snow and rain are model fields, so the index needs an outside
+check. TROPOMI on Copernicus Sentinel-5P measures the UV aerosol index (UVAI)
+every day at 5.5 × 3.5 km. UVAI is positive when UV-absorbing aerosol, such as
+desert dust or smoke, lies above a few hundred metres. The data are DLR's daily
+0.1° composites (STAC collection `S5P_TROPOMI_L3_P1D_AI_v2`) of NASA's
+TropOMAER UVAI (354/388 nm). The tool reads only the tiles over Mongolia,
+averages them onto the MERRA-2 cells and compares them with the same days'
+flags (`trend_detective/sentinel.py`, `scripts/check_dust_s5p.py`,
+`docs/s5p_check.json`). The record covers 2791 of 2802 days from May 2018
+to December 2025.
+
+**What the product allows.** The background of the product moves with the
+surface, so two traps had to be avoided:
+
+* **Bare ground in winter.** On calm (max wind < 6 m/s), dry, snow-free days
+  the mean UVAI is 0.83 in January and -0.22 in July. With no local dust
+  source on those days, this is background, not dust.
+* **Snow.** On calm, dry, snow-covered days in January the mean UVAI is
+  0.19, lower than on snow-free days. Over snow, TropOMAER switches to its older Lambertian-surface retrieval (TropOMAER
+  README, NASA GES DISC), so this is a retrieval change, not cleaner air.
+
+Two rules follow from this. Every comparison is made within the same cell and
+calendar month. Every dust comparison uses snow-free days only. **The snow gate
+cannot be tested with UVAI.**
+
+**Dust-prone days against calmer days.** The comparison is between dust-prone
+days and snow-free dry days with a lower maximum wind, in the same cell and
+month. The UVAI difference has a 95 % interval from resampling whole years.
+The last column is the share of days with UVAI ≥ 0.8 (TropOMAER's land
+threshold for absorbing aerosol) in March–May.
+
+| Region | March–May | Cell-months higher | All months | Days with UVAI ≥ 0.8 |
+|---|---|---|---|---|
+| South Gobi | +0.20 (+0.17 to +0.24) | 96 % | +0.13 (+0.11 to +0.15) | 17 % vs 9 % |
+| Mongolia | +0.09 (+0.06 to +0.12) | 69 % | +0.08 (+0.06 to +0.09) | 15 % vs 12 % |
+| Eastern steppe | +0.06 (+0.01 to +0.12) | 77 % | +0.07 (+0.03 to +0.10) | 11 % vs 9 % |
+
+**What the comparison shows.**
+
+* In spring over the South Gobi, dust-prone days read clearly higher than
+  calmer days. Over the eastern steppe the difference is smaller, and that is
+  where spring grass fires add smoke to UVAI. Over the South Gobi the signal
+  is still there on the next day: +0.10 (+0.06 to +0.13).
+* Only about one dust-prone day in six shows a clear plume: 17 % against 9 %
+  on calmer days, and at UVAI ≥ 1, 10 % against 4 %.
+* UVAI misses dust in the lowest kilometre and under thick cloud, so these
+  shares understate dust days. Even so, the index marks **days when dust is
+  likely, not days when dust was seen**.
+
+**More wind, more absorbing aerosol.** The table below covers the South Gobi in
+March–May, on snow-free dry days. UVAI is given as a departure from the same
+cell and month's days below 4 m/s.
+
+| Max wind (m/s) | 0-4 | 4-6 | 6-8 | 8-10 | 10-12 | >=12 |
+|---|---|---|---|---|---|---|
+| UVAI above calm | 0.00 | +0.04 | +0.08 | +0.15 | +0.27 | +0.59 |
+| Days with UVAI ≥ 0.8 | 10 % | 9 % | 9 % | 10 % | 16 % | 33 % |
+
+UVAI rises steadily with wind. The share of days with a plume stays near the
+calm level up to 10 m/s and climbs only above that, in line with the 10 m/s
+lower end of AP-42's erosion thresholds for mine surfaces (13.2.5, a different
+wind measure). So more of the 10 m/s index's days show a plume than of the
+8 m/s index's days, at the price of missing more dust days.
+
+**Rain gate.** The comparison is between windy snow-free days that are wet and
+those that are dry:
+
+| Region | All months | March–May | Reading |
+|---|---|---|---|
+| South Gobi | -0.04 (-0.05 to -0.01) | -0.06 (-0.11 to -0.02) | lower on wet days, as the gate expects |
+| Mongolia | -0.01 (-0.02 to +0.01) | -0.03 (-0.05 to -0.004) | small, spring only |
+| Eastern steppe | +0.05 (+0.02 to +0.09) | +0.03 (-0.03 to +0.10) | the opposite sign |
+
+Clouds on wet days also pull UVAI toward zero, so this test is weak in either
+direction.
+
+**Monthly anomalies.** These are dust-prone days per month against mean
+snow-free UVAI. Over the South Gobi the correlation is r = 0.37 across all
+months (n = 92) and 0.32 in March–May (n = 22). Country-wide it is 0.30 and
+0.29. With 22 spring months, r = 0.32 is not significant. Seven and a half
+years are too few to test the 1981–2025 trend, so the 1992 question above
+stays open.
+
+**Disagreement with CERES.** The two satellite checks disagree.
+
+| Check | Data | Result |
+|---|---|---|
+| CERES total AOD (NASA) | Monthly, 1°, 2001–2025 | Correlates *negatively* with the index in spring (r = −0.34 over the South Gobi) |
+| Sentinel-5P UVAI | Daily, same cell and month | Dust-prone days read higher in 96 % of South Gobi cell-months |
+
+The daily Sentinel-5P comparison is the closer test of "is a dust-prone day
+dusty". Total AOD also counts haze and smoke, which build up in calm weather
+and fall on windy days, and a monthly mean cannot separate them. The residual
+risk is that UVAI responds to smoke as well. The South Gobi, with little
+vegetation to burn, gives the strongest signal, which points to dust. A check
+that would settle it is NASA's MODIS Deep Blue AOD, which is retrieved over
+bright desert, compared day by day in the same way.
 
 ## Exported tables (CSV)
 
@@ -504,3 +605,8 @@ cells whose planted trend is below the detectable size.
 - Wargan, K. et al. (2017) J. Climate (MERRA-2 ozone).
 - UCAR Climate Data Guide, "NASA's MERRA2 reanalysis".
 - NASA POWER on AWS Open Data: https://registry.opendata.aws/nasa-power/
+- Torres, O. et al. (2020) Atmos. Meas. Tech. 13:6789-6806, doi:10.5194/amt-13-6789-2020 (TropOMAER).
+- NASA GES DISC, TropOMAER README C001 v1.1.1 (UVAI thresholds 0.8 over land; LER retrieval over snow):
+  https://measures.gesdisc.eosdis.nasa.gov/data/AER/TROPOMAER.1/doc/TropOMAER_README_C001_V1.1.1.pdf
+- DLR EOC Geoservice, Sentinel-5P TROPOMI L3 Daily Composites - Aerosol Index:
+  https://geoservice.dlr.de/web/datasets/tropomi_l3_ai
