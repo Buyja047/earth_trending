@@ -286,3 +286,13 @@ pre { font-family: var(--font-data); font-size: 12px; background: var(--panel); 
   .apptitle { font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* mines: downwind roses and settlement tables (daily hazard scenes) */
+.minecard { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; }
+.minecard h3 { margin: 0 0 6px; }
+.minerow { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.minerow p { flex: 1 1 200px; margin: 0; }
+.rose { flex: 0 0 auto; }
+.rose text { font: 600 10px var(--font-mono); fill: var(--muted); }
+.minetable { font-size: 12px; }
+.minetable td, .minetable th { padding: 3px 6px; }

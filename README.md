@@ -83,6 +83,21 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   Mongolian datasets and live analyses (they keep monthly values per cell).
   Mongolia, 1981–2025: spring (Mar–May) warmed +0.28 °C/decade (737 of 1,272
   cells after FDR), winter (Dec–Feb) shows no detectable trend (−0.06, p 0.70).
+- **Snow, rain and wind hazards** (group *Mongolia hazards 1981–2025 (daily)*):
+  daily MERRA-2 from NASA POWER, counted per month. The indices are dust-prone
+  days (snow-free, dry, windy at 6, 8 or 10 m/s), snow-covered days, wet days,
+  windy days, heavy-rain days (≥ 10 mm) and the wettest day of the month.
+  - The **Risk zone** layer marks where an index is high (thirds across the
+    map) and rising (an upward trend after FDR) in the chosen months.
+  - The Analysis tab shows, for Tavan Tolgoi, Oyu Tolgoi and Tsagaan Suvarga,
+    where winds carried dust on dust-prone days and how often each nearby soum
+    centre lay downwind.
+  - Checks: the MERRA-2 snow cover was calibrated against MODIS. Over Mongolia
+    the dust-prone-day decline sits before 1992, a MERRA-2 production-stream
+    boundary, so it is reported as unconfirmed. Over Ulaanbaatar, IMERG
+    confirms the rise in the wettest day.
+  - Details: `docs/METHODS.md`. Licences of every data source:
+    `docs/DATA_LICENSES.md`.
 - **Years**: pick a start and end year and press Apply. Every trend, test,
   false-discovery threshold and count is recomputed in the browser (monthly
   values for Mongolia, annual means for the globe). Change α the same way.
@@ -214,8 +229,13 @@ allowed, list this repository under References.
 
 ## Data and licences
 
-- NASA POWER v10 on AWS Open Data, `s3://nasa-power`, CC BY 4.0. The POWER
-  project is funded by the NASA Applied Sciences Program.
+- NASA POWER v10 on AWS Open Data, `s3://nasa-power`, CC BY 4.0 (monthly
+  and daily stores). The POWER project is funded by the NASA Applied Sciences
+  Program.
+- MODIS Terra monthly snow cover (MOD10CM) and HLS Sentinel-2 imagery via
+  GIBS, used to check MERRA-2 snow and to place the Tavan Tolgoi pit ("Contains
+  modified Copernicus Sentinel data 2025"). Full table, including what was read
+  but not redistributed (Esri Wayback, journal articles): `docs/DATA_LICENSES.md`.
 - NSIDC Sea Ice Index, G02135 v4, doi:10.7265/a98x-0f50.
 - Places: GeoNames, CC BY 4.0. Coastlines and borders: Natural Earth via
   `world-atlas` 2.0.2 (ISC).

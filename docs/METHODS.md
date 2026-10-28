@@ -273,6 +273,109 @@ Example, MERRA-2 T2M over Mongolia 1981–2025: the country mean warmed
 1,272 cells after FDR) against +0.19 for the whole year, while Dec–Feb shows
 −0.06 (p 0.70; no cell after FDR).
 
+## Snow, rain and wind hazards (daily MERRA-2)
+
+Mines, tailings and haul roads only make dust when the ground is bare and dry
+and the wind is strong; snow and rain switch them off. The *Mongolia hazards
+1981–2025 (daily)* datasets count, per ~50 km MERRA-2 cell and month, days
+from the NASA POWER daily store (`trend_detective/hazard.py`):
+
+| Index | A day counts when | Basis |
+|---|---|---|
+| Dust-prone days (6, 8, 10 m/s) | snow cover < 0.3, precipitation < 0.254 mm, daily maximum 10 m wind ≥ 6, 8 or 10 m/s | US EPA AP-42 13.2.2: a day with ≥ 0.254 mm counts as dust-free; AP-42 13.2.5: mine surfaces erode above 10–27 m/s in gusts; snow cover raises the dust-outbreak threshold in Mongolia (Kurosaki and Mikami 2004, 2005) |
+| Snow-covered days | MERRA-2 snow cover ≥ 0.3 | calibrated to MODIS, below |
+| Wet days | precipitation ≥ 0.254 mm | AP-42 13.2.2 |
+| Windy days | daily maximum 10 m wind ≥ 8 m/s | |
+| Heavy-rain days | precipitation ≥ 10 mm | ETCCDI R10mm |
+| Wettest day of the month | largest daily precipitation | ETCCDI Rx1day |
+
+Every index is a monthly series, so the trend battery, the months filter, the
+map-wide FDR and the CSV export apply unchanged.
+
+**Snow from MERRA-2 had to be repaired.** Snow depth (SNODP) cannot be used: in
+the POWER store it stays at 17.33 cm through whole Gobi winters while the
+snow-covered fraction (FRSNO) is 1–20 % (Tavan Tolgoi cell, November 2010 to
+March 2011). The MERRA-2 file specification calls SNODP "snow depth" and FRSNO
+the "fractional area of land snowcover"; the data show SNODP is a depth over the
+snow-covered part only. FRSNO in turn reads low. Against MODIS Terra monthly
+snow cover (MOD10CM, decoded from GIBS with its own colour table) over
+186,092 Mongolian cell-months (November–April 2001–2025), MERRA-2 shows
+25.2 % where MODIS shows 45.1 % (r = 0.798); over the
+Gobi south of 45.5° N it is 5.7 % against
+16.8 %. The fit MODIS = 1.097 × MERRA-2 + 17.46 puts MODIS's
+"half covered" at MERRA-2 29.7 %, so a cell counts as snow-covered from
+0.3 (`scripts/check_snow_modis.py`, `docs/snow_check_modis.json`). The
+intercept says MERRA-2 misses thin snow that MODIS sees, so Gobi winter counts
+of dust-prone days remain an upper estimate.
+
+**Results, MERRA-2, Mongolia (country mean, days per month per decade):**
+
+| Index | 1981–2025 | 1992–2025 | 2001–2025 |
+|---|---|---|---|
+| Dust-prone days, 8 m/s | -0.27 (-0.39 to -0.16), p 9.3e-06 | -0.07 (-0.23 to +0.10), p 0.43 | -0.04 (-0.33 to +0.26), p 0.8 |
+| Dust-prone days, 6 m/s | -0.26 (-0.43 to -0.09), p 0.0025 | -0.26 (-0.52 to +0.00), p 0.053 | -0.26 (-0.73 to +0.20), p 0.28 |
+| Dust-prone days, 10 m/s | -0.15 (-0.22 to -0.09), p 1.8e-06 | -0.01 (-0.09 to +0.07), p 0.88 | -0.00 (-0.14 to +0.14), p 0.99 |
+| Windy days, 8 m/s | -0.31 (-0.48 to -0.14), p 0.00032 | +0.16 (-0.04 to +0.36), p 0.12 | +0.24 (-0.09 to +0.58), p 0.15 |
+| Wet days | -0.01 (-0.15 to +0.13), p 0.91 | +0.35 (+0.15 to +0.54), p 0.00068 | +0.65 (+0.32 to +0.97), p 0.00016 |
+| Wettest day (mm) | +0.10 (+0.00 to +0.20), p 0.041 | +0.33 (+0.19 to +0.48), p 4.1e-06 | +0.58 (+0.31 to +0.88), p 1.5e-05 |
+
+* All three wind thresholds give a decline from 1981 (411 cells down and
+  52 up after FDR at 8 m/s), and 87 % of the significant cells keep their sign at
+  6 and 10 m/s. Repeating the build with the uncorrected snow threshold (0.5)
+  changes the 8 m/s country trend from −0.276 to −0.273: the result does not
+  hang on the snow rule.
+* **The decline sits before 1992.** From 1992, the start of a new MERRA-2
+  production stream, there is no significant trend at 8 or 10 m/s, and windy
+  days turn slightly upward. The step test finds a drop at January 1992 in the
+  country mean (p 0.008) and in 463 cells. Whether the windy 1980s are real
+  (stilling of surface winds is reported across East Asia) or a stream artefact
+  needs station winds, which are not openly licensed (`docs/DATA_LICENSES.md`).
+  Report the 1981–2025 decline as unconfirmed.
+* **Does the index follow dust?** Monthly anomalies of dust-prone days correlate
+  with MERRA-2 surface dust (DUSMASS) at r = 0.738 over the South Gobi
+  (0.458 country-wide), as expected from one model. Against the independent
+  CERES total aerosol optical depth they correlate *negatively* (r = -0.337 over the
+  South Gobi, -0.458 country-wide in March–May). Total AOD over Mongolia is not a
+  dust measure (smoke and haze build up in calm weather, windy days ventilate
+  them), so this is no confirmation either way. The index describes weather
+  that allows dust, not dust that was observed.
+* **Rain indices rise, and IMERG agrees over Ulaanbaatar.** In the MERRA-2 cell over
+  Ulaanbaatar the wettest day of the month rose +0.39 mm per decade in
+  2001–2025 (p 0.0987). GPM IMERG averaged over the same cell gives
+  +0.39 (p 0.00462), and its wettest 0.1° pixel +0.95 (p
+  0.00614). At pixel scale the June–August wettest day averages 25.7 mm against
+  15.0 mm for the cell, which is why a cell value is not a flood threshold. The
+  Ulaanbaatar flood studies use 10–40 mm in 30 minutes (Badamdorj and Chogsom
+  2021) and a terrain-weighted overlay at 12.5–90 m (Ishdorj et al. 2025). IMERG
+  changed calibration from TRMM to GPM in June 2014. For heavy-rain day counts
+  the Sen slope is often 0 because most months have none; the p-value still
+  tests the trend.
+
+**Risk zones.** For any daily index the *Risk zone* layer combines how high
+the index is in the chosen months with whether it is rising. The level is the
+whole-record mean per month in those months, split into thirds across the map.
+"Rising" means an upward trend that survives the FDR test for the chosen years.
+The classes are, in order: high and rising, high, rising, middle, low. The
+thirds are relative to the map, as in the class-based overlays of the
+Ulaanbaatar flood studies; they are not a regulatory standard.
+
+**Downwind of the mines.** For Tavan Tolgoi (pit centre read off NASA HLS
+Sentinel-2 imagery, 43.63° N 105.49° E), Oyu Tolgoi and Tsagaan Suvarga
+(GeoNames), each dust-prone day of the mine's cell is assigned the direction its
+daily mean 10 m wind blew toward. A soum centre counts as downwind when it lies
+within ±22.5° of that direction. From 1981 to 2025, winds on dust-prone days
+at Tavan Tolgoi blew toward the east and south-east: SE 22 %, ESE 22 %, E 18 %.
+Tsogttsetsii (21.6 km ENE) was downwind on 38 days a year and Bayan-Ovoo (89 km
+SE) on 49, against 3 for Dalanzadgad (86 km W). Khanbogd (36 km NE of Oyu
+Tolgoi) was downwind on 22 days a year.
+
+These are direction and frequency only. A daily mean direction over a 50 km
+cell is not a plume. Concentrations need emissions and a dispersion model such
+as AERMOD; in Jalayer et al. (2026) the 24-h PM10 limit was exceeded only
+within 0.8–1.4 km of the crushers. Winter dust from cleared pits and roads
+under a low boundary layer (Wang et al. 2022) is not captured, because the
+index counts natural snow cover.
+
 ## Exported tables (CSV)
 
 Every *⤓ CSV* file holds exactly what the viewer shows for the current
