@@ -1035,7 +1035,9 @@
     const avail = availLayers();
     if (!avail.includes(state.layer)) state.layer = "trend";
     $("#layerbtn").innerHTML = `${layerIcon(state.layer)}<span><span class="muted">${esc(t("layer_btn"))}:</span> <b>${esc(t(LAYER_KEY[state.layer]))}</b></span><span class="caret" aria-hidden="true">▾</span>`;
-    $("#picker").innerHTML = avail.map((l) => `<button type="button" role="menuitemradio" data-layer="${l}" aria-checked="${l === state.layer}">${layerIcon(l)}<span><b>${esc(t(LAYER_KEY[l]))}</b><small>${esc(t(LAYER_KEY[l] + "_d"))}</small></span></button>`).join("");
+    $("#picker").innerHTML = avail.map((l) => `<button type="button" role="menuitemradio" data-layer="${l}" aria-checked="${l === state.layer}">${layerIcon(l)}<span><b>${esc(t(LAYER_KEY[l]))}</b><small>${esc(t(LAYER_KEY[l] + "_d"))}</small></span></button>`).join("")
+      + (avail.includes("zone") ? "" : `<button type="button" role="menuitem" data-risk>${layerIcon("zone")}<span><b>${esc(t("L_zone"))}</b><small>${esc(t("L_zone_go"))}</small></span></button>`);
+    $$("[data-risk]").forEach((b) => { if (b.closest(".toolbar")) { b.setAttribute("aria-pressed", state.layer === "zone"); b.classList.toggle("primary", state.layer === "zone"); } });
   }
   function setLayerMenu(open, focus) {
     const menu = $("#picker");
@@ -2048,6 +2050,13 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAll();
   }
   function setLayer(l) { state.layer = l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  // the risk-zone layer exists only for the daily hazard indices: go to one if needed
+  async function openRisk() {
+    if (!state.sc || !state.sc.clim12) await showScene("mn-dustdays", true);
+    if (state.view !== "map") setView("map");
+    setTab("map");
+    setLayer("zone");
+  }
   function setView(v) {
     state.view = v;
     $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf"; $("#zoomctl").hidden = v !== "map";
@@ -2221,7 +2230,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     applyStatic();
     await loadScene("synthetic-truth").catch(() => null);
     const first = location.hash.slice(1);
-    await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
+    if (first === "risk") await openRisk();   // #risk: a shareable link straight to the risk zones
+    else await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
     if (!store.get("seenGuide")) { store.set("seenGuide", "1"); showGuide(); }
 
     document.addEventListener("click", (e) => {
@@ -2240,6 +2250,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       if (!$("#picker").hidden && !e.target.closest("#picker")) setLayerMenu(false);
       const go = e.target.closest("[data-go]");
       if (go) { showScene(go.dataset.go, true).then(() => setTab("map")); return; }
+      if (e.target.closest("[data-risk]")) { setLayerMenu(false); openRisk(); return; }
       const lay = e.target.closest("[data-layer]");
       if (lay) { setLayer(lay.dataset.layer); setLayerMenu(false); if (e.detail === 0) $("#layerbtn").focus(); return; }
       const stp = e.target.closest("[data-step]");
@@ -2361,7 +2372,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#zreset").addEventListener("click", () => { resetView(); paint(); status(); });
     window.addEventListener("hashchange", () => {
       const id = location.hash.slice(1);
-      if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
+      if (id === "risk") openRisk();
+      else if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
     });
     let rz;
     const onResize = () => { clearTimeout(rz); rz = setTimeout(() => { drawMap(); renderInspector(); renderAnalysis(); }, 120); };
