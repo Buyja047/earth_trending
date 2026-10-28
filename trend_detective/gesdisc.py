@@ -36,7 +36,7 @@ DUST_VARS = {
     "DUSMASS": ("Dust surface mass concentration", "ug m-3", 1e9),
     "DUSMASS25": ("Dust surface mass concentration, PM2.5", "ug m-3", 1e9),
     "DUCMASS": ("Dust column mass density", "g m-2", 1e3),
-    "DUEXTTAU": ("Dust extinction aerosol optical thickness, 550 nm", "1", 1.0),
+    "DUEXTTAU": ("Dust extinction aerosol optical thickness, 550 nm", "dimensionless", 1.0),
 }
 
 
