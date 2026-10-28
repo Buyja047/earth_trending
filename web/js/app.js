@@ -1740,7 +1740,7 @@
   }
 
   const CASES = {
-    hazard: (sc) => `<div class="prose"><p>${esc(t("hz_case"))}</p></div><h3>${esc(t("mines_title"))}</h3><p class="small muted">${esc(t("mines_note"))}</p>${mineCards()}`,
+    hazard: (sc) => `<div class="prose"><p>${esc(t("hz_case"))}</p><p>${esc(t("hz_s5p"))}</p></div><h3>${esc(t("mines_title"))}</h3><p class="small muted">${esc(t("mines_note"))}</p>${mineCards()}`,
     truth: () => mn()
       ? `<div class="prose"><p>Энэ талбар хиймэл. Хойд хэсэгт нэг бүсэд дулаарах, өмнөд хэсэгт нэг бүсэд хөрөх чиг суулгасан; бусад нь сар хоорондын санах ойтой (φ = 0.5), орон зайд гөлгөр шуугиан бөгөөд бодит уур амьсгалын талбартай төстэй.</p><p><b>Чиг, энгийн p&lt;α</b> ба <b>Чиг, FDR тест</b> давхаргыг сольж хараарай: энгийн газрын зураг хоосон далай дээр ач холбогдлыг тараана. <b>Суулгасан үнэн</b> давхарга жинхэнэ чигийг харуулна. Арга зүй хуудас хоёр газрын зургийг үнэлдэг.</p></div>`
       : `<div class="prose"><p>This field is synthetic. One northern region was given a warming trend and one southern region a cooling trend; everything else is noise with month-to-month memory (φ = 0.5) and spatial smoothing, like real climate fields.</p><p>Switch between <b>Trend, naive p&lt;α</b> and <b>Trend, FDR-tested</b>: the naive map scatters significance across empty ocean. <b>Planted truth</b> shows what is really there. The Method tab scores both maps.</p></div>`,

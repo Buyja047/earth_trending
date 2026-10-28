@@ -1,0 +1,876 @@
+{
+ "period": [
+  "2018-05-01",
+  "2025-12-31"
+ ],
+ "days": 2802,
+ "days_with_s5p": 2791,
+ "cell_days_with_s5p": 0.986,
+ "source": {
+  "s5p": "https://geoservice.dlr.de/eoc/ogc/stac/v1/collections/S5P_TROPOMI_L3_P1D_AI_v2",
+  "credit": "Contains modified Copernicus Sentinel data (2018-2025) processed by DLR; L2 NASA TROPOMAER; CC BY 4.0",
+  "merra2": "merra2/temporal/power_merra2_daily_temporal_utc.zarr (NASA POWER)"
+ },
+ "snow_surface_diagnostic": {
+  "1": {
+   "calm_dry_snow_free_uvai": 0.83,
+   "calm_dry_snow_covered_uvai": 0.187,
+   "snow_covered_cell_days": 51490
+  },
+  "2": {
+   "calm_dry_snow_free_uvai": 0.735,
+   "calm_dry_snow_covered_uvai": 0.205,
+   "snow_covered_cell_days": 49441
+  },
+  "3": {
+   "calm_dry_snow_free_uvai": 0.574,
+   "calm_dry_snow_covered_uvai": 0.232,
+   "snow_covered_cell_days": 23840
+  },
+  "4": {
+   "calm_dry_snow_free_uvai": 0.202,
+   "calm_dry_snow_covered_uvai": 0.297,
+   "snow_covered_cell_days": 2470
+  },
+  "5": {
+   "calm_dry_snow_free_uvai": -0.041,
+   "calm_dry_snow_covered_uvai": null,
+   "snow_covered_cell_days": 120
+  },
+  "6": {
+   "calm_dry_snow_free_uvai": -0.216,
+   "calm_dry_snow_covered_uvai": null,
+   "snow_covered_cell_days": 0
+  },
+  "7": {
+   "calm_dry_snow_free_uvai": -0.218,
+   "calm_dry_snow_covered_uvai": null,
+   "snow_covered_cell_days": 0
+  },
+  "8": {
+   "calm_dry_snow_free_uvai": -0.27,
+   "calm_dry_snow_covered_uvai": null,
+   "snow_covered_cell_days": 0
+  },
+  "9": {
+   "calm_dry_snow_free_uvai": -0.177,
+   "calm_dry_snow_covered_uvai": null,
+   "snow_covered_cell_days": 155
+  },
+  "10": {
+   "calm_dry_snow_free_uvai": 0.125,
+   "calm_dry_snow_covered_uvai": -0.072,
+   "snow_covered_cell_days": 1584
+  },
+  "11": {
+   "calm_dry_snow_free_uvai": 0.5,
+   "calm_dry_snow_covered_uvai": 0.323,
+   "snow_covered_cell_days": 12060
+  },
+  "12": {
+   "calm_dry_snow_free_uvai": 0.791,
+   "calm_dry_snow_covered_uvai": 0.181,
+   "snow_covered_cell_days": 41695
+  }
+ },
+ "regions": {
+  "Mongolia": {
+   "dust_prone_vs_calmer_snowfree_dry": {
+    "all": {
+     "difference": 0.08,
+     "ci95": [
+      0.064,
+      0.094
+     ],
+     "mean_in_group": 0.344,
+     "mean_in_rest": 0.247,
+     "days_in_group": 542982,
+     "days_in_rest": 1320159,
+     "share_of_strata_higher": 0.774
+    },
+    "mar_may": {
+     "difference": 0.09,
+     "ci95": [
+      0.063,
+      0.116
+     ],
+     "mean_in_group": 0.332,
+     "mean_in_rest": 0.264,
+     "days_in_group": 224365,
+     "days_in_rest": 312373,
+     "share_of_strata_higher": 0.688
+    },
+    "jun_oct": {
+     "difference": 0.077,
+     "ci95": [
+      0.055,
+      0.098
+     ],
+     "mean_in_group": 0.064,
+     "mean_in_rest": -0.046,
+     "days_in_group": 170705,
+     "days_in_rest": 572081,
+     "share_of_strata_higher": 0.816
+    },
+    "nov_feb": {
+     "difference": 0.07,
+     "ci95": [
+      0.049,
+      0.092
+     ],
+     "mean_in_group": 0.685,
+     "mean_in_rest": 0.621,
+     "days_in_group": 147912,
+     "days_in_rest": 435705,
+     "share_of_strata_higher": 0.796
+    },
+    "mar_may_next_day": {
+     "difference": 0.046,
+     "ci95": [
+      0.027,
+      0.062
+     ],
+     "mean_in_group": 0.313,
+     "mean_in_rest": 0.278,
+     "days_in_group": 224391,
+     "days_in_rest": 312145,
+     "share_of_strata_higher": 0.656
+    }
+   },
+   "share_uvai_ge": {
+    "0.5": {
+     "all": {
+      "difference": 0.046,
+      "ci95": [
+       0.034,
+       0.057
+      ],
+      "mean_in_group": 0.357,
+      "mean_in_rest": 0.314,
+      "days_in_group": 542982,
+      "days_in_rest": 1320159,
+      "share_of_strata_higher": 0.59
+     },
+     "mar_may": {
+      "difference": 0.051,
+      "ci95": [
+       0.032,
+       0.069
+      ],
+      "mean_in_group": 0.313,
+      "mean_in_rest": 0.284,
+      "days_in_group": 224365,
+      "days_in_rest": 312373,
+      "share_of_strata_higher": 0.619
+     }
+    },
+    "0.8": {
+     "all": {
+      "difference": 0.043,
+      "ci95": [
+       0.033,
+       0.049
+      ],
+      "mean_in_group": 0.177,
+      "mean_in_rest": 0.141,
+      "days_in_group": 542982,
+      "days_in_rest": 1320159,
+      "share_of_strata_higher": 0.535
+     },
+     "mar_may": {
+      "difference": 0.04,
+      "ci95": [
+       0.025,
+       0.055
+      ],
+      "mean_in_group": 0.15,
+      "mean_in_rest": 0.125,
+      "days_in_group": 224365,
+      "days_in_rest": 312373,
+      "share_of_strata_higher": 0.614
+     }
+    },
+    "1.0": {
+     "all": {
+      "difference": 0.034,
+      "ci95": [
+       0.025,
+       0.041
+      ],
+      "mean_in_group": 0.095,
+      "mean_in_rest": 0.066,
+      "days_in_group": 542982,
+      "days_in_rest": 1320159,
+      "share_of_strata_higher": 0.477
+     },
+     "mar_may": {
+      "difference": 0.032,
+      "ci95": [
+       0.02,
+       0.045
+      ],
+      "mean_in_group": 0.09,
+      "mean_in_rest": 0.067,
+      "days_in_group": 224365,
+      "days_in_rest": 312373,
+      "share_of_strata_higher": 0.594
+     }
+    }
+   },
+   "dose_response": {
+    "mar_may": [
+     {
+      "wind_m_s": "0-4",
+      "days": 60280,
+      "uvai_above_calm": 0.0,
+      "share_uvai_ge_0.8": 0.108
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 133890,
+      "uvai_above_calm": -0.001,
+      "share_uvai_ge_0.8": 0.12
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 142588,
+      "uvai_above_calm": 0.015,
+      "share_uvai_ge_0.8": 0.114
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 110222,
+      "uvai_above_calm": 0.046,
+      "share_uvai_ge_0.8": 0.115
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 62720,
+      "uvai_above_calm": 0.113,
+      "share_uvai_ge_0.8": 0.144
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 42758,
+      "uvai_above_calm": 0.303,
+      "share_uvai_ge_0.8": 0.253
+     }
+    ],
+    "jun_oct": [
+     {
+      "wind_m_s": "0-4",
+      "days": 195877,
+      "uvai_above_calm": 0.0,
+      "share_uvai_ge_0.8": 0.02
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 280145,
+      "uvai_above_calm": 0.016,
+      "share_uvai_ge_0.8": 0.02
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 220639,
+      "uvai_above_calm": 0.046,
+      "share_uvai_ge_0.8": 0.021
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 112807,
+      "uvai_above_calm": 0.077,
+      "share_uvai_ge_0.8": 0.027
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 41881,
+      "uvai_above_calm": 0.122,
+      "share_uvai_ge_0.8": 0.044
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 16248,
+      "uvai_above_calm": 0.253,
+      "share_uvai_ge_0.8": 0.125
+     }
+    ]
+   },
+   "rain_gate_windy_snowfree_wet_vs_dry": {
+    "all": {
+     "difference": -0.007,
+     "ci95": [
+      -0.019,
+      0.007
+     ],
+     "mean_in_group": 0.126,
+     "mean_in_rest": 0.322,
+     "days_in_group": 225086,
+     "days_in_rest": 512122,
+     "share_of_strata_higher": 0.473
+    },
+    "mar_may": {
+     "difference": -0.026,
+     "ci95": [
+      -0.05,
+      -0.004
+     ],
+     "mean_in_group": 0.184,
+     "mean_in_rest": 0.327,
+     "days_in_group": 86673,
+     "days_in_rest": 221312,
+     "share_of_strata_higher": 0.396
+    }
+   },
+   "monthly_anomaly_correlation_dust_prone_days_vs_snowfree_uvai": {
+    "all": {
+     "r": 0.301,
+     "n_months": 92
+    },
+    "mar_may": {
+     "r": 0.288,
+     "n_months": 22
+    },
+    "jun_oct": {
+     "r": 0.338,
+     "n_months": 40
+    },
+    "nov_feb": {
+     "r": 0.293,
+     "n_months": 30
+    }
+   }
+  },
+  "South Gobi": {
+   "dust_prone_vs_calmer_snowfree_dry": {
+    "all": {
+     "difference": 0.132,
+     "ci95": [
+      0.112,
+      0.153
+     ],
+     "mean_in_group": 0.398,
+     "mean_in_rest": 0.328,
+     "days_in_group": 152307,
+     "days_in_rest": 294758,
+     "share_of_strata_higher": 0.946
+    },
+    "mar_may": {
+     "difference": 0.202,
+     "ci95": [
+      0.168,
+      0.245
+     ],
+     "mean_in_group": 0.372,
+     "mean_in_rest": 0.227,
+     "days_in_group": 57838,
+     "days_in_rest": 55480,
+     "share_of_strata_higher": 0.962
+    },
+    "jun_oct": {
+     "difference": 0.098,
+     "ci95": [
+      0.064,
+      0.125
+     ],
+     "mean_in_group": 0.077,
+     "mean_in_rest": -0.013,
+     "days_in_group": 50555,
+     "days_in_rest": 121856,
+     "share_of_strata_higher": 0.935
+    },
+    "nov_feb": {
+     "difference": 0.094,
+     "ci95": [
+      0.073,
+      0.117
+     ],
+     "mean_in_group": 0.801,
+     "mean_in_rest": 0.729,
+     "days_in_group": 43914,
+     "days_in_rest": 117422,
+     "share_of_strata_higher": 0.949
+    },
+    "mar_may_next_day": {
+     "difference": 0.1,
+     "ci95": [
+      0.064,
+      0.132
+     ],
+     "mean_in_group": 0.334,
+     "mean_in_rest": 0.284,
+     "days_in_group": 57773,
+     "days_in_rest": 55661,
+     "share_of_strata_higher": 0.88
+    }
+   },
+   "share_uvai_ge": {
+    "0.5": {
+     "all": {
+      "difference": 0.081,
+      "ci95": [
+       0.065,
+       0.096
+      ],
+      "mean_in_group": 0.4,
+      "mean_in_rest": 0.386,
+      "days_in_group": 152307,
+      "days_in_rest": 294758,
+      "share_of_strata_higher": 0.768
+     },
+     "mar_may": {
+      "difference": 0.136,
+      "ci95": [
+       0.107,
+       0.172
+      ],
+      "mean_in_group": 0.337,
+      "mean_in_rest": 0.247,
+      "days_in_group": 57838,
+      "days_in_rest": 55480,
+      "share_of_strata_higher": 0.923
+     }
+    },
+    "0.8": {
+     "all": {
+      "difference": 0.079,
+      "ci95": [
+       0.067,
+       0.091
+      ],
+      "mean_in_group": 0.219,
+      "mean_in_rest": 0.183,
+      "days_in_group": 152307,
+      "days_in_rest": 294758,
+      "share_of_strata_higher": 0.757
+     },
+     "mar_may": {
+      "difference": 0.099,
+      "ci95": [
+       0.072,
+       0.127
+      ],
+      "mean_in_group": 0.166,
+      "mean_in_rest": 0.089,
+      "days_in_group": 57838,
+      "days_in_rest": 55480,
+      "share_of_strata_higher": 0.952
+     }
+    },
+    "1.0": {
+     "all": {
+      "difference": 0.064,
+      "ci95": [
+       0.051,
+       0.077
+      ],
+      "mean_in_group": 0.122,
+      "mean_in_rest": 0.079,
+      "days_in_group": 152307,
+      "days_in_rest": 294758,
+      "share_of_strata_higher": 0.722
+     },
+     "mar_may": {
+      "difference": 0.074,
+      "ci95": [
+       0.054,
+       0.096
+      ],
+      "mean_in_group": 0.104,
+      "mean_in_rest": 0.041,
+      "days_in_group": 57838,
+      "days_in_rest": 55480,
+      "share_of_strata_higher": 0.978
+     }
+    }
+   },
+   "dose_response": {
+    "mar_may": [
+     {
+      "wind_m_s": "0-4",
+      "days": 4370,
+      "uvai_above_calm": -0.0,
+      "share_uvai_ge_0.8": 0.095
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 20753,
+      "uvai_above_calm": 0.037,
+      "share_uvai_ge_0.8": 0.087
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 29871,
+      "uvai_above_calm": 0.084,
+      "share_uvai_ge_0.8": 0.09
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 27134,
+      "uvai_above_calm": 0.146,
+      "share_uvai_ge_0.8": 0.099
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 17337,
+      "uvai_above_calm": 0.265,
+      "share_uvai_ge_0.8": 0.157
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 12575,
+      "uvai_above_calm": 0.588,
+      "share_uvai_ge_0.8": 0.329
+     }
+    ],
+    "jun_oct": [
+     {
+      "wind_m_s": "0-4",
+      "days": 13701,
+      "uvai_above_calm": 0.0,
+      "share_uvai_ge_0.8": 0.014
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 51503,
+      "uvai_above_calm": 0.01,
+      "share_uvai_ge_0.8": 0.009
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 56652,
+      "uvai_above_calm": 0.046,
+      "share_uvai_ge_0.8": 0.01
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 31781,
+      "uvai_above_calm": 0.084,
+      "share_uvai_ge_0.8": 0.013
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 13268,
+      "uvai_above_calm": 0.135,
+      "share_uvai_ge_0.8": 0.029
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 5506,
+      "uvai_above_calm": 0.362,
+      "share_uvai_ge_0.8": 0.151
+     }
+    ]
+   },
+   "rain_gate_windy_snowfree_wet_vs_dry": {
+    "all": {
+     "difference": -0.037,
+     "ci95": [
+      -0.053,
+      -0.014
+     ],
+     "mean_in_group": 0.136,
+     "mean_in_rest": 0.375,
+     "days_in_group": 41832,
+     "days_in_rest": 144651,
+     "share_of_strata_higher": 0.376
+    },
+    "mar_may": {
+     "difference": -0.056,
+     "ci95": [
+      -0.109,
+      -0.016
+     ],
+     "mean_in_group": 0.244,
+     "mean_in_rest": 0.365,
+     "days_in_group": 12056,
+     "days_in_rest": 56689,
+     "share_of_strata_higher": 0.293
+    }
+   },
+   "monthly_anomaly_correlation_dust_prone_days_vs_snowfree_uvai": {
+    "all": {
+     "r": 0.367,
+     "n_months": 92
+    },
+    "mar_may": {
+     "r": 0.323,
+     "n_months": 22
+    },
+    "jun_oct": {
+     "r": 0.518,
+     "n_months": 40
+    },
+    "nov_feb": {
+     "r": 0.328,
+     "n_months": 30
+    }
+   }
+  },
+  "Eastern steppe": {
+   "dust_prone_vs_calmer_snowfree_dry": {
+    "all": {
+     "difference": 0.066,
+     "ci95": [
+      0.031,
+      0.097
+     ],
+     "mean_in_group": 0.271,
+     "mean_in_rest": 0.15,
+     "days_in_group": 76858,
+     "days_in_rest": 165230,
+     "share_of_strata_higher": 0.781
+    },
+    "mar_may": {
+     "difference": 0.064,
+     "ci95": [
+      0.015,
+      0.115
+     ],
+     "mean_in_group": 0.278,
+     "mean_in_rest": 0.215,
+     "days_in_group": 37926,
+     "days_in_rest": 38459,
+     "share_of_strata_higher": 0.772
+    },
+    "jun_oct": {
+     "difference": 0.092,
+     "ci95": [
+      0.056,
+      0.121
+     ],
+     "mean_in_group": -0.015,
+     "mean_in_rest": -0.146,
+     "days_in_group": 19705,
+     "days_in_rest": 75173,
+     "share_of_strata_higher": 0.868
+    },
+    "nov_feb": {
+     "difference": 0.043,
+     "ci95": [
+      0.0,
+      0.081
+     ],
+     "mean_in_group": 0.553,
+     "mean_in_rest": 0.532,
+     "days_in_group": 19227,
+     "days_in_rest": 51598,
+     "share_of_strata_higher": 0.682
+    },
+    "mar_may_next_day": {
+     "difference": 0.048,
+     "ci95": [
+      0.011,
+      0.073
+     ],
+     "mean_in_group": 0.272,
+     "mean_in_rest": 0.223,
+     "days_in_group": 38228,
+     "days_in_rest": 38185,
+     "share_of_strata_higher": 0.788
+    }
+   },
+   "share_uvai_ge": {
+    "0.5": {
+     "all": {
+      "difference": 0.038,
+      "ci95": [
+       0.014,
+       0.062
+      ],
+      "mean_in_group": 0.288,
+      "mean_in_rest": 0.238,
+      "days_in_group": 76858,
+      "days_in_rest": 165230,
+      "share_of_strata_higher": 0.575
+     },
+     "mar_may": {
+      "difference": 0.035,
+      "ci95": [
+       0.004,
+       0.062
+      ],
+      "mean_in_group": 0.265,
+      "mean_in_rest": 0.236,
+      "days_in_group": 37926,
+      "days_in_rest": 38459,
+      "share_of_strata_higher": 0.661
+     }
+    },
+    "0.8": {
+     "all": {
+      "difference": 0.022,
+      "ci95": [
+       0.004,
+       0.041
+      ],
+      "mean_in_group": 0.119,
+      "mean_in_rest": 0.092,
+      "days_in_group": 76858,
+      "days_in_rest": 165230,
+      "share_of_strata_higher": 0.491
+     },
+     "mar_may": {
+      "difference": 0.015,
+      "ci95": [
+       -0.003,
+       0.032
+      ],
+      "mean_in_group": 0.107,
+      "mean_in_rest": 0.093,
+      "days_in_group": 37926,
+      "days_in_rest": 38459,
+      "share_of_strata_higher": 0.627
+     }
+    },
+    "1.0": {
+     "all": {
+      "difference": 0.014,
+      "ci95": [
+       0.003,
+       0.025
+      ],
+      "mean_in_group": 0.056,
+      "mean_in_rest": 0.039,
+      "days_in_group": 76858,
+      "days_in_rest": 165230,
+      "share_of_strata_higher": 0.427
+     },
+     "mar_may": {
+      "difference": 0.009,
+      "ci95": [
+       -0.004,
+       0.021
+      ],
+      "mean_in_group": 0.053,
+      "mean_in_rest": 0.042,
+      "days_in_group": 37926,
+      "days_in_rest": 38459,
+      "share_of_strata_higher": 0.585
+     }
+    }
+   },
+   "dose_response": {
+    "mar_may": [
+     {
+      "wind_m_s": "0-4",
+      "days": 2683,
+      "uvai_above_calm": 0.0,
+      "share_uvai_ge_0.8": 0.078
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 12889,
+      "uvai_above_calm": 0.006,
+      "share_uvai_ge_0.8": 0.09
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 21633,
+      "uvai_above_calm": 0.01,
+      "share_uvai_ge_0.8": 0.092
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 19057,
+      "uvai_above_calm": 0.026,
+      "share_uvai_ge_0.8": 0.083
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 10318,
+      "uvai_above_calm": 0.084,
+      "share_uvai_ge_0.8": 0.094
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 6388,
+      "uvai_above_calm": 0.255,
+      "share_uvai_ge_0.8": 0.193
+     }
+    ],
+    "jun_oct": [
+     {
+      "wind_m_s": "0-4",
+      "days": 14465,
+      "uvai_above_calm": -0.0,
+      "share_uvai_ge_0.8": 0.016
+     },
+     {
+      "wind_m_s": "4-6",
+      "days": 34885,
+      "uvai_above_calm": 0.025,
+      "share_uvai_ge_0.8": 0.008
+     },
+     {
+      "wind_m_s": "6-8",
+      "days": 29625,
+      "uvai_above_calm": 0.07,
+      "share_uvai_ge_0.8": 0.009
+     },
+     {
+      "wind_m_s": "8-10",
+      "days": 14230,
+      "uvai_above_calm": 0.125,
+      "share_uvai_ge_0.8": 0.014
+     },
+     {
+      "wind_m_s": "10-12",
+      "days": 4381,
+      "uvai_above_calm": 0.183,
+      "share_uvai_ge_0.8": 0.024
+     },
+     {
+      "wind_m_s": ">=12",
+      "days": 1132,
+      "uvai_above_calm": 0.276,
+      "share_uvai_ge_0.8": 0.081
+     }
+    ]
+   },
+   "rain_gate_windy_snowfree_wet_vs_dry": {
+    "all": {
+     "difference": 0.053,
+     "ci95": [
+      0.021,
+      0.088
+     ],
+     "mean_in_group": 0.134,
+     "mean_in_rest": 0.242,
+     "days_in_group": 47046,
+     "days_in_rest": 71106,
+     "share_of_strata_higher": 0.653
+    },
+    "mar_may": {
+     "difference": 0.031,
+     "ci95": [
+      -0.028,
+      0.101
+     ],
+     "mean_in_group": 0.246,
+     "mean_in_rest": 0.278,
+     "days_in_group": 18050,
+     "days_in_rest": 37926,
+     "share_of_strata_higher": 0.619
+    }
+   },
+   "monthly_anomaly_correlation_dust_prone_days_vs_snowfree_uvai": {
+    "all": {
+     "r": 0.167,
+     "n_months": 91
+    },
+    "mar_may": {
+     "r": 0.094,
+     "n_months": 22
+    },
+    "jun_oct": {
+     "r": -0.032,
+     "n_months": 40
+    },
+    "nov_feb": {
+     "r": 0.288,
+     "n_months": 29
+    }
+   }
+  }
+ }
+}
