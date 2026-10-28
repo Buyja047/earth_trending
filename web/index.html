@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trend Detective</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<!--BODY-->
+<div class="app" id="app">
+  <header class="titlebar gut">
+    <div class="logo" aria-hidden="true">TD</div>
+    <div class="apptitle" data-i18n="app_title">Trend Detective</div>
+    <nav class="menubar" id="menubar" aria-label="Menu"></nav>
+    <div class="spacer"></div>
+    <div class="seg" role="group" aria-label="Language">
+      <button type="button" data-lang="en">EN</button>
+      <button type="button" data-lang="mn">МН</button>
+    </div>
+  </header>
+
+  <div class="toolbar gut">
+    <label><span data-i18n="tb_from">Years</span> <select id="y0" aria-label="Start year"></select></label>
+    <label><span data-i18n="tb_to">to</span> <select id="y1" aria-label="End year"></select></label>
+    <button type="button" class="btn primary" id="apply" data-i18n="tb_apply">Apply</button>
+    <label><span data-i18n="tb_season">Months</span> <select id="season" aria-label="Months"></select></label>
+    <label>α <select id="alpha" aria-label="Significance level"><option>0.10</option><option selected>0.05</option><option>0.01</option></select></label>
+    <span class="tsep" aria-hidden="true"></span>
+    <div class="seg" role="group" aria-label="View">
+      <button type="button" data-view="map">2D</button>
+      <button type="button" data-view="surf">3D</button>
+    </div>
+    <button type="button" class="btn" id="boxmode" aria-pressed="false" data-i18n="tb_box">Box select</button>
+    <button type="button" class="btn" data-cmp aria-pressed="false" data-i18n="tb_cmp">Compare</button>
+    <span class="tsep" aria-hidden="true"></span>
+    <label class="search"><input type="search" id="search" list="placelist" data-i18n-ph="tb_search" placeholder="Search a place…" aria-label="Search a place"></label>
+    <datalist id="placelist"></datalist>
+  </div>
+
+  <div class="workspace">
+    <aside class="pane left" id="leftpane" aria-label="Layer manager">
+      <div class="ptitle" data-i18n="p_layers">Layer manager</div>
+      <div class="tree">
+        <details open><summary data-i18n="p_datasets">Datasets</summary>
+          <button type="button" class="item livebtn" id="livebtn"><span aria-hidden="true">+</span> <span data-i18n="live_btn">Analyse any variable (live)</span></button>
+          <div id="tree-scenes"></div></details>
+        <details open><summary data-i18n="p_overlays">Overlays</summary>
+          <label class="item"><input type="checkbox" id="ov-coast" checked> <span data-i18n="ov_coast">Coastlines</span></label>
+          <label class="item"><input type="checkbox" id="ov-borders" checked> <span data-i18n="ov_borders">Borders</span></label>
+          <label class="item"><input type="checkbox" id="ov-places" checked> <span data-i18n="ov_places">Places</span></label>
+          <label class="item"><input type="checkbox" id="ov-stipple"> <span data-i18n="ov_stipple">Dot significant cells</span></label>
+        </details>
+        <details open><summary data-i18n="p_base">Background imagery</summary>
+          <label class="item"><input type="radio" name="base" value="none" checked> <span data-i18n="base_none">None (works offline)</span></label>
+          <label class="item"><input type="radio" name="base" value="relief"> <span data-i18n="base_relief">Blue Marble relief</span></label>
+          <label class="item"><input type="radio" name="base" value="terrain"> <span data-i18n="base_terrain">Terrain, grey (ASTER)</span></label>
+          <label class="item"><input type="radio" name="base" value="night"> <span data-i18n="base_night">Night lights 2016</span></label>
+          <label class="item"><input type="radio" name="base" value="day"> <span data-i18n="base_day">Satellite image of a day</span></label>
+          <label class="item" id="base-dayrow" hidden><span data-i18n="base_date">Date</span> <input type="date" id="base-date" min="2000-02-24"></label>
+          <div id="base-opts" hidden>
+            <label class="item"><input type="checkbox" id="base-grey" checked> <span data-i18n="base_grey">Greyscale imagery</span></label>
+            <label class="item baserange"><span data-i18n="base_alpha">Data opacity</span> <input type="range" id="base-alpha" min="0.2" max="1" step="0.05" value="0.75"></label>
+          </div>
+          <p class="small muted basenote" data-i18n="base_note">Imagery: NASA GIBS. Needs internet.</p>
+        </details>
+      </div>
+    </aside>
+
+    <main class="center">
+      <div class="docbar">
+        <div class="doctabs" role="tablist">
+          <button type="button" role="tab" data-tab="map" data-i18n="tab_map">Map</button>
+          <button type="button" role="tab" data-tab="analysis" data-i18n="tab_analysis">Analysis</button>
+          <button type="button" role="tab" data-tab="screen" data-i18n="tab_screen">Variable ranking</button>
+          <button type="button" role="tab" data-tab="method" data-i18n="tab_method">Method</button>
+        </div>
+        <div class="layerdd" id="layerdd">
+          <button type="button" class="layerbtn" id="layerbtn" aria-haspopup="menu" aria-expanded="false" aria-controls="picker"></button>
+          <div class="layermenu" id="picker" role="menu" aria-label="Map layer" hidden></div>
+        </div>
+      </div>
+
+      <section class="doc" id="doc-map" role="tabpanel">
+        <div class="cmpbar" id="cmpbar" hidden>
+          <b data-i18n="cmp_right">Right half</b>
+          <select id="cmp-scene" aria-label="Dataset on the right"></select>
+          <select id="cmp-y0" aria-label="Start year, right"></select> – <select id="cmp-y1" aria-label="End year, right"></select>
+          <button type="button" class="btn primary" id="cmp-apply" data-i18n="tb_apply">Apply</button>
+          <span class="small muted" id="cmp-note"></span>
+          <button type="button" class="btn" data-cmp-close data-i18n="cmp_close">Close</button>
+        </div>
+        <div class="mapwrap" id="mapwrap">
+          <canvas id="map" tabindex="0" aria-label="Trend map"></canvas>
+          <canvas id="surf" aria-label="3D surface of the trend field" hidden></canvas>
+          <div class="mapnote" id="mapnote" hidden></div>
+          <div class="zoomctl" id="zoomctl" role="group" aria-label="Zoom">
+            <button type="button" id="zin" data-i18n-title="zoom_in" aria-label="Zoom in">+</button>
+            <button type="button" id="zout" data-i18n-title="zoom_out" aria-label="Zoom out">−</button>
+            <button type="button" id="zreset" data-i18n-title="zoom_reset" aria-label="Whole map">⤢</button>
+          </div>
+          <div class="surfctl" id="surfctl" hidden>
+            <label><span data-i18n="sf_height">Height ×</span> <input type="range" id="surfmult" min="0.2" max="4" step="0.1" value="1"></label>
+            <button type="button" class="btn" id="surfreset" data-i18n="sf_reset">Reset view</button>
+            <span class="muted" data-i18n="sf_hint">Drag to rotate · scroll to zoom</span>
+          </div>
+          <div class="cmplabels" id="cmplabels" hidden><span id="cmp-l"></span><span id="cmp-r"></span></div>
+          <div class="cmphandle" id="cmphandle" role="slider" tabindex="0" aria-label="Divider" aria-valuemin="5" aria-valuemax="95" hidden><span aria-hidden="true">⇔</span></div>
+          <div class="tip" id="tip" hidden></div>
+          <div class="busy" id="busy" hidden></div>
+        </div>
+        <div class="legendbar" id="legend"></div>
+        <div class="timeline" id="timeline">
+          <button type="button" class="playbtn" id="play" aria-label="Play the years">▶</button>
+          <input type="range" id="yearslider" min="0" max="0" value="0" aria-label="Year">
+          <span class="yearlbl" id="yearlbl"></span>
+        </div>
+      </section>
+
+      <section class="doc" id="doc-analysis" role="tabpanel" hidden>
+        <div class="docpad">
+          <div class="cards">
+            <div class="card"><p class="eyebrow" data-i18n="a_means">How much · area means</p><div id="rmeans"></div></div>
+            <div class="card"><p class="eyebrow" data-i18n="a_tri">Does the answer depend on the years chosen?</p>
+              <h3 id="tri-title"></h3><div id="tri"></div><p class="small muted" data-i18n="a_tri_note"></p></div>
+            <div class="card"><p class="eyebrow" data-i18n="a_case">Case notes</p><div id="case"></div></div>
+          </div>
+          <div class="card" id="compare" hidden>
+            <p class="eyebrow" id="compare-eyebrow"></p>
+            <h2 id="compare-title"></h2>
+            <div id="compare-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="doc" id="doc-screen" role="tabpanel" hidden>
+        <div class="docpad">
+          <h2 data-i18n="sc_title">Every variable over Mongolia, ranked</h2>
+          <p class="small muted" id="screen-meta"></p>
+          <div class="seg" role="group" aria-label="Filter">
+            <button type="button" data-filter="all" aria-pressed="true" data-i18n="f_all">All</button>
+            <button type="button" data-filter="fdr" aria-pressed="false" data-i18n="f_fdr">Significant after FDR</button>
+            <button type="button" data-filter="model" aria-pressed="false" data-i18n="f_model">Model</button>
+            <button type="button" data-filter="mission" aria-pressed="false" data-i18n="f_mission">Satellites</button>
+          </div>
+          <div class="tablewrap"><table><thead id="screen-head"></thead><tbody id="screen-body"></tbody></table></div>
+        </div>
+      </section>
+
+      <section class="doc" id="doc-method" role="tabpanel" hidden>
+        <div class="docpad" id="method"></div>
+      </section>
+    </main>
+
+    <aside class="pane right" id="rightpane" aria-label="Details">
+      <div class="ptitle" data-i18n="p_details">Details</div>
+      <div class="section" id="summary" aria-live="polite"><p class="muted" data-i18n="loading">Loading…</p></div>
+      <div class="section" id="inspector" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <footer class="statusbar gut" id="status"></footer>
+</div>
+<div class="modal" id="modal" hidden><div class="box" role="dialog" aria-modal="true" id="modalbox"></div></div>
+<!--/BODY-->
+<script src="js/stats.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/surface.js"></script>
+<script src="js/basemap.js"></script>
+<script src="js/vendor/fzstd.js"></script>
+<script src="js/zarr.js"></script>
+<script src="js/live.js"></script>
+<script src="js/season.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

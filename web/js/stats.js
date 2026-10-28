@@ -1,0 +1,273 @@
+/* Trend statistics in the browser, mirroring trend_detective/stats.py.
+ * Used for user-drawn regions and the trend triangle. tests/test_js_stats.py
+ * checks these functions against the Python engine.
+ */
+(function (root) {
+  "use strict";
+
+  const WEATHERHEAD_K = 3.3;
+
+  function sign(v) { return v > 0 ? 1 : v < 0 ? -1 : 0; }
+
+  function mkScore(x) {
+    let s = 0;
+    const n = x.length;
+    for (let k = 0; k < n - 1; k++) {
+      const xk = x[k];
+      for (let j = k + 1; j < n; j++) s += sign(x[j] - xk);
+    }
+    return s;
+  }
+
+  function mkVariance(x) {
+    const n = x.length;
+    const v = Float64Array.from(x).sort();
+    let tie = 0;
+    for (let i = 0; i < n;) {
+      let j = i + 1;
+      while (j < n && v[j] === v[i]) j++;
+      const t = j - i;
+      if (t > 1) tie += t * (t - 1) * (2 * t + 5);
+      i = j;
+    }
+    return (n * (n - 1) * (2 * n + 5) - tie) / 18;
+  }
+
+  function mkZ(s, v) {
+    if (!(v > 0)) return NaN;
+    if (s > 0) return (s - 1) / Math.sqrt(v);
+    if (s < 0) return (s + 1) / Math.sqrt(v);
+    return 0;
+  }
+
+  // erfc with fractional error < 1.2e-7 (Numerical Recipes erfcc)
+  function erfc(x) {
+    const z = Math.abs(x);
+    const t = 1 / (1 + 0.5 * z);
+    const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 +
+      t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 +
+      t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+    return x >= 0 ? r : 2 - r;
+  }
+
+  function pTwoSidedNormal(z) { return Number.isFinite(z) ? erfc(Math.abs(z) / Math.SQRT2) : NaN; }
+
+  function lgamma(x) {
+    const c = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+      -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    let y = x;
+    const tmp = x + 5.5 - (x + 0.5) * Math.log(x + 5.5);
+    let ser = 1.000000000190015;
+    for (let j = 0; j < 6; j++) ser += c[j] / ++y;
+    return -tmp + Math.log(2.5066282746310005 * ser / x);
+  }
+
+  function betacf(a, b, x) {
+    const MAXIT = 300, EPS = 3e-14, FPMIN = 1e-300;
+    const qab = a + b, qap = a + 1, qam = a - 1;
+    let c = 1, d = 1 - qab * x / qap;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    d = 1 / d;
+    let h = d;
+    for (let m = 1; m <= MAXIT; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d; h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+      c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+      d = 1 / d;
+      const del = d * c;
+      h *= del;
+      if (Math.abs(del - 1) < EPS) break;
+    }
+    return h;
+  }
+
+  function betai(a, b, x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+  }
+
+  // two-sided Student t p-value with (possibly fractional) dof
+  function pTwoSidedT(t, dof) {
+    if (!Number.isFinite(t) || !(dof > 0)) return NaN;
+    return betai(dof / 2, 0.5, dof / (dof + t * t));
+  }
+
+  function ranks(x) {
+    const n = x.length;
+    const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => x[a] - x[b]);
+    const r = new Float64Array(n);
+    for (let i = 0; i < n;) {
+      let j = i + 1;
+      while (j < n && x[idx[j]] === x[idx[i]]) j++;
+      const avg = (i + j + 1) / 2; // 1-based average rank
+      for (let k = i; k < j; k++) r[idx[k]] = avg;
+      i = j;
+    }
+    return r;
+  }
+
+  function lag1(x) {
+    const n = x.length;
+    let m = 0;
+    for (const v of x) m += v;
+    m /= n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      const a = x[i] - m;
+      den += a * a;
+      if (i > 0) num += a * (x[i - 1] - m);
+    }
+    return den > 0 ? num / den : 0;
+  }
+
+  function ar1VarianceFactor(x, t, slope) {
+    const n = x.length;
+    const r1 = lag1(ranks(x.map((v, i) => v - slope * t[i])));
+    const phi = Math.min(0.98, Math.max(0, (n * r1 + 1) / (n - 4)));
+    let total = 0, pk = 1;
+    for (let k = 1; k < n; k++) {
+      pk *= phi;
+      if (pk < 1e-15) break;
+      total += (n - k) * (n - k - 1) * (n - k - 2) * pk;
+    }
+    return 1 + 2 * total / (n * (n - 1) * (n - 2));
+  }
+
+  // k-th smallest (0-based) by in-place quickselect; O(n) instead of a full sort
+  function kth(a, k) {
+    let lo = 0, hi = a.length - 1;
+    while (lo < hi) {
+      const pivot = a[(lo + hi) >> 1];
+      let i = lo, j = hi;
+      while (i <= j) {
+        while (a[i] < pivot) i++;
+        while (a[j] > pivot) j--;
+        if (i <= j) { const tmp = a[i]; a[i] = a[j]; a[j] = tmp; i++; j--; }
+      }
+      if (k <= j) hi = j; else if (k >= i) lo = i; else break;
+    }
+    return a[k];
+  }
+
+  function orderStat(a, pos) {
+    const lo = Math.floor(pos), frac = pos - lo;
+    const v = kth(a, lo);
+    return frac === 0 ? v : (1 - frac) * v + frac * kth(a, lo + 1);
+  }
+
+  function pairSlopes(x, t) {
+    const n = x.length, sl = new Float64Array(n * (n - 1) / 2);
+    let p = 0;
+    for (let i = 0; i < n - 1; i++) {
+      const xi = x[i], ti = t[i];
+      for (let j = i + 1; j < n; j++) sl[p++] = (x[j] - xi) / (t[j] - ti);
+    }
+    return sl;
+  }
+  const senMedian = (sl) => 0.5 * (kth(sl, (sl.length - 1) >> 1) + kth(sl, sl.length >> 1));
+  // 95 % rank CI of Gilbert (1987) from the pairwise slopes and Var(S)
+  function senCI(sl, varS) {
+    if (!(varS > 0)) return [NaN, NaN];
+    const N = sl.length, c = 1.959963984540054 * Math.sqrt(varS);
+    return [orderStat(sl, Math.min(Math.max((N - c) / 2 - 1, 0), N - 1)), orderStat(sl, Math.min(Math.max((N + c) / 2, 0), N - 1))];
+  }
+  function senSlope(x, t, varS) {
+    const sl = pairSlopes(x, t), [lo, hi] = senCI(sl, varS);
+    return { sen: senMedian(sl), lo, hi };
+  }
+
+  function olsAr1(x, t) {
+    const n = x.length;
+    let tm = 0, xm = 0;
+    for (let i = 0; i < n; i++) { tm += t[i]; xm += x[i]; }
+    tm /= n; xm /= n;
+    let sxx = 0, sxy = 0;
+    for (let i = 0; i < n; i++) { const d = t[i] - tm; sxx += d * d; sxy += d * (x[i] - xm); }
+    const b = sxy / sxx;
+    const e = x.map((v, i) => (v - xm) - b * (t[i] - tm));
+    let sse = 0, cross = 0;
+    for (let i = 0; i < n; i++) { sse += e[i] * e[i]; if (i > 0) cross += e[i] * e[i - 1]; }
+    const r1 = sse > 0 ? cross / sse : 0;
+    const r1c = Math.min(0.99, Math.max(0, r1));
+    const ne = n * (1 - r1c) / (1 + r1c);
+    const se = Math.sqrt(sse / (ne - 2) / sxx);
+    const p = ne > 3 ? pTwoSidedT(b / se, ne - 2) : NaN;
+    return { ols: b, se, p, phi: r1, nEff: ne, sigma: Math.sqrt(sse / (n - 2)), intercept: xm - b * tm };
+  }
+
+  // 3.3 holds for monthly data; sampling every `step` years scales it by sqrt(12 step)
+  function weatherheadK(step) { return WEATHERHEAD_K * Math.sqrt(12 * (step || 1 / 12)); }
+
+  function minDetectableTrend(sigma, phi, years, step) {
+    const f = Math.min(0.95, Math.max(-0.95, phi));
+    return weatherheadK(step) * sigma * Math.sqrt((1 + f) / (1 - f)) / Math.pow(years, 1.5);
+  }
+
+  function yearsToDetect(sigma, phi, omega, step) {
+    const f = Math.min(0.95, Math.max(-0.95, phi));
+    return Math.pow(weatherheadK(step) * sigma / Math.abs(omega) * Math.sqrt((1 + f) / (1 - f)), 2 / 3);
+  }
+
+  // uncertainty factor for n* estimated from m samples: n* lies within [n* e^-B, n* e^B]
+  // (Weatherhead et al. 1998, as given by Sutton et al. 2019); covers sigma_N and phi only
+  function detectionB(phi, m) {
+    const f = Math.min(0.95, Math.max(-0.95, phi || 0));
+    return 4 / (3 * Math.sqrt(m)) * Math.sqrt((1 + f) / (1 - f));
+  }
+
+  // range of n*: the Sen CI maps through n* ~ |trend|^(-2/3), then e^B widens it for the noise;
+  // a CI that includes zero trend has no upper end
+  function detectionRange(nstar, sen, lo, hi, phi, m) {
+    const same = (lo > 0 && hi > 0) || (lo < 0 && hi < 0), eB = Math.exp(detectionB(phi, m));
+    const big = Math.max(Math.abs(lo), Math.abs(hi)), small = Math.min(Math.abs(lo), Math.abs(hi)), a = Math.abs(sen);
+    return { lo: nstar * Math.pow(a / big, 2 / 3) / eB, hi: same ? nstar * Math.pow(a / small, 2 / 3) * eB : Infinity };
+  }
+
+  /** Full battery on one series of anomalies; t in decimal years. Drops NaNs. */
+  function analyze(xIn, tIn) {
+    const x = [], t = [];
+    for (let i = 0; i < xIn.length; i++) {
+      if (Number.isFinite(xIn[i])) { x.push(xIn[i]); t.push(tIn[i]); }
+    }
+    const n = x.length;
+    if (n < 8) return null;
+    const S = mkScore(x);
+    const varS = mkVariance(x);
+    const pNaive = pTwoSidedNormal(mkZ(S, varS));
+    const sl = pairSlopes(x, t);
+    const senMed = senMedian(sl);
+    const factor = ar1VarianceFactor(x, t, senMed);
+    const varMk = varS * factor;
+    const pMk = pTwoSidedNormal(mkZ(S, varMk));
+    const [ciLo, ciHi] = senCI(sl, varMk);
+    const sen = { sen: senMed, lo: ciLo, hi: ciHi };
+    const o = olsAr1(x, t);
+    const step = median(t.slice(1).map((v, i) => v - t[i]));
+    const years = t[n - 1] - t[0] + step;
+    return {
+      n, S, varS, factor, pNaive, pMk, sen: sen.sen, senLo: sen.lo, senHi: sen.hi,
+      ols: o.ols, pOls: o.p, phi: o.phi, nEff: o.nEff, sigma: o.sigma,
+      mdt: minDetectableTrend(o.sigma, o.phi, years, step),
+      nstar: yearsToDetect(o.sigma, o.phi, sen.sen, step), years,
+      intercept: median(x.map((v, i) => v - sen.sen * t[i])),
+    };
+  }
+
+  function median(a) {
+    const s = Float64Array.from(a).sort();
+    const n = s.length;
+    return n % 2 ? s[(n - 1) / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
+  }
+
+  const api = { mkScore, mkVariance, mkZ, pTwoSidedNormal, pTwoSidedT, ranks, lag1,
+    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, detectionB, detectionRange, analyze, median };
+  root.TDStats = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
