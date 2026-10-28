@@ -41,6 +41,15 @@ PRODUCTS = {
         "record_start": "1980-01",
         "url": "https://disc.gsfc.nasa.gov/datacollection/M2TMNXAER_5.12.4.html",
     },
+    "merra2daily": {
+        "name": "MERRA-2 daily indices (via NASA POWER v10)",
+        "kind": "model",
+        "source": "Counts of days from the NASA POWER daily MERRA-2 store: snow depth, corrected precipitation, "
+                  "daily maximum 10 m wind",
+        "native_res": "0.5 deg x 0.625 deg",
+        "record_start": "1981-01",
+        "url": "https://registry.opendata.aws/nasa-power/",
+    },
     "imerg": {
         "name": "GPM IMERG (via NASA POWER v10)",
         "kind": "mission",
@@ -150,6 +159,30 @@ NOTES = {
         "2014 (Randles et al. 2017). Over the Gobi a dust trend crossing 2000 or 2014 can "
         "come from the change in observations; the step tests at those dates check this."
     ),
+    ("merra2daily", None): (
+        "Counts of days in one ~50 km MERRA-2 cell, not station observations. A dust-prone day has MERRA-2 "
+        "snow cover below 0.3 (which matches MODIS's 50 %; MERRA-2 sees about 20 points less snow than "
+        "MODIS), precipitation < 0.254 mm (the AP-42 13.2.2 'wet day' limit) and a daily maximum of "
+        "hourly 10 m wind at or above the threshold. AP-42 13.2.5 puts the wind-erosion threshold of mine "
+        "surfaces at 10-27 m/s in gusts, and hourly cell means are smoother, so compare the 6, 8 and 10 m/s "
+        "versions: a trend that holds for all three does not hang on the threshold. Pits and haul roads "
+        "that are cleared of snow can still emit dust in winter (Wang et al. 2022)."
+    ),
+    ("merra2daily", "R10MM"): (
+        "A ~50 km cell's daily total smooths out cloudbursts: Ulaanbaatar's flash floods come from 10-40 mm "
+        "falling in 30 minutes (Badamdorj and Chogsom 2021). Read this as how often the region gets heavy-rain "
+        "days, not as a flood map, which needs terrain and drainage at metre scale."
+    ),
+    ("merra2daily", "RX1DAY"): (
+        "Largest daily total of the month over a ~50 km cell, which is lower than the heaviest point "
+        "rainfall. A trend says the region's wettest days are changing, not where water collects."
+    ),
+    ("merra2", "SNODP"): (
+        "Snow depth here is not a cell average. In the NASA POWER daily store it stays at 17.33 cm through "
+        "whole Gobi winters while the snow-covered fraction (FRSNO) is 1-20 % (Tavan Tolgoi cell, "
+        "Nov 2010-Mar 2011), so it behaves as the depth over the snow-covered part. A trend in it mixes "
+        "how often any snow lies with how deep it is; the snow-covered-days scene uses FRSNO instead."
+    ),
     ("merra2", "PRECTOTCORR"): (
         "Observation-corrected precipitation: gauge-based (CPCU) at low and middle latitudes, "
         "CMAP over Africa, tapering to model precipitation between 42.5 and 62.5 deg and "
@@ -169,6 +202,11 @@ SCREEN_EXCLUDE_SUFFIX = ("_SUM", "_SD", "_MAX", "_MIN", "_MAX_AVG", "_MIN_AVG", 
 
 
 def transitions_for(product: str, var: str) -> list[dict]:
+    if product == "merra2daily":  # an index inherits the changes of the MERRA-2 fields it counts
+        from .hazard import INDICES
+
+        base = INDICES[var][3]
+        return [t for t in TRANSITIONS if "merra2" in t["products"] and any(v in t["vars"] for v in base)]
     return [t for t in TRANSITIONS if product in t["products"] and var in t["vars"]]
 
 

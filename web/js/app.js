@@ -14,9 +14,10 @@
     set(k, v) { try { localStorage.setItem("td." + k, v); } catch (e) { /* storage blocked */ } },
   };
 
-  const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO"]);
+  const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO",
+    "WETDAYS", "SNOWDAYS", "R10MM", "RX1DAY"]);
   const REPO = "https://github.com/Buyja047/earth_trending";
-  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "anom", "steps", "truth"];
+  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "anom", "steps", "truth"];
   const CAP_YEAR = 2100;
   const ICONS = {
     trend: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 4h3v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
@@ -27,8 +28,9 @@
     anom: '<rect x="2" y="9" width="2.5" height="5" fill="currentColor"/><rect x="6.7" y="4" width="2.5" height="10" fill="currentColor"/><rect x="11.4" y="7" width="2.5" height="7" fill="currentColor"/>',
     steps: '<path d="M2 12h4V7h4V3h4" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     truth: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/>',
+    zone: '<rect x="2" y="9" width="4" height="5" fill="currentColor" opacity=".35"/><rect x="6" y="6" width="4" height="8" fill="currentColor" opacity=".65"/><rect x="10" y="2" width="4" height="12" fill="currentColor"/>',
   };
-  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
+  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", zone: "L_zone", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
   const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
     focus: "Монгол (улсын хилээр)", focus_part: "Хайрцаг доторх Монголын хэсэг",
@@ -479,6 +481,37 @@
     return r.det;
   }
   const yearText = (y) => (y === Infinity ? t("ey_never") : y > CAP_YEAR ? t("ey_after", { y: CAP_YEAR }) : String(y));
+
+  // ------------------------------------------------------------ risk zones
+  // For the daily hazard indices: how high the index is in the chosen months (its month-of-year
+  // means over the whole record, in thirds across the map) and whether it is rising (an upward
+  // trend that survives the FDR test for the chosen years). 4 high and rising, 3 high, 2 rising,
+  // 1 middle third, 0 lowest third. The thirds are relative to this map, not an absolute standard.
+  function zoneInfo() {
+    const r = state.res, sc = state.sc, key = `${state.season}`;
+    if (r.zone && r.zone.key === key) return r.zone;
+    const cl = sc.clim12, st = r.status, ncell = st.length, se = seasonOf(sc);
+    const ms = se ? SEA.months(se.m0, se.m1) : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const level = new Float64Array(ncell).fill(NaN);
+    for (let k = 0; k < ncell; k++) {
+      if (st[k] < 1 || st[k] > 5) continue;
+      let s = 0, n = 0;
+      for (const m of ms) { const v = cl[k * 12 + m - 1]; if (v !== null && Number.isFinite(v)) { s += v; n++; } }
+      if (n === ms.length) level[k] = s / n;
+    }
+    const v = Array.from(level).filter(Number.isFinite).sort((a, b) => a - b);
+    const q = (p) => v[Math.min(v.length - 1, Math.floor(p * v.length))];
+    const q1 = q(1 / 3), q2 = q(2 / 3), cls = new Int8Array(ncell).fill(-1), counts = [0, 0, 0, 0, 0];
+    for (let k = 0; k < ncell; k++) {
+      if (!Number.isFinite(level[k])) continue;
+      const up = (st[k] === 1 || st[k] === 2) && r.cells.sen[k] > 0, top = level[k] >= q2 && q2 > q1;
+      cls[k] = top && up ? 4 : top ? 3 : up ? 2 : level[k] >= q1 && q2 > q1 ? 1 : 0;
+      counts[cls[k]]++;
+    }
+    r.zone = { key, cls, level, q1, q2, counts };
+    return r.zone;
+  }
+  const ZONE_SHADE = [36, 90, 150, 205, 255];
   function detectShort(d) {
     if (!d) return t("ey_none");
     if (d.y > CAP_YEAR) return t("ey_after", { y: CAP_YEAR });
@@ -511,7 +544,7 @@
   function layerLimit() {
     const sc = state.sc, c = state.res.cells, st = state.res.status;
     if (state.layer === "anom") return annualCube(state.entry).lim;
-    if (state.layer === "emerge") return 1;
+    if (state.layer === "emerge" || state.layer === "zone") return 1;
     let arr;
     if (state.layer === "detect") arr = c.mdt;
     else if (state.layer === "steps") arr = sc.steps[state.step] ? sc.steps[state.step].step : [];
@@ -545,6 +578,10 @@
         if (!d || d.y > CAP_YEAR) return { col: pal.grid, h: 0 };
         const y0 = map.emergeY0 || state.y0, f = Math.max(0, Math.min(1, (CAP_YEAR - d.y) / (CAP_YEAR - y0))), col = pal.seq[Math.round(f * 255)];
         return { col: st === 1 || st === 2 ? col : fade(col, 0.45), h: f };
+      }
+      case "zone": {
+        const z = zoneInfo(), c5 = z.cls[k];
+        return c5 < 0 ? null : { col: pal.seq[ZONE_SHADE[c5]], h: c5 / 4 };
       }
       case "steps": {
         const s = sc.steps[state.step];
@@ -632,6 +669,7 @@
       if (state.ov.borders) drawLines(state.geo.borders, pal.coast, 0.6, [3, 3]);
       if (sc.region === "mongolia" || sc.focus) drawLines(state.geo.focus.rings, pal.ink, 1.6);
     }
+    drawMines();
     drawPlaces(pl);
     drawSelection();
     if (divX < W) {
@@ -867,6 +905,10 @@
     if (st === 6) return t("v6");
     if (state.layer === "detect") return `±${fmt(c.mdt[i] * unitFactor())} ${unitText(sc)}`;
     if (state.layer === "emerge") return `${t("ey_by")} ${detectShort(detectArr()[i])}`;
+    if (state.layer === "zone") {
+      const z = zoneInfo();
+      return z.cls[i] < 0 ? "–" : `${t("z" + z.cls[i])} · ${fmt(z.level[i])} ${unitLabel(sc.units)} ${t("per_month")} · ${c.sen[i] === null ? "–" : signed(c.sen[i] * unitFactor()) + " " + unitText(sc)}`;
+    }
     if (state.layer === "anom") {
       const cube = annualCube(state.entry);
       return `${state.year}: ${signed(cube.data[i * cube.ny + cube.years.indexOf(state.year)])} ${unitLabel(sc.units)}`;
@@ -883,6 +925,7 @@
       case "verdict": return null;
       case "detect": return c.mdt[k] === null ? null : c.mdt[k] * unitFactor();
       case "emerge": { const d = detectArr()[k]; return d && d.y <= CAP_YEAR ? d.y : null; }
+      case "zone": { const z = zoneInfo(); return Number.isFinite(z.level[k]) ? z.level[k] : null; }
       case "anom": { const cube = annualCube(state.entry); return cube.data[k * cube.ny + cube.years.indexOf(state.year)]; }
       case "steps": { const st = sc.steps[state.step]; return st && st.step[k] !== null ? st.step[k] : null; }
       case "truth": return sc.truth ? sc.truth.slope[k] * unitFactor() : null;
@@ -985,7 +1028,7 @@
   // ------------------------------------------------------------ layer picker, legend, timeline, status bar
   function availLayers() {
     const sc = state.sc;
-    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth));
+    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12));
   }
   const layerIcon = (l) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>`;
   function renderPicker() {
@@ -1020,6 +1063,12 @@
         <span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("ey_after", { y: CAP_YEAR }))} / ${esc(t("ey_none"))}</span>
         <span class="num muted">${esc(t("ey_counts", { a: nf(a), b: nf(b), c: nf(c), y1: state.y1, cap: CAP_YEAR }))}</span>
         <span class="muted">${esc(t("lg_emergenote"))}</span>${csvBtn("cells")}`;
+      return;
+    }
+    if (state.layer === "zone") {
+      const z = zoneInfo(), se = seasonOf(sc), u = `${unitLabel(sc.units)} ${t("per_month")}`;
+      el.innerHTML = [4, 3, 2, 1, 0].map((k) => `<span><i class="sw" style="background:${rgb(pal.seq[ZONE_SHADE[k]])}"></i>${esc(t("z" + k))} <span class="num muted">${nf(z.counts[k])}</span></span>`).join("")
+        + `<span class="muted">${esc(t("lg_zone", { s: se ? seasonText(se) : t("se_all"), a: fmt(z.q1), b: fmt(z.q2), u, fdr: fmt(2 * state.alpha) }))}</span>${csvBtn("cells")}`;
       return;
     }
     if (state.layer === "detect") {
@@ -1445,17 +1494,20 @@
     return `${name}: one mean per year${se.m0 > se.m1 ? ", counted in the year of its last month" : ""}; a year with any of these months missing is left out`;
   }
   function csvCells() {
-    const sc = state.sc, g = sc.grid, c = state.res.cells, st = state.res.status, det = detectArr();
+    const sc = state.sc, g = sc.grid, c = state.res.cells, st = state.res.status, det = detectArr(), z = sc.clim12 ? zoneInfo() : null;
     const rows = [["lat", "lon", "verdict_code", "verdict", "trend_per_decade", "trend_ci_low", "trend_ci_high", "p_naive", "p_corrected", "p_ols_ar1",
-      "significant_fdr", "phi", "noise_sd", "min_detectable_trend_per_decade", "years_to_detect", "detectable_by", "detectable_by_low", "detectable_by_high", "mean_value"]];
+      "significant_fdr", "phi", "noise_sd", "min_detectable_trend_per_decade", "years_to_detect", "detectable_by", "detectable_by_low", "detectable_by_high", "mean_value"]
+      .concat(z ? ["level_per_month_in_months", "risk_zone"] : [])];
     for (let k = 0; k < st.length; k++) {
       const s = st[k], ok = s >= 1 && s <= 5, d = det[k];
       rows.push([g.lat[Math.floor(k / g.nx)], g.lon[k % g.nx], s, VERDICT_EN(s), ok ? c.sen[k] : null, ok ? c.sen_lo[k] : null, ok ? c.sen_hi[k] : null,
         ok ? c.p_naive[k] : null, ok ? c.p_mk[k] : null, ok ? c.p_ols[k] : null, ok ? (s === 1 || s === 2 ? 1 : 0) : null, ok ? c.phi[k] : null,
-        ok ? c.sigma[k] : null, ok ? c.mdt[k] : null, ok ? c.nstar[k] : null, d ? d.y : null, d ? d.lo : null, d ? d.hi : null, c.clim_mean[k]]);
+        ok ? c.sigma[k] : null, ok ? c.mdt[k] : null, ok ? c.nstar[k] : null, d ? d.y : null, d ? d.lo : null, d ? d.hi : null, c.clim_mean[k]]
+        .concat(z ? [Number.isFinite(z.level[k]) ? z.level[k] : null, z.cls[k] >= 0 ? I.en("z" + z.cls[k]) : ""] : []));
     }
     const k = state.res.counts;
-    return { name: `cells`, meta: [["rows", "one per grid cell (centre lat/lon); verdict_code 0 = no data, 6 = months missing; mean_value = mean of all months of the record"],
+    return { name: `cells`, meta: [["rows", "one per grid cell (centre lat/lon); verdict_code 0 = no data, 6 = months missing; mean_value = mean of all months of the record"
+      + (z ? `; level_per_month_in_months = whole-record mean per month in the chosen months; risk_zone = level in thirds across the map (cut at ${+z.q1.toPrecision(4)} and ${+z.q2.toPrecision(4)}) and FDR-significant upward trend` : "")],
       ["cells_tested", k.valid], ["cells_significant_fdr", k.fdr]], rows };
   }
   function csvSeries(x, tt, stats, where, what, pre) {
@@ -1614,7 +1666,81 @@
   // ------------------------------------------------------------ case notes (numbers are for the full record)
   const rmStat = (sc, key) => { const r = sc.region_means.find((x) => x.key === key); return r && r.stats; };
   const stepOf = (s, date) => (s.steps || []).find((x) => x.label.startsWith(date));
+  // ------------------------------------------------------------ mines: where dust-prone winds blow
+  // Precomputed from the mine's MERRA-2 cell (data/mines.js): for every month choice and season year,
+  // the dust-prone days and the direction the daily mean 10 m wind blew toward on each of them.
+  const COMPASS16 = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  const compass = (deg) => COMPASS16[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+  function mineWindow(m) {
+    const pre = m.seasons[state.season] || m.seasons.all;
+    const keep = pre.years.map((y, q) => [y, q]).filter(([y]) => y >= state.y0 && y <= state.y1);
+    const sectors = new Array(m.n_sectors).fill(0);
+    for (const [, q] of keep) pre.sectors_per_year[q].forEach((v, i) => { sectors[i] += v; });
+    return { years: keep.map(([y]) => y), dust: keep.map(([, q]) => pre.dust_days_per_year[q]), sectors,
+      places: m.settlements.map((p, i) => Object.assign({}, p, { per_year: keep.map(([, q]) => pre.places[i].per_year[q]) })) };
+  }
+  // Sen slope per decade and corrected p of a yearly count, or null when too short
+  function yearTrend(years, vals) {
+    const r = years.length >= 10 ? S.analyze(vals, years.map((y) => y + 0.5)) : null;
+    return r && Number.isFinite(r.sen) ? { sen: r.sen * 10, p: r.pMk } : null;
+  }
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+  function roseSvg(sectors, size) {
+    const n = sectors.length, max = Math.max(1, ...sectors), c = size / 2, R = c - 14, w = Math.PI / n;
+    let s = `<svg class="rose" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(t("rose_aria"))}">`;
+    for (const r of [0.5, 1]) s += `<circle cx="${c}" cy="${c}" r="${R * r}" fill="none" stroke="var(--line)"/>`;
+    sectors.forEach((v, i) => {
+      if (!v) return;
+      const r = R * Math.sqrt(v / max), a = (i * 2 * Math.PI) / n - Math.PI / 2;
+      const p = (ang) => `${(c + r * Math.cos(ang)).toFixed(1)},${(c + r * Math.sin(ang)).toFixed(1)}`;
+      s += `<path d="M${c},${c} L${p(a - w)} A${r.toFixed(1)},${r.toFixed(1)} 0 0 1 ${p(a + w)} Z" fill="var(--ink)" fill-opacity=".7" stroke="var(--bg)"/>`;
+    });
+    [["N", c, 10], ["E", size - 6, c + 4], ["S", c, size - 2], ["W", 6, c + 4]].forEach(([l, x, y]) => { s += `<text x="${x}" y="${y}" text-anchor="middle">${l}</text>`; });
+    return s + "</svg>";
+  }
+  function mineCards() {
+    const M = state.mines;
+    if (!M) return `<p class="muted">${esc(t("mines_none"))}</p>`;
+    return M.mines.map((m) => {
+      const w = mineWindow(m), tot = w.dust.reduce((a, b) => a + b, 0), tr = yearTrend(w.years, w.dust);
+      const top = w.sectors.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).filter(([v]) => v > 0)
+        .map(([v, i]) => `${COMPASS16[i]} ${Math.round(100 * v / Math.max(tot, 1))}%`).join(", ");
+      const rows = w.places.map((p) => {
+        const days = p.per_year.reduce((a, b) => a + b, 0), pt = yearTrend(w.years, p.per_year);
+        return `<tr><td>${esc(mn() ? p.mn : p.name)}</td><td class="n">${fmt(p.km, 3)} km ${compass(p.bearing)}</td><td class="n">${fmt(mean(p.per_year), 2)}</td>
+          <td class="n">${Math.round(100 * days / Math.max(tot, 1))}%</td><td class="n">${pt ? `${signed(pt.sen, 2)} <span class="muted">p ${fmtP(pt.p)}</span>` : "–"}</td></tr>`;
+      }).join("");
+      return `<div class="minecard"><h3>${esc(mn() ? m.mine.mn : m.mine.name)}</h3>
+        <div class="minerow">${roseSvg(w.sectors, 132)}<p class="small">${esc(t("mine_sum", { d: fmt(mean(w.dust), 3), y0: w.years[0], y1: w.years[w.years.length - 1], top: top || "–" }))}
+          ${tr ? `<br>${esc(t("mine_trend", { s: signed(tr.sen, 2), p: fmtP(tr.p) }))}` : ""}</p></div>
+        <div class="tablewrap"><table class="minetable"><thead><tr><th>${esc(t("mt_place"))}</th><th class="n">${esc(t("mt_where"))}</th><th class="n">${esc(t("mt_days"))}</th><th class="n">${esc(t("mt_share"))}</th><th class="n">${esc(t("mt_trend"))}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="small muted">${esc(t("mine_src", { src: m.mine.source, lat: fmt(m.cell.lat, 3), lon: fmt(m.cell.lon, 4) }))}</p></div>`;
+    }).join("");
+  }
+  // rose glyphs on the map: wedges point where the wind carried dust on dust-prone days (area = share)
+  function drawMines() {
+    const M = state.mines, ctx = map.ctx;
+    if (!M || state.sc.case !== "hazard") return;
+    for (const m of M.mines) {
+      const { lat, lon } = m.mine;
+      if (!inMap(lat, lon)) continue;
+      const x = X(lon), y = Y(lat), w = mineWindow(m), max = Math.max(1, ...w.sectors), n = w.sectors.length, R = 30;
+      ctx.save();
+      ctx.fillStyle = pal.ink; ctx.strokeStyle = rgb(pal.bg); ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.6;
+      w.sectors.forEach((v, i) => {
+        if (!v) return;
+        const r = R * Math.sqrt(v / max), a = (i * 2 * Math.PI) / n - Math.PI / 2;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, r, a - Math.PI / n, a + Math.PI / n); ctx.closePath(); ctx.fill(); ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.rect(x - 3.5, y - 3.5, 7, 7); ctx.fill(); ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   const CASES = {
+    hazard: (sc) => `<div class="prose"><p>${esc(t("hz_case"))}</p></div><h3>${esc(t("mines_title"))}</h3><p class="small muted">${esc(t("mines_note"))}</p>${mineCards()}`,
     truth: () => mn()
       ? `<div class="prose"><p>Энэ талбар хиймэл. Хойд хэсэгт нэг бүсэд дулаарах, өмнөд хэсэгт нэг бүсэд хөрөх чиг суулгасан; бусад нь сар хоорондын санах ойтой (φ = 0.5), орон зайд гөлгөр шуугиан бөгөөд бодит уур амьсгалын талбартай төстэй.</p><p><b>Чиг, энгийн p&lt;α</b> ба <b>Чиг, FDR тест</b> давхаргыг сольж хараарай: энгийн газрын зураг хоосон далай дээр ач холбогдлыг тараана. <b>Суулгасан үнэн</b> давхарга жинхэнэ чигийг харуулна. Арга зүй хуудас хоёр газрын зургийг үнэлдэг.</p></div>`
       : `<div class="prose"><p>This field is synthetic. One northern region was given a warming trend and one southern region a cooling trend; everything else is noise with month-to-month memory (φ = 0.5) and spatial smoothing, like real climate fields.</p><p>Switch between <b>Trend, naive p&lt;α</b> and <b>Trend, FDR-tested</b>: the naive map scatters significance across empty ocean. <b>Planted truth</b> shows what is really there. The Method tab scores both maps.</p></div>`,
@@ -1875,6 +2001,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   async function showScene(id, keepYears) {
     stopPlay();
     const entry = await loadScene(id), prev = state.sc;
+    if (entry.sc.case === "hazard" && state.mines === undefined) state.mines = await loadPayload("mines").catch(() => null);
     state.entry = entry; state.sc = entry.sc; state.sel = null; state.step = 0; state.year = null;
     if (!prev || prev.region !== entry.sc.region) resetView();
     const [a, b] = fullRange();

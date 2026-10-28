@@ -40,6 +40,16 @@
     cmp_nodiff: "No p-value is given for the difference between the halves: two windows of one record, or two products over the same place, are not independent samples, so a standard two-sample test would overstate the evidence.",
     csv: "CSV", csv_title: "Download as CSV", file_csv_map: "Download map table (CSV)", file_csv_sel: "Download selected series (CSV)",
     csv_none: "Click a cell or draw a box first.",
+    L_zone: "Risk zone", L_zone_d: "How high the index is in the chosen months (thirds across the map), and whether it is rising",
+    z4: "High and rising", z3: "High", z2: "Rising", z1: "Middle", z0: "Low", per_month: "per month",
+    lg_zone: "{s}: level = mean {u}, thirds across the map (below {a}, {a}–{b}, above {b}); rising = upward trend that survives the FDR test (α_FDR = {fdr}). Relative to this map, not a standard.",
+    rose_aria: "Directions the wind carried dust on dust-prone days",
+    mines_title: "Downwind of the mines", mines_none: "Mine wind data did not load.",
+    mines_note: "Wedges point where the daily mean 10 m wind blew on dust-prone days in the mine's ~50 km cell (area = share of days). This is direction and frequency only, not a concentration: in an AERMOD study of a bauxite mine the 24-h PM10 limit was exceeded within 0.8–1.4 km of the crushers (Jalayer et al. 2026).",
+    mine_sum: "{d} dust-prone days per year ({y0}–{y1}); toward {top}.", mine_trend: "Trend {s} days per year per decade (p {p}).",
+    mt_place: "Soum centre", mt_where: "Distance, direction", mt_days: "Days/yr downwind", mt_share: "Of dust-prone days", mt_trend: "Trend per decade",
+    mine_src: "Location: {src}. MERRA-2 cell {lat}°N, {lon}°E. Settlements: GeoNames (CC BY 4.0).",
+    hz_case: "Daily MERRA-2 values from NASA POWER, counted per month. A dust-prone day has the cell mostly snow-free (MERRA-2 snow cover below 0.3, which matches 50 % in MODIS satellite snow cover), less than 0.254 mm of precipitation (the US EPA AP-42 13.2.2 wet-day limit) and a daily maximum 10 m wind at or above 6, 8 or 10 m/s; compare the three thresholds before trusting a trend. Over Mongolia the decline from 1981 sits before 1992: from 1992, the start of a new MERRA-2 production stream, there is no significant trend, so read the long-term decline as unconfirmed. Heavy-rain days (≥ 10 mm) and the wettest day of the month are the ETCCDI flood-rain indices for a ~50 km cell, not a flood map; over Ulaanbaatar GPM IMERG confirms the rise in the wettest day since 2001. Choose months with the Months control and the Risk zone layer to see where an index is high and rising.",
     tb_season: "Months", tb_season_title: "Analyse one season or month: one mean per year",
     se_all: "All months", se_djf: "winter", se_mam: "spring", se_jja: "summer", se_son: "autumn",
     months: "January February March April May June July August September October November December",
@@ -141,7 +151,8 @@
     about_title: "About Trend Detective",
     about: "A prototype for the NASA Space Apps 2026 challenge “Be an Earth System Trend Detective”. Data: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) and the NSIDC Sea Ice Index. Places: GeoNames. Coastlines: Natural Earth via world-atlas. Background imagery: NASA GIBS. Everything runs in your browser; no data leaves your computer.",
     close: "Close", units_label: "Units",
-    groups: { "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis" },
+    groups: { "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
+      "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)" },
   };
 
   const MN = {
@@ -183,6 +194,16 @@
     cmp_nodiff: "Хоёр талын зөрүүнд p-утга өгөхгүй: нэг бүртгэлийн хоёр хугацаа, эсвэл нэг газрын хоёр бүтээгдэхүүн бие даасан түүвэр биш тул энгийн хоёр түүврийн тест нотолгоог хэтрүүлнэ.",
     csv: "CSV", csv_title: "CSV хэлбэрээр татах", file_csv_map: "Газрын зургийн хүснэгт татах (CSV)", file_csv_sel: "Сонгосон цуваа татах (CSV)",
     csv_none: "Эхлээд нүд дарах эсвэл хайрцаг зурна уу.",
+    L_zone: "Эрсдэлийн бүс", L_zone_d: "Сонгосон саруудад индекс хэр өндөр (газрын зураг даяар гуравны нэгээр) бөгөөд өсөж байгаа эсэх",
+    z4: "Өндөр ба өсөж буй", z3: "Өндөр", z2: "Өсөж буй", z1: "Дунд", z0: "Бага", per_month: "сард",
+    lg_zone: "{s}: түвшин = дундаж {u}, газрын зураг даяар гуравны нэгээр ({a}-аас доош, {a}–{b}, {b}-аас дээш); өсөж буй = FDR тестийг давсан өсөх чиг (α_FDR = {fdr}). Энэ зурагтай харьцуулсан, стандарт биш.",
+    rose_aria: "Тоосжих нөхцөлтэй өдрүүдэд салхи тоосыг зөөсөн чиглэлүүд",
+    mines_title: "Уурхайн салхины доод талд", mines_none: "Уурхайн салхины өгөгдөл ачаалагдсангүй.",
+    mines_note: "Шаантаг нь тоосжих нөхцөлтэй өдрүүдэд уурхайн ~50 км нүдний 10 м-ийн өдрийн дундаж салхи аль зүг рүү үлээснийг заана (талбай = өдрийн хувь). Энэ нь зөвхөн чиглэл ба давтамж, агууламж биш: бокситын уурхайн AERMOD судалгаанд PM10-ийн 24 цагийн норм бутлуураас 0.8–1.4 км-т давсан (Jalayer нар 2026).",
+    mine_sum: "Жилд {d} тоосжих нөхцөлтэй өдөр ({y0}–{y1}); {top} зүг рүү.", mine_trend: "Чиг: арван жилд жилийн өдөр {s} (p {p}).",
+    mt_place: "Сумын төв", mt_where: "Зай, чиглэл", mt_days: "Салхины доод талд, өдөр/жил", mt_share: "Тоосжих өдрийн хувь", mt_trend: "Арван жилийн чиг",
+    mine_src: "Байршил: {src}. MERRA-2 нүд {lat}°N, {lon}°E. Суурин: GeoNames (CC BY 4.0).",
+    hz_case: "NASA POWER-ийн MERRA-2 өдрийн утгыг сар бүрээр тоолсон. Тоосжих нөхцөлтэй өдөр гэдэг нь нүд голдуу цасгүй (MERRA-2 цасан бүрхүүл 0.3-аас бага, энэ нь MODIS хиймэл дагуулын 50%-тай тэнцэнэ), хур тунадас 0.254 мм-ээс бага (АНУ-ын EPA AP-42 13.2.2-ын нойтон өдрийн хязгаар), 10 м-ийн өдрийн хамгийн их салхи 6, 8 эсвэл 10 м/с-ээс их өдөр. Чигийг итгэхээсээ өмнө гурван босгыг харьцуулаарай. Монголд 1981 оноос хойших бууралт 1992 оноос өмнө төвлөрсөн: MERRA-2-ын шинэ тооцооллын урсгал эхэлсэн 1992 оноос хойш ач холбогдолтой чиг алга, тиймээс урт хугацааны бууралтыг батлагдаагүй гэж үзнэ үү. Аадар борооны өдөр (≥ 10 мм) ба сарын хамгийн их хур тунадастай өдөр нь ~50 км нүдний ETCCDI үерийн борооны индекс, үерийн газрын зураг биш; Улаанбаатарын хувьд GPM IMERG 2001 оноос хойш хамгийн их бороотой өдөр нэмэгдсэнийг баталдаг. Сар сонгогч болон Эрсдэлийн бүс давхаргаар индекс хаана өндөр ба өсөж байгааг харна уу.",
     tb_season: "Сар", tb_season_title: "Нэг улирал эсвэл сарыг шинжлэх: жил бүр нэг дундаж",
     se_all: "Бүх сар", se_djf: "өвөл", se_mam: "хавар", se_jja: "зун", se_son: "намар",
     kind_season: "{s}ын дундаж",
@@ -284,7 +305,8 @@
     about_title: "Trend Detective-ийн тухай",
     about: "NASA Space Apps 2026-ийн “Be an Earth System Trend Detective” даалгаварт зориулсан прототип. Өгөгдөл: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) ба NSIDC Sea Ice Index. Газрын нэр: GeoNames. Эргийн шугам: Natural Earth (world-atlas). Суурь зураг: NASA GIBS. Бүх тооцоо таны хөтөч дээр хийгдэнэ; өгөгдөл таны компьютерээс гарахгүй.",
     close: "Хаах", units_label: "Нэгж",
-    groups: { "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ" },
+    groups: { "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
+      "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)" },
   };
 
   const SCENE_MN = {
@@ -294,10 +316,15 @@
     "mn-soil": "Хөрсний чийг (үндэсний давхарга)", "mn-wind": "Салхины хурд (10 м)", "mn-snow": "Цасны зузаан",
     "mn-aod": "Аэрозолийн оптик зузаан (550 нм)", "mn-precip-m2-2001": "Хур тунадас, MERRA-2 (загвар)",
     "mn-precip-imerg": "Хур тунадас, GPM IMERG (хиймэл дагуул)", "synthetic-truth": "Үнэн нь мэдэгдэх туршилтын талбар",
+    "mn-dust": "Гадаргын тоос (MERRA-2)", "mn-dust-aod": "Тоосны оптик зузаан 550 нм (MERRA-2)",
+    "mn-dustdays": "Тоосжих нөхцөлтэй өдөр (салхи ≥ 8 м/с)", "mn-dustdays6": "Тоосжих нөхцөлтэй өдөр (салхи ≥ 6 м/с)",
+    "mn-dustdays10": "Тоосжих нөхцөлтэй өдөр (салхи ≥ 10 м/с)", "mn-snowdays": "Цасан бүрхүүлтэй өдөр",
+    "mn-wetdays": "Нойтон өдөр (≥ 0.254 мм)", "mn-windydays": "Салхитай өдөр (≥ 8 м/с)",
+    "mn-heavyrain": "Аадар борооны өдөр (≥ 10 мм)", "mn-rx1day": "Сарын хамгийн их хур тунадастай өдөр",
   };
 
   const UNIT_MN = { "°C": "°C", "mm/day": "мм/өдөр", "m/s": "м/с", cm: "см", DU: "DU", fraction: "харьцаа",
-    "million km2": "сая км²", sd: "σ", "%": "%", hPa: "гПа", "W m-2": "Вт/м²", Days: "өдөр", "g/kg": "г/кг" };
+    "million km2": "сая км²", sd: "σ", "%": "%", hPa: "гПа", "W m-2": "Вт/м²", Days: "өдөр", days: "өдөр", mm: "мм", "g/kg": "г/кг" };
 
   let lang = "en";
   const api = {

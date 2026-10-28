@@ -11,12 +11,13 @@ from __future__ import annotations
 import base64
 import os
 import time
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-from . import analysis, catalog, gesdisc, grid, nsidc, power, stats
+from . import analysis, catalog, gesdisc, grid, hazard, nsidc, power, stats
 from .geo import load_focus_rings, points_in_rings
 from .payload import read_payload, write_payload
 from .synthetic import dipole_field
@@ -74,6 +75,22 @@ SCENES = [
               group="Mongolia 1981-2025", case="dust", aggregates=["focus"]),
     SceneSpec("mn-dust-aod", "Dust optical depth 550 nm (MERRA-2)", "merra2aer", "DUEXTTAU",
               "mongolia", group="Mongolia 1981-2025", case="dust", aggregates=["focus"]),
+    SceneSpec("mn-dustdays", "Dust-prone days (wind >= 8 m/s)", "merra2daily", "DUSTDAYS8", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-dustdays6", "Dust-prone days (wind >= 6 m/s)", "merra2daily", "DUSTDAYS6", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-dustdays10", "Dust-prone days (wind >= 10 m/s)", "merra2daily", "DUSTDAYS10", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-snowdays", "Snow-covered days", "merra2daily", "SNOWDAYS", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-wetdays", "Wet days (>= 0.254 mm)", "merra2daily", "WETDAYS", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-windydays", "Windy days (max wind >= 8 m/s)", "merra2daily", "WINDYDAYS8", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-heavyrain", "Heavy-rain days (>= 10 mm)", "merra2daily", "R10MM", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
+    SceneSpec("mn-rx1day", "Wettest day of the month", "merra2daily", "RX1DAY", "mongolia",
+              group="Mongolia hazards 1981-2025 (daily)", case="hazard", aggregates=["focus"]),
     SceneSpec("mn-precip-m2-2001", "Precipitation, MERRA-2 (model)", "merra2", "PRECTOTCORR",
               "mongolia", start="2001-01", group="Mongolia 2001-2025", case="crosscheck",
               aggregates=["focus"]),
@@ -173,6 +190,14 @@ def _breaks(product, var):
     return out, notes
 
 
+def month_climatology(values, times) -> np.ndarray:
+    """Mean of each calendar month per cell, shape (lat, lon, 12); NaN where a month never has data."""
+    m = analysis.months_of(times)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.stack([np.nanmean(values[m == k], axis=0) for k in range(1, 13)], axis=-1)
+
+
 def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_rings,
                 breaks, transition_notes, aggregates, truth=None, extra=None) -> dict:
     lat = np.asarray(lat, float)
@@ -253,6 +278,8 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
             "sigma": _num(c["sigma"]), "mdt": _num(c["mdt"] * 10), "nstar": _num(c["nstar"], 3),
             "clim_mean": _num(c["clim_mean"]), "status": res["status"].tolist(),
         },
+        # month-of-year means per cell (cell-major, 12 per cell), so a season's level can be read off
+        "clim12": _num(month_climatology(values, times).reshape(ny * nx, 12).ravel()) if spec_meta.get("clim12") else None,
         "steps": [{"t_break": s["t_break"], "label": s["label"], "p_star": s["p_star"],
                    "flagged": int(s["flag"].sum()), "step": _num(s["step"]),
                    "p_step": _num(s["p_step"], 3), "flag": s["flag"].astype(int).tolist(),
@@ -283,7 +310,7 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
 
 def build_spec(spec: SceneSpec, out_dir: Path, focus_rings, built: dict) -> dict:
     region = REGIONS[spec.region]
-    loader = gesdisc.load if spec.product == "merra2aer" else power.load
+    loader = {"merra2aer": gesdisc.load, "merra2daily": hazard.load}.get(spec.product, power.load)
     da = loader(spec.product, spec.var, region["bbox"], spec.start, spec.end, spec.coarsen)
     values, lat, lon = da.values, da["lat"].values, da["lon"].values
     if spec.regrid_like:
@@ -303,6 +330,7 @@ def build_spec(spec: SceneSpec, out_dir: Path, focus_rings, built: dict) -> dict
         "region_name": REGIONS[spec.region]["name"], "notes": catalog.notes_for(spec.product, spec.var),
         "native_res": prod["native_res"],
         "valid_min": da.attrs.get("valid_min"), "valid_max": da.attrs.get("valid_max"),
+        "clim12": spec.product == "merra2daily",
         "grid_note": (f"block-averaged {spec.coarsen}x{spec.coarsen} from native grid"
                       if spec.coarsen > 1 else
                       ("averaged onto the MERRA-2 grid" if spec.regrid_like else "native grid")),
@@ -483,6 +511,10 @@ def build_all(out_dir: Path, geo_path: Path, only=None, screen=True, screen_limi
         built[spec.id] = build_spec(spec, out_dir, focus, built)
         print(f"built {spec.id} in {time.time() - t0:.0f}s  counts={built[spec.id]['counts']}",
               flush=True)
+    if any(s.product == "merra2daily" and s.id in wanted for s in SCENES):
+        mines = hazard.mines_payload(hazard.MINES, {m["id"]: hazard.settlements_for(m["id"]) for m in hazard.MINES})
+        write_payload(out_dir / "mines.js", "mines", mines)
+        print("wrote mines.js", flush=True)
     keys = ("id", "title", "group", "case", "product", "product_name", "kind", "var",
             "long_name", "units", "region", "region_name", "counts", "period")
     entries = {sc["id"]: {k: sc[k] for k in keys} for sc in built.values()}
