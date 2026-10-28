@@ -88,7 +88,9 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   days (snow-free, dry, windy at 6, 8 or 10 m/s), snow-covered days, wet days,
   windy days, heavy-rain days (≥ 10 mm) and the wettest day of the month.
   - The **Risk zone** layer marks where an index is high (thirds across the
-    map) and rising (an upward trend after FDR) in the chosen months.
+    map) and rising (an upward trend after FDR) in the chosen months. The
+    **Risk zones** button in the toolbar, or the link
+    <https://buyja047.github.io/earth_trending/#risk>, opens it from anywhere.
   - The Analysis tab shows, for Tavan Tolgoi, Oyu Tolgoi and Tsagaan Suvarga,
     where winds carried dust on dust-prone days and how often each nearby soum
     centre lay downwind.
