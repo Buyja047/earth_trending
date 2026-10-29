@@ -256,3 +256,16 @@ allowed, list this repository under References.
   relief and bathymetry, ASTER GDEM greyscale shaded relief (NASA/METI),
   VIIRS Black Marble 2016, MODIS Terra corrected reflectance.
 - Statistical references are listed in `docs/METHODS.md`.
+
+### Detailed Sentinel-2 background
+
+Select **Background imagery → Sentinel-2 cloudless 2020 (10 m)** and zoom
+to a mine or town. This selects colour imagery and sets data opacity to zero
+so coarse climate cells do not obscure the image; increase Data opacity to
+restore the trend overlay. The climate measurements retain their native resolution.
+This is EOX's cloudless 2020 composite, not live imagery or a selected day's
+observation. Tiles load directly from `https://tiles.maps.eox.at/wms`; no
+Earth Engine login, server, or API key is needed for the GitHub Pages viewer.
+An internet connection is required. External service availability and CORS
+are required; live tile delivery has not yet been validated in the cloud
+environment because its network policy blocks the domain.

@@ -58,6 +58,7 @@
         </details>
         <details open><summary data-i18n="p_base">Background imagery</summary>
           <label class="item"><input type="radio" name="base" value="none" checked> <span data-i18n="base_none">None (works offline)</span></label>
+          <label class="item"><input type="radio" name="base" value="sentinel"> <span data-i18n="base_sentinel">Sentinel-2 cloudless 2020 (10 m)</span></label>
           <label class="item"><input type="radio" name="base" value="relief"> <span data-i18n="base_relief">Blue Marble relief</span></label>
           <label class="item"><input type="radio" name="base" value="terrain"> <span data-i18n="base_terrain">Terrain, grey (ASTER)</span></label>
           <label class="item"><input type="radio" name="base" value="night"> <span data-i18n="base_night">Night lights 2016</span></label>
@@ -65,7 +66,7 @@
           <label class="item" id="base-dayrow" hidden><span data-i18n="base_date">Date</span> <input type="date" id="base-date" min="2000-02-24"></label>
           <div id="base-opts" hidden>
             <label class="item"><input type="checkbox" id="base-grey" checked> <span data-i18n="base_grey">Greyscale imagery</span></label>
-            <label class="item baserange"><span data-i18n="base_alpha">Data opacity</span> <input type="range" id="base-alpha" min="0.2" max="1" step="0.05" value="0.75"></label>
+            <label class="item baserange"><span data-i18n="base_alpha">Data opacity</span> <input type="range" id="base-alpha" min="0" max="1" step="0.05" value="0.75"></label>
           </div>
           <p class="small muted basenote" data-i18n="base_note">Imagery: NASA GIBS. Needs internet.</p>
         </details>

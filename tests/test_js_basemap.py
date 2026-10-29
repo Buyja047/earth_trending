@@ -52,3 +52,25 @@ def test_urls_follow_capabilities_templates():
     assert urls == [f"{base}/BlueMarble_ShadedRelief_Bathymetry/default/500m/3/1/7.jpeg",
                     f"{base}/VIIRS_Black_Marble/default/2016-01-01/500m/3/1/7.png",
                     f"{base}/MODIS_Terra_CorrectedReflectance_TrueColor/default/2024-05-01/250m/3/1/7.jpeg"]
+
+
+def test_sentinel_wms_uses_lon_lat_and_clips_world_padding():
+    from urllib.parse import parse_qs, urlsplit
+
+    urls = js("B.tiles(0, -180, 180, -90, 90).map(t => B.url(B.LAYERS.sentinel, t))")
+    boxes = []
+    for url in urls:
+        parts = urlsplit(url)
+        assert parts.scheme == 'https' and parts.netloc == 'tiles.maps.eox.at'
+        q = parse_qs(parts.query, keep_blank_values=True)
+        assert q['VERSION'] == ['1.1.1']
+        assert q['SRS'] == ['EPSG:4326']
+        assert q['LAYERS'] == ['s2cloudless-2020']
+        assert q['WIDTH'] == ['512'] and q['HEIGHT'] == ['512']
+        boxes.append([float(v) for v in q['BBOX'][0].split(',')])
+    assert boxes == [[-180, -90, 108, 90], [108, -90, 180, 90]]
+
+
+def test_sentinel_supports_detail_beyond_terrain():
+    assert js('B.level(B.LAYERS.sentinel, 20000)') == 13
+    assert js('B.level(B.LAYERS.terrain, 20000)') == 11

@@ -622,7 +622,9 @@
     let w = W - 2 * pad, h = w * gb.aspect;
     if (h > H - 2 * pad) { h = H - 2 * pad; w = h / gb.aspect; }
     const dlon = gb.lon1 - gb.lon0, dlat = gb.lat1 - gb.lat0;
-    map.zmax = Math.max(4, Math.min(64, 160 / (w * state.sc.grid.dlon / dlon)));
+    map.zmax = state.base === "sentinel"
+      ? Math.max(4, 111320 * dlon / (10 * w))
+      : Math.max(4, Math.min(64, 160 / (w * state.sc.grid.dlon / dlon)));
     v.z = Math.min(v.z, map.zmax);
     w *= v.z; h *= v.z;
     if (v.lon === null) { v.lon = gb.lon0 + dlon / 2; v.lat = gb.lat0 + dlat / 2; }
@@ -697,7 +699,7 @@
       cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     // zoomed in far enough, each cell also shows its value, except where a place is labelled
-    const labels = cw >= 40 && ch >= 18 && state.layer !== "verdict", marks = [];
+    const labels = (!imagery || state.baseAlpha > 0) && cw >= 40 && ch >= 18 && state.layer !== "verdict", marks = [];
     ctx.font = `10px ${cssVar("--font-data")}`;
     for (let j = 0; j < g.ny; j++) {
       const ya = Y(g.lat[j] + g.dlat / 2), yb = Y(g.lat[j] - g.dlat / 2);
@@ -748,7 +750,7 @@
   // short credit on the map; the full GIBS acknowledgement is in About and the Method tab
   function drawCredit() {
     const L = TDBasemap.LAYERS[state.base], st = TDBasemap.status(), ctx = map.ctx;
-    const txt = `${t("base_credit")}: NASA GIBS · ${L.credit}${L.dated ? " · " + state.baseDate : ""}`;
+    const txt = `${t("base_credit")}: ${L.wms ? "" : "NASA GIBS · "}${L.credit}${L.dated ? " · " + state.baseDate : ""}`;
     ctx.font = `10px ${cssVar("--font-ui")}`;
     const w = ctx.measureText(txt).width;
     ctx.fillStyle = rgb(pal.bg);
@@ -2210,7 +2212,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     state.theme = store.get("theme") || "system";
     state.base = window.TDBasemap && TDBasemap.LAYERS[store.get("base")] ? store.get("base") : "none";
     state.baseGrey = store.get("basegrey") !== "0";
-    state.baseAlpha = Math.min(1, Math.max(0.2, +store.get("basealpha") || 0.75));
+    state.baseAlpha = Math.min(1, Math.max(0, store.get("basealpha") == null ? 0.75 : +store.get("basealpha")));
     if (state.theme !== "system") document.documentElement.dataset.theme = state.theme;
     map.canvas = $("#map"); map.ctx = map.canvas.getContext("2d");
     surface = new window.TDSurface($("#surf"));
@@ -2318,7 +2320,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     };
     syncBase();
     $("#leftpane").addEventListener("change", (e) => {
-      if (e.target.name === "base") { state.base = e.target.value; store.set("base", state.base); map.baseWarned = false; }
+      if (e.target.name === "base") { state.base = e.target.value; store.set("base", state.base); map.baseWarned = false;
+        if (state.base === "sentinel") {
+          state.baseGrey = false; state.baseAlpha = 0;
+          store.set("basegrey", "0"); store.set("basealpha", "0");
+        } }
       else if (e.target.id === "base-date" && e.target.value) state.baseDate = e.target.value;
       else if (e.target.id === "base-grey") { state.baseGrey = e.target.checked; store.set("basegrey", state.baseGrey ? "1" : "0"); }
       else return;

@@ -37,3 +37,14 @@ and to cite all sources, so each row says how to cite it.
   redistributed. Station comparisons would need permission.
 * **OpenStreetMap mine polygons**: usable under ODbL, but share-alike would
   apply to a derived database; GeoNames points were enough for three mines.
+
+## Sentinel-2 background
+
+The optional background requests EOX's `s2cloudless-2020` composite from
+[EOX Maps](https://maps.eox.at/), served at `https://tiles.maps.eox.at/wms`.
+Attribution: “Sentinel-2 cloudless — https://s2maps.eu by EOX IT Services GmbH
+(Contains modified Copernicus Sentinel data 2020)”. EOX makes this composite
+available under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Tiles are requested at runtime and are not bundled in this repository.
+The composite is a background for orientation, not a dated measurement used
+in trend calculations.

@@ -6,6 +6,7 @@
   "use strict";
   const BASE = "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best";
   const LAYERS = {
+    sentinel: { id: "s2cloudless-2020", wms: true, max: 13, credit: "Sentinel-2 cloudless 2020 · EOX · Contains modified Copernicus Sentinel data 2020" },
     relief: { id: "BlueMarble_ShadedRelief_Bathymetry", tms: "500m", max: 7, ext: "jpeg", credit: "NASA Blue Marble" },
     terrain: { id: "ASTER_GDEM_Greyscale_Shaded_Relief", tms: "31.25m", max: 11, ext: "jpeg", credit: "ASTER GDEM (NASA/METI)" },
     night: { id: "VIIRS_Black_Marble", tms: "500m", max: 7, ext: "png", time: "2016-01-01", credit: "NASA Black Marble 2016" },
@@ -34,6 +35,15 @@
     return out;
   }
   function url(layer, t, date) {
+    if (layer.wms) {
+      // WMS 1.1.1 uses longitude/latitude axis order for EPSG:4326.
+      const bbox = [Math.max(-180, t.lon0), Math.max(-90, t.lat0), Math.min(180, t.lon1), Math.min(90, t.lat1)].join(",");
+      return "https://tiles.maps.eox.at/wms?" + new URLSearchParams({
+        SERVICE: "WMS", VERSION: "1.1.1", REQUEST: "GetMap", LAYERS: layer.id,
+        STYLES: "", SRS: "EPSG:4326", BBOX: bbox,
+        WIDTH: String(TILE_PX), HEIGHT: String(TILE_PX), FORMAT: "image/jpeg"
+      }).toString();
+    }
     const time = layer.time || (layer.dated ? date : null);
     return `${BASE}/${layer.id}/default/${time ? time + "/" : ""}${layer.tms}/${t.z}/${t.r}/${t.c}.${layer.ext}`;
   }
@@ -74,7 +84,8 @@
         const src = url(layer, t, opt.date);
         const e = lev === z ? get(src, opt.onload) : cache.get(src);
         if (!e || !e.ok) continue;
-        const x0 = v.X(t.lon0), x1 = v.X(t.lon1), y0 = v.Y(t.lat1), y1 = v.Y(t.lat0);
+        const x0 = v.X(t.lon0), x1 = v.X(layer.wms ? Math.min(180, t.lon1) : t.lon1),
+          y0 = v.Y(t.lat1), y1 = v.Y(layer.wms ? Math.max(-90, t.lat0) : t.lat0);
         ctx.drawImage(e.img, x0, y0, x1 - x0, y1 - y0);
       }
     }
