@@ -20,6 +20,23 @@ and to cite all sources, so each row says how to cite it.
 | Natural Earth via world-atlas 2.0.2 (coastlines, borders) | Natural Earth; world-atlas by M. Bostock | public domain data; ISC licence for the package | yes | "Natural Earth" |
 | US EPA AP-42 sections 13.2.2, 13.2.4, 13.2.5 (11/06) | US EPA | a US government work, so no copyright in the United States | the 0.254 mm wet-day rule and the threshold range are used, not the text | US EPA (2006), AP-42 Fifth Edition, Vol. I, Ch. 13.2 |
 
+## Optional Earth Engine workflow
+
+The optional Earth Engine fire-context workflow also uses the following sources
+(catalogue terms checked 2026-10-31; no authenticated sample imagery is bundled):
+
+| Source | Terms / credit |
+|---|---|
+| Landsat 8/9 Collection 2 Level 2 | Public-domain USGS data. “Landsat imagery courtesy of the U.S. Geological Survey.” |
+| ERA5-Land hourly / daily | Copernicus C3S/CAMS terms: “Contains modified Copernicus Climate Change Service Information [data year].” The European Commission and ECMWF are not responsible for use made of the information. |
+| Sentinel-5P ozone | Copernicus Sentinel Data Terms and Conditions: “Contains modified Copernicus Sentinel data [data year].” |
+| ESA WorldCover 2021 v200 | CC BY 4.0; Zanaga et al. (2022), doi:10.5281/zenodo.7254221. |
+| SRTM GL1 v003 | NASA/JPL source terms; Farr et al. (2007), doi:10.1029/2005RG000183. |
+
+Official catalogue links, measurement limits, and which layers are implemented
+are in [FIRE_EARTH_ENGINE.md](FIRE_EARTH_ENGINE.md). Use actual acquisition years
+in credits when distributing reports or exports.
+
 ## Material read but not redistributed
 
 | Source | Terms | How the project uses it |

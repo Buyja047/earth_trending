@@ -53,8 +53,26 @@ def main(argv=None):
     sub.add_parser("catalog", help="rebuild web/data/power-catalog.js (live analysis)")
     sub.add_parser("dust-check", help="check GES DISC access and the server-side subset")
 
+    fire = sub.add_parser("fire-context", help="Landsat 8/9 and Earth Engine fire-weather observations")
+    fire.add_argument("--project", required=True, help="registered Earth Engine Google Cloud project ID")
+    fire.add_argument("--bbox", required=True, type=float, nargs=4, metavar=("WEST", "SOUTH", "EAST", "NORTH"))
+    fire.add_argument("--start", required=True, help="inclusive UTC date, YYYY-MM-DD")
+    fire.add_argument("--end", required=True, help="exclusive UTC date, YYYY-MM-DD")
+    fire.add_argument("--limit", type=int, default=3, help="latest qualifying scenes to process (1–20)")
+    fire.add_argument("--out", type=Path, default=ROOT / "cache" / "fire" / "report.json")
+    fire.add_argument("--no-previews", action="store_true", help="omit embedded RGB/LST/NDMI images")
+
     a = ap.parse_args(argv)
-    if a.cmd == "build":
+    if a.cmd == "fire-context":
+        from .fire import run
+        try:
+            report = run(a.project, a.bbox, a.start, a.end, a.limit, not a.no_previews)
+        except (ValueError, RuntimeError) as exc:
+            ap.exit(2, f"fire-context: {exc}\n")
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False))
+        print(f"wrote {len(report['scenes'])} of {report['matched_scene_count']} matching scenes to {a.out}")
+    elif a.cmd == "build":
         idx = build_all(a.out, a.geo, a.only, screen=not a.no_screen, screen_limit=a.screen_limit)
         print(f"wrote {len(idx['scenes'])} scenes to {a.out}")
     elif a.cmd == "series":

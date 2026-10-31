@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7", "pymannkendall>=1.4"]
+earthengine = ["earthengine-api>=1.5,<2"]
 
 [tool.setuptools]
 packages = ["trend_detective"]

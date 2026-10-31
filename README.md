@@ -41,6 +41,15 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 
 ## What you can do in the viewer
 
+- **Landsat · Fire weather**: open `web/fire.html` from the layer manager.
+  Includes an Earth Engine Code Editor script and a Python `fire-context`
+  command for Landsat 8/9 scenes with **0–2% scene cloud cover**, pixel QA,
+  surface temperature, vegetation indices and ERA5-Land weather, with ozone
+  as atmospheric context. Google authentication and a registered project are
+  required for data retrieval; no API key is embedded in the site. These are
+  observations, not a validated fire forecast.
+  Setup, sources and limitations: [docs/FIRE_EARTH_ENGINE.md](docs/FIRE_EARTH_ENGINE.md).
+
 - **Datasets** (layer manager on the left, the one place to pick data): global
   MERRA-2 temperature, precipitation, soil wetness, sea ice and ozone
   (1981–2025); Mongolia temperature, precipitation, soil wetness, wind, snow
