@@ -62,8 +62,37 @@ def main(argv=None):
     fire.add_argument("--out", type=Path, default=ROOT / "cache" / "fire" / "report.json")
     fire.add_argument("--no-previews", action="store_true", help="omit embedded RGB/LST/NDMI images")
 
+    fm = sub.add_parser("fire-map", help="Earth Engine pixels for the existing Risk zones map")
+    fm.add_argument("--project", required=True)
+    fm.add_argument("--bbox", required=True, type=float, nargs=4)
+    fm.add_argument("--start", required=True)
+    fm.add_argument("--end", required=True)
+    fm.add_argument("--resolution", type=int, default=100)
+    fm.add_argument("--out", type=Path, default=ROOT / "web/data/fire-risk.js")
+
+    fs = sub.add_parser("fire-serve", help="serve the existing viewer with a date-driven Earth Engine endpoint")
+    fs.add_argument("--project", required=True)
+    fs.add_argument("--port", type=int, default=8000)
+
     a = ap.parse_args(argv)
-    if a.cmd == "fire-context":
+    if a.cmd == "fire-serve":
+        from .fire_server import serve
+        serve(a.project, a.port)
+    elif a.cmd == "fire-map":
+        from .fire_map import build
+        from .payload import write_payload
+        try:
+            result = build(a.project, a.bbox, a.start, a.end, a.resolution)
+        except (ValueError, RuntimeError) as exc:
+            ap.exit(2, f"fire-map: {exc}\n")
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        if a.out.suffix == ".json":
+            a.out.write_text(json.dumps(result, allow_nan=False))
+        else:
+            from .fire_map import publish
+            publish(result, a.out)
+        print(f"Wrote {a.out}; open Trend Detective → Risk zones")
+    elif a.cmd == "fire-context":
         from .fire import run
         try:
             report = run(a.project, a.bbox, a.start, a.end, a.limit, not a.no_previews)

@@ -38,6 +38,7 @@
     <button type="button" class="btn" id="boxmode" aria-pressed="false" data-i18n="tb_box">Box select</button>
     <button type="button" class="btn" data-cmp aria-pressed="false" data-i18n="tb_cmp">Compare</button>
     <button type="button" class="btn" data-risk aria-pressed="false" data-i18n="tb_risk">Risk zones</button>
+    <label id="fire-date-row" hidden><span data-i18n="fire_date">Fire date</span> <input id="fire-date" type="date" min="2013-03-18"><button id="fire-load" type="button" class="btn" data-i18n="fire_show">Show</button></label>
     <span class="tsep" aria-hidden="true"></span>
     <label class="search"><input type="search" id="search" list="placelist" data-i18n-ph="tb_search" placeholder="Search a place…" aria-label="Search a place"></label>
     <datalist id="placelist"></datalist>
@@ -49,7 +50,6 @@
       <div class="tree">
         <details open><summary data-i18n="p_datasets">Datasets</summary>
           <button type="button" class="item livebtn" id="livebtn"><span aria-hidden="true">+</span> <span data-i18n="live_btn">Analyse any variable (live)</span></button>
-          <a class="item livebtn" href="fire.html"><span data-i18n="fire_btn">Landsat · Fire weather</span></a>
           <div id="tree-scenes"></div></details>
         <details open><summary data-i18n="p_overlays">Overlays</summary>
           <label class="item"><input type="checkbox" id="ov-coast" checked> <span data-i18n="ov_coast">Coastlines</span></label>
@@ -178,6 +178,7 @@
 <script src="js/zarr.js"></script>
 <script src="js/live.js"></script>
 <script src="js/season.js"></script>
+<script src="js/fire-map.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
