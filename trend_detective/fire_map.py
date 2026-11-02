@@ -64,7 +64,13 @@ def build(project, bbox, start, end, resolution=100):
     images = fire.collection(ee, region, start, end)
     if not images.size().getInfo():
         raise RuntimeError("No Landsat L2SP scene with 0–2% cloud cover in this region/period")
-    raw = ee.Image(images.first())
+    # filterBounds keeps scenes that merely touch the box; one that clips a corner
+    # would leave most cells without observations. Use only a whole-box scene.
+    covering = images.filter(ee.Filter.contains(leftField=".geo", rightValue=region, maxError=1))
+    if not covering.size().getInfo():
+        raise RuntimeError("No single 0–2% cloud Landsat scene covers the whole region in this period; "
+                           "choose another date or a smaller region")
+    raw = ee.Image(covering.first())
     metadata = raw.toDictionary(["LANDSAT_PRODUCT_ID", "SPACECRAFT_ID", "CLOUD_COVER", "system:time_start"]).getInfo()
     acquired = datetime.fromtimestamp(metadata["system:time_start"] / 1000, timezone.utc)
     hour = acquired.replace(minute=0, second=0, microsecond=0)
@@ -87,7 +93,9 @@ def build(project, bbox, start, end, resolution=100):
         ee.ImageCollection("ESA/WorldCover/v200").first().select("Map").rename("landcover")])
     # Explicit output grid, bounded transfer. Native ERA5 support stays ~11 km;
     # nearest-neighbour sampling is not claimed to add meteorological detail.
-    pixels = ee.data.computePixels({"expression": fields.clip(region).unmask(-9999),
+    # sameFootprint=False: by default unmask keeps the scene footprint, and cells
+    # outside it arrive as 0 in every band instead of the -9999 missing marker.
+    pixels = ee.data.computePixels({"expression": fields.clip(region).unmask(-9999, False),
         "fileFormat": "NUMPY_NDARRAY", "bandIds": list(FACTORS) + ["landcover"],
         "grid": {"dimensions": {"width": nx, "height": ny}, "crsCode": "EPSG:4326",
                  "affineTransform": {"scaleX": dlon, "shearX": 0, "translateX": w,

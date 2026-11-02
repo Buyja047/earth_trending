@@ -66,6 +66,10 @@ python -m trend_detective fire-map \
 
 Cloud checkout-д `.venv/bin/python` ашиглана. Команд хамгийн сүүлийн шаардлага
 хангасан нэг Landsat зургийн пикселүүдийг авна; өөр өдрийн дүрсээр нүх нөхөхгүй.
+Тэр зураг сонгосон хайрцгийг **бүтэн** хамрах ёстой: хайрцгийн булангаас л
+хүрч буй зураг (жишээ нь 106.7–107.0°E, 47.7–47.9°N хайрцагт path 132-ын
+зургууд зөвхөн баруун хойд булангаа хамардаг) хасагдана, тийм өдөр команд
+газрын зураг үүсгэхгүй алдаатай зогсоно. Өөр өдөр эсвэл жижиг хайрцаг сонгоно.
 `END` өдөр орохгүй. Өөрийн бүс, хугацааг сонгоно; анхны жишээ нь Улаанбаатарын
 ойролцоох жижиг талбай. Нэг хүсэлт ≤2,500 км², ≤366 хоног, ≤250,000 дэлгэцийн
 пиксел; 100–1000 м дэлгэцийн алхам. Монголын хилээр маскалдаг. Бүх улсыг
@@ -96,7 +100,7 @@ the user's Google projects still require authentication and live validation.
 
 | Input | Earth Engine source | Support / processing |
 |---|---|---|
-| Surface heat, NDMI | [Landsat 8](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2), [Landsat 9](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC09_C02_T1_L2) | Collection 2 Tier 1 L2SP, `0 <= CLOUD_COVER <= 2`; exclude unknown −1. QA_PIXEL bits 0–5 and nonzero QA_RADSAT excluded. Reflectance = DN×0.0000275−0.2; LST °C = DN×0.00341802+149−273.15; NDMI=(NIR−SWIR1)/(NIR+SWIR1). |
+| Surface heat, NDMI | [Landsat 8](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC08_C02_T1_L2), [Landsat 9](https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_LC09_C02_T1_L2) | Collection 2 Tier 1 L2SP, `0 <= CLOUD_COVER <= 2`; exclude unknown −1. Scene footprint must contain the whole box (`Filter.contains('.geo', box)`); cells outside a footprint are −9999 (`unmask(-9999, sameFootprint=False)`), never 0. QA_PIXEL bits 0–5 and nonzero QA_RADSAT excluded. Reflectance = DN×0.0000275−0.2; LST °C = DN×0.00341802+149−273.15; NDMI=(NIR−SWIR1)/(NIR+SWIR1). |
 | VPD, 10 m wind, 0–7 cm soil water | [ERA5-Land hourly](https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_HOURLY) | Acquisition UTC hour, floor to hour. VPD from Magnus saturation pressure at air/dew-point temperatures; wind = hypot(u,v). ~11 km reanalysis, not forecasts or gusts. |
 | Previous rain | [ERA5-Land daily](https://developers.google.com/earth-engine/datasets/catalog/ECMWF_ERA5_LAND_DAILY_AGGR) | Previous 7 complete UTC days; all seven per-pixel samples required. m→mm. Negative accumulation artefacts excluded from classification. |
 | Vegetated mask | [ESA WorldCover v200](https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v200) | Static 2021 classes 10,20,30,40,90,95,100 (tree/shrub/grass/crop/wetland/mangrove/moss-lichen). Not current fuel load or fuel moisture. |
