@@ -1,1 +1,17 @@
-{"schema":"trend-detective/fire-map-index/v1","maps":[]}
+{
+  "schema": "trend-detective/fire-map-index/v1",
+  "maps": [
+    {
+      "date": "2025-04-26",
+      "key": "fire-risk-2025-04-26"
+    },
+    {
+      "date": "2025-06-21",
+      "key": "fire-risk-2025-06-21"
+    },
+    {
+      "date": "2025-09-17",
+      "key": "fire-risk-2025-09-17"
+    }
+  ]
+}
