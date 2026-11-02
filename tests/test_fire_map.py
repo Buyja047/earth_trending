@@ -29,16 +29,36 @@ def test_empty_inputs_are_not_low_risk():
     assert np.all(classes==-1)
 
 
-def test_real_sdk_pixel_graph_and_north_south_orientation():
+def invocations(node, name):
+    """Every call of one Earth Engine algorithm in a serialized expression."""
+    if isinstance(node, dict):
+        call = node.get('functionInvocationValue')
+        if call and call.get('functionName') == name:
+            yield call['arguments']
+        for value in node.values():
+            yield from invocations(value, name)
+    elif isinstance(node, list):
+        for value in node:
+            yield from invocations(value, name)
+
+
+def offline_ee():
     ee=pytest.importorskip('ee')
     from ee.apitestcase import GetAlgorithms
     ee.Reset()
     initialize=ee.Initialize
+    patches=[patch.object(ee,'Initialize',side_effect=lambda **kw:initialize(None,'',project=kw['project'])),
+             patch.object(ee.data,'_install_cloud_api_resource'),patch.object(ee.data,'getAlgorithms',GetAlgorithms)]
+    return ee,patches
+
+
+def test_real_sdk_pixel_graph_and_north_south_orientation():
+    ee,patches=offline_ee()
     acquired=1748746800000
     metadata={'system:time_start':acquired,'CLOUD_COVER':1,'LANDSAT_PRODUCT_ID':'TEST_ONLY','SPACECRAFT_ID':'LANDSAT_9'}
     recorded={}
     def pixels(params):
-        params['expression'].serialize()
+        recorded['graph']=json.loads(params['expression'].serialize())
         dims=params['grid']['dimensions'];h,w=dims['height'],dims['width']
         a=np.zeros((h,w),dtype=[(k,'f8') for k in list(FACTORS)+['landcover']])
         for k in FACTORS:a[k]=(np.arange(h*w).reshape(h,w)/100 if FACTORS[k]==1 else 1-np.arange(h*w).reshape(h,w)/100)
@@ -46,10 +66,26 @@ def test_real_sdk_pixel_graph_and_north_south_orientation():
         recorded['a']=a
         return a
     try:
-        with patch.object(ee,'Initialize',side_effect=lambda **kw:initialize(None,'',project=kw['project'])),patch.object(ee.data,'_install_cloud_api_resource'),patch.object(ee.data,'getAlgorithms',GetAlgorithms),patch.object(ee.data,'computeValue',side_effect=[1,metadata,1,7]),patch.object(ee.data,'computePixels',side_effect=pixels):
+        with patches[0],patches[1],patches[2],patch.object(ee.data,'computeValue',side_effect=[1,1,metadata,1,7]),patch.object(ee.data,'computePixels',side_effect=pixels):
             result=build('offline-test',[106.7,47.7,106.702,47.702],'2025-04-01','2025-10-01')
         assert result['grid']['lat']==sorted(result['grid']['lat'])
         assert result['factors']['lst_c']==np.flipud(recorded['a']['lst_c']).ravel().tolist()
         assert any(c>=0 for c in result['classes'])
         json.dumps(result,allow_nan=False)
+        # Cells outside the scene must come back as -9999, not as 0 in every band.
+        unmask=list(invocations(recorded['graph'],'Image.unmask'))
+        assert unmask and all(a.get('sameFootprint')=={'constantValue':False} for a in unmask)
+        # The pixels come from a scene that contains the whole box, not one touching it.
+        contains=list(invocations(recorded['graph'],'Filter.contains'))
+        assert contains and all(a['leftField']=={'constantValue':'.geo'} for a in contains)
+    finally:ee.Reset()
+
+
+def test_scene_touching_only_part_of_the_box_produces_no_map():
+    ee,patches=offline_ee()
+    try:
+        with patches[0],patches[1],patches[2],patch.object(ee.data,'computeValue',side_effect=[1,0]),patch.object(ee.data,'computePixels') as pixels:
+            with pytest.raises(RuntimeError,match='covers the whole region'):
+                build('offline-test',[106.7,47.7,107.0,47.9],'2025-09-17','2025-09-18')
+        pixels.assert_not_called()
     finally:ee.Reset()
