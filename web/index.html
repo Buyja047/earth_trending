@@ -38,7 +38,8 @@
     <button type="button" class="btn" id="boxmode" aria-pressed="false" data-i18n="tb_box">Box select</button>
     <button type="button" class="btn" data-cmp aria-pressed="false" data-i18n="tb_cmp">Compare</button>
     <button type="button" class="btn" data-risk aria-pressed="false" data-i18n="tb_risk">Risk zones</button>
-    <label id="fire-date-row" hidden><span data-i18n="fire_date">Fire date</span> <input id="fire-date" type="date" min="2013-03-18"><button id="fire-load" type="button" class="btn" data-i18n="fire_show">Show</button></label>
+    <label id="risk-type-row" hidden><span data-i18n="risk_type">Risk type</span> <select id="risk-type" aria-label="Risk type"></select></label>
+    <label id="fire-date-row" hidden><span data-i18n="risk_date">Date (UTC)</span> <button id="risk-prev" type="button" class="btn" data-i18n-title="risk_prev">‹</button><input id="fire-date" type="date" min="2013-03-18"><button id="risk-next" type="button" class="btn" data-i18n-title="risk_next">›</button><button id="fire-load" type="button" class="btn" data-i18n="fire_show">Show</button></label>
     <span class="tsep" aria-hidden="true"></span>
     <label class="search"><input type="search" id="search" list="placelist" data-i18n-ph="tb_search" placeholder="Search a place…" aria-label="Search a place"></label>
     <datalist id="placelist"></datalist>
@@ -179,6 +180,8 @@
 <script src="js/live.js"></script>
 <script src="js/season.js"></script>
 <script src="js/fire-map.js"></script>
+<script src="js/dust-map.js"></script>
+<script src="js/risk-maps.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

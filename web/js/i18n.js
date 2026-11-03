@@ -10,6 +10,7 @@
     an_full: "Full record", an_30: "Last 30 years", an_20: "Last 20 years", an_2001: "2001 onward",
     an_alpha: "Significance level α = {a}",
     help_guide: "Quick guide", help_method: "Method and validation", help_about: "About",
+    risk_type: "Risk type", risk_date: "Date (UTC)", risk_prev: "Previous day", risk_next: "Next day",
     fire_date: "Fire date", fire_show: "Show",
     live_btn: "Analyse any variable (live)", file_live: "New live analysis…",
     live_title: "Analyse any NASA POWER variable",
@@ -154,7 +155,7 @@
     about_title: "About Trend Detective",
     about: "A prototype for the NASA Space Apps 2026 challenge “Be an Earth System Trend Detective”. Data: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) and the NSIDC Sea Ice Index. Places: GeoNames. Coastlines: Natural Earth via world-atlas. Background imagery: NASA GIBS. Everything runs in your browser; no data leaves your computer.",
     close: "Close", units_label: "Units",
-    groups: { "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
+    groups: { "Risk zones": "Risk zones", "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
       "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)" },
   };
 
@@ -167,6 +168,7 @@
     an_full: "Бүх хугацаа", an_30: "Сүүлийн 30 жил", an_20: "Сүүлийн 20 жил", an_2001: "2001 оноос хойш",
     an_alpha: "Ач холбогдлын түвшин α = {a}",
     help_guide: "Товч заавар", help_method: "Арга зүй ба баталгаажуулалт", help_about: "Тухай",
+    risk_type: "Эрсдэлийн төрөл", risk_date: "Огноо (UTC)", risk_prev: "Өмнөх өдөр", risk_next: "Дараах өдөр",
     fire_date: "Түймрийн огноо", fire_show: "Харах",
     live_btn: "Дурын хувьсагчийг шинжлэх (шууд)", file_live: "Шинэ шууд шинжилгээ…",
     live_title: "NASA POWER-ийн дурын хувьсагчийг шинжлэх",
@@ -311,7 +313,7 @@
     about_title: "Trend Detective-ийн тухай",
     about: "NASA Space Apps 2026-ийн “Be an Earth System Trend Detective” даалгаварт зориулсан прототип. Өгөгдөл: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) ба NSIDC Sea Ice Index. Газрын нэр: GeoNames. Эргийн шугам: Natural Earth (world-atlas). Суурь зураг: NASA GIBS. Бүх тооцоо таны хөтөч дээр хийгдэнэ; өгөгдөл таны компьютерээс гарахгүй.",
     close: "Хаах", units_label: "Нэгж",
-    groups: { "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
+    groups: { "Risk zones": "Эрсдэлийн бүсүүд", "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
       "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)" },
   };
 
