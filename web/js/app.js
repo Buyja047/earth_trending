@@ -2025,7 +2025,10 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if(isRisk()) {
       const type=R.type(state.sc); $("#risk-type").value=type;
       $("#fire-date").value=state.sc.period.start; $("#fire-date").min=R.types[type].min;
+      if(state.base==="day")state.baseDate=state.sc.period.start;
+      $("#base-date").value=state.baseDate;
     }
+    $("#base-date").disabled=isRisk();
     for (const el of $$('#y0,#y1,#apply,#alpha,#season,#play,#yearslider,[data-cmp],[data-view="surf"]')) el.disabled=isRisk();
     renderMenus(); buildTree(); fillYears(); fillSeason(); renderPicker(); renderCmpBar(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
     renderAnalysis(); renderScreen(); renderMethod(); status();
@@ -2092,6 +2095,21 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAll();
   }
   function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  let dustService;
+  async function dustEndpoint() {
+    if(dustService===undefined) {
+      const config=await fetch("data/services.json").then(r=>r.ok?r.json():{}).catch(()=>({}));
+      const base=config.dust_api_base;
+      dustService="../api/dust-map";
+      if(typeof base==="string"&&base) {
+        const url=new URL(base);
+        if(url.protocol!=="https:"&&!(url.protocol==="http:"&&["localhost","127.0.0.1"].includes(url.hostname)))throw Error("MODIS service requires HTTPS");
+        if(url.username||url.password||url.search||url.hash)throw Error("Invalid MODIS service URL");
+        dustService=url.href.replace(/\/$/,"")+"/api/dust-map";
+      }
+    }
+    return dustService;
+  }
   // The shared date/selection flow dispatches through the risk-type registry.
   let riskRequest=0;
   async function openRisk(type, date) {
@@ -2107,7 +2125,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     const config=R.types[type];if(!config||config.disabled)return;
     const request=++riskRequest,A=config.adapter;
     const g=state.sc?baseGeom(state.sc):{lon0:87.5,lat0:41.5,lon1:120,lat1:52.5};
-    const bbox=state.sel?.type==="box"?state.sel.bounds:[g.lon0,g.lat0,g.lon1,g.lat1];
+    const bbox=state.sel?.type==="box"?state.sel.bounds:state.sc?.request_bbox||[g.lon0,g.lat0,g.lon1,g.lat1];
     const cached=state.cache[config.id]?.sc;
     let sc=cached&&!cached.unavailable&&cached.period.start===date?cached:null;
     let message=type==="dust"?(mn()?"Энэ өдрийн MODIS спектр, дулааны сувгийн боловсруулсан өгөгдөл нийтлэгдээгүй байна.":"No calibrated MODIS spectral/thermal observation has been published for this date."):(mn()?"Тухайн өдрийн Earth Engine зураг нийтлэгдээгүй эсвэл холболт идэвхжээгүй байна.":"No Earth Engine map has been published for this date, or the data service is not connected.");
@@ -2115,6 +2133,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#fire-load").disabled=true;
     if(!sc) {
       state.sc=A.empty(date,bbox,mn()?"Тухайн өдрийн өгөгдөл ачаалж байна…":"Loading observations for this date…");
+      state.sc.request_bbox=bbox;
       state.entry={sc:state.sc};state.sel=null;state.y0=state.y1=+date.slice(0,4);
       await computeResults();if(request!==riskRequest)return;setView("map");renderAll();
     }
@@ -2124,7 +2143,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         const item=(index.maps||[]).find(x=>x.date===date&&x.key===`${config.id}-${date}`);
         if(item)sc=A.validate(await loadPayload(item.key));
         if(!sc&&location.protocol!=="file:") {
-          const response=await fetch(`../api/${type}-map?date=${encodeURIComponent(date)}&bbox=${bbox.join(',')}`);
+          const endpoint=type==="dust"?await dustEndpoint():"../api/fire-map";
+          const response=await fetch(`${endpoint}?date=${encodeURIComponent(date)}&bbox=${bbox.join(',')}`);
           if(response.headers.get('content-type')?.includes('application/json')) {
             const data=await response.json();
             if(response.ok)sc=A.validate(data);else if(data.error)message=data.error;

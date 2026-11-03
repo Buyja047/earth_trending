@@ -1,0 +1,97 @@
+name: Daily MODIS channel dust maps
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'UTC date YYYY-MM-DD (empty: retry the last three complete days)'
+        required: false
+        type: string
+  schedule:
+    - cron: '17 22 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: modis-dust-archive
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install MODIS reader
+        run: pip install -r requirements-modis.txt
+      - uses: actions/cache@v4
+        with:
+          path: cache/modis/maps
+          key: modis-maps-${{ github.run_id }}
+          restore-keys: modis-maps-
+      - name: Download actual channels and publish exact-date maps
+        env:
+          EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
+          MODIS_RUN_DATE: ${{ inputs.date }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import date, datetime, timedelta, timezone
+          from trend_detective.modis_daily import build_direct, DEFAULT_BBOX
+          from trend_detective.modis_source import ModisAccessError
+          from trend_detective.dust_map import publish
+          if not os.environ.get('EARTHDATA_TOKEN'):
+              raise SystemExit('Configure repository secret EARTHDATA_TOKEN before running MODIS downloads')
+          requested = os.environ.get('MODIS_RUN_DATE', '').strip()
+          today = datetime.now(timezone.utc).date()
+          days = [date.fromisoformat(requested)] if requested else [today-timedelta(days=n) for n in [3, 2, 1]]
+          completed = 0
+          for day in days:
+              try:
+                  result = build_direct(day.isoformat(), DEFAULT_BBOX)
+                  publish(result, 'web/data/dust-risk.js')
+                  completed += 1
+                  print(f'Published {day}: {result["discovered_granules"]} native MODIS granules')
+              except ModisAccessError as exc:
+                  if requested or 'token' in str(exc).lower() or 'access is required' in str(exc).lower():
+                      raise SystemExit(str(exc)) from None
+                  print(f'{day}: {exc}')
+          if not completed:
+              raise SystemExit('No complete daily MODIS observations available; archive was not changed')
+          PY
+      - name: Save processed archive
+        run: |
+          git add web/data/dust-risk*.js web/data/dust-map-index.*
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update daily MODIS channel dust maps'
+          git push origin HEAD
+      - name: Prepare static Pages artifact
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir -p work/pages
+          cp index.html TrendDetective.html .nojekyll work/pages/
+          cp -R web work/pages/web
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: work/pages
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: process
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

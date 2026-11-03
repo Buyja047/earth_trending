@@ -80,3 +80,36 @@ def test_daily_dust_selection_archive_dates_language_and_return(tmp_path):
             assert not errors,errors
             browser.close()
     finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_direct_channel_api_and_selected_overpass(tmp_path):
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self,*args): pass
+    server=ThreadingHTTPServer(('127.0.0.1',0),functools.partial(Quiet,directory=str(ROOT)))
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        with playwright.sync_playwright() as p:
+            browser=p.chromium.launch(executable_path=shutil.which('chromium'),args=['--no-sandbox'])
+            page=browser.new_page(viewport=dict(width=1440,height=1000))
+            page.add_init_script("localStorage.setItem('td.seenGuide','1');localStorage.setItem('td.lang','en');localStorage.setItem('td.base','day')")
+            errors=[];page.on('pageerror',lambda e:errors.append(e.stack))
+            fixture=fixture_map()
+            fixture.update(aggregation='modis-c61-native-daily-union-v1',display_resolution_m=5000,area_grid_resolution_m=1000,
+                observations=[dict(id=f'MOD021KM.A2025152.0{hour}00.061.2025153000000.hdf',acquired_utc=f'2025-06-01T0{hour}:00:00Z',idi_threshold=1.+(hour-3)*.1) for hour in [3,4]],
+                observation_index=[0,1,0,1,0,-1])
+            page.route('**/data/services.json',lambda r:r.fulfill(json={'dust_api_base':'https://example.test/modis'}))
+            called=[]
+            def api(route):
+                called.append(route.request.url)
+                route.fulfill(json=fixture)
+            page.route('https://example.test/modis/api/dust-map?*',api)
+            page.goto(f'http://127.0.0.1:{server.server_port}/web/index.html#risk/dust/2025-06-01')
+            playwright.expect(page.locator('#summary')).to_contain_text('2 overpasses')
+            assert len(called)==1 and 'date=2025-06-01' in called[0]
+            playwright.expect(page.locator('#base-date')).to_have_value('2025-06-01')
+            assert page.locator('#base-date').is_disabled()
+            page.locator('[data-tab="method"]').click()
+            playwright.expect(page.locator('#method')).to_contain_text('Daily union')
+            assert not errors,errors
+            browser.close()
+    finally:server.shutdown();server.server_close();thread.join()

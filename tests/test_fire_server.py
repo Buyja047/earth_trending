@@ -63,3 +63,23 @@ def test_dust_endpoint_does_not_share_fire_cache_or_expose_failures(tmp_path):
             with pytest.raises(HTTPError) as exc:urlopen(base+path)
             assert 'secret' not in exc.value.read().decode()
     finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_live_modis_endpoint_dispatch_and_cors(monkeypatch,tmp_path):
+    from trend_detective import modis_daily
+    calls=[]
+    def build(day,bbox,**kwargs):
+        calls.append((day,bbox,kwargs))
+        return {'period':{'start':day},'kind':'dust-risk'}
+    monkeypatch.setattr(modis_daily,'build_direct',build)
+    server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(None,modis_live=True,
+        modis_cache=tmp_path,allow_origin='https://buyja047.github.io'))
+    thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        for _ in range(2):
+            with urlopen(f'http://127.0.0.1:{server.server_port}/api/dust-map?date=2025-06-01&bbox=106,45,107,46') as r:
+                assert r.headers['Access-Control-Allow-Origin']=='https://buyja047.github.io'
+                assert json.load(r)['kind']=='dust-risk'
+        assert len(calls)==2  # pipeline rechecks late granules rather than serving a stale date
+        assert calls[0][2]['sensor']=='terra' and calls[0][2]['resolution']==5000
+    finally:server.shutdown();server.server_close();thread.join()

@@ -74,6 +74,7 @@ def main(argv=None):
     fs.add_argument("--project", required=True)
     fs.add_argument("--port", type=int, default=8000)
     fs.add_argument("--dust-dir", type=Path, help="directory of YYYY-MM-DD.nc MODIS observations")
+    fs.add_argument("--modis-live", action="store_true", help="download/calibrate MODIS channels using server EARTHDATA_TOKEN")
 
     dm = sub.add_parser("dust-map", help="classify calibrated daily MODIS observations with IDI/Otsu")
     dm.add_argument("--input", type=Path, required=True, help="co-registered daytime MODIS NetCDF")
@@ -85,11 +86,46 @@ def main(argv=None):
     dm.add_argument("--out", type=Path, default=ROOT / "web/data/dust-risk.js")
 
     ds = sub.add_parser("dust-serve", help="serve daily MODIS observations in the existing viewer")
-    ds.add_argument("--input-dir", type=Path, required=True, help="directory of YYYY-MM-DD.nc files")
+    source_group = ds.add_mutually_exclusive_group(required=True)
+    source_group.add_argument("--input-dir", type=Path, help="directory of YYYY-MM-DD.nc files")
+    source_group.add_argument("--modis-live", action="store_true", help="download/calibrate NASA MODIS channels on demand")
+    ds.add_argument("--cache", type=Path, default=ROOT/"cache/modis")
+    ds.add_argument("--sensor", choices=["terra", "aqua", "both"], default="terra")
+    ds.add_argument("--resolution", type=int, default=5000, help="display resolution m; classification remains native 1km")
     ds.add_argument("--port", type=int, default=8000)
+    ds.add_argument("--allow-origin", help="exact hosted viewer origin, for an externally hosted API")
+
+    md = sub.add_parser("modis-dust", help="direct NASA MODIS channel download, calibration and daily dust map")
+    md.add_argument("--date", help="UTC day YYYY-MM-DD (default: previous UTC day)")
+    md.add_argument("--bbox", type=float, nargs=4, default=[87.5, 41.5, 120., 52.5])
+    md.add_argument("--sensor", choices=["terra", "aqua", "both"], default="terra")
+    md.add_argument("--resolution", type=int, default=5000)
+    md.add_argument("--cache", type=Path, default=ROOT/"cache/modis")
+    md.add_argument("--plan", action="store_true", help="only list exact-date granules; no credentials/download needed")
+    md.add_argument("--out", type=Path, default=ROOT/"web/data/dust-risk.js")
 
     a = ap.parse_args(argv)
-    if a.cmd == "dust-map":
+    if a.cmd == "modis-dust":
+        from datetime import datetime, timedelta, timezone
+        from .modis_source import discover
+        from .modis_daily import build_direct
+        from .dust_map import publish
+        day = a.date or (datetime.now(timezone.utc).date()-timedelta(days=1)).isoformat()
+        try:
+            if a.plan:
+                groups = discover(day, a.bbox, a.sensor)
+                print(json.dumps({"date": day, "granules": [[g.name for g in group] for group in groups]}, indent=2))
+            else:
+                result = build_direct(day, a.bbox, a.cache, a.sensor, a.resolution)
+                if a.out.suffix == ".json":
+                    a.out.parent.mkdir(parents=True, exist_ok=True)
+                    a.out.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False))
+                else:
+                    publish(result, a.out)
+                print(f"Wrote {a.out}; {result['discovered_granules']} exact-date native MODIS granules")
+        except (OSError, ValueError, RuntimeError) as exc:
+            ap.exit(2, f"modis-dust: {exc}\n")
+    elif a.cmd == "dust-map":
         from .dust import Settings
         from .dust_map import build, publish
         try:
@@ -106,10 +142,11 @@ def main(argv=None):
         print(f"Wrote {a.out}; open Risk zones → Yellow dust storm")
     elif a.cmd == "dust-serve":
         from .fire_server import serve
-        serve(None, a.port, a.input_dir)
+        serve(None, a.port, a.input_dir, modis_live=a.modis_live, modis_cache=a.cache,
+              modis_sensor=a.sensor, modis_resolution=a.resolution, allow_origin=a.allow_origin)
     elif a.cmd == "fire-serve":
         from .fire_server import serve
-        serve(a.project, a.port, a.dust_dir)
+        serve(a.project, a.port, a.dust_dir, modis_live=a.modis_live)
     elif a.cmd == "fire-map":
         from .fire_map import build
         from .payload import write_payload

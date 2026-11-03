@@ -42,12 +42,14 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 ## What you can do in the viewer
 
 - **Daily yellow dust maps**: **Risk zones → Yellow dust storm → Date (UTC)**.
-  The risk-type selector also opens the existing fire map and reserves a disabled
-  flood option for a future adapter. The `dust-map` command applies the supplied
-  thesis's MODIS IDI/Otsu decision tree to calibrated spectral/thermal NetCDF
-  observations, publishes dated maps, and reports detected area and coverage.
-  No real daily MODIS archive is bundled or connected yet; missing dates stay
-  blank. [Method, data requirements and service](docs/DUST_MODIS.md).
+  `modis-dust` downloads matched NASA MOD021KM/MOD03/MOD35_L2 channels,
+  calibrates native radiances/reflectances and applies the thesis's IDI/Otsu
+  decision tree per overpass before taking the daily union. `dust-serve
+  --modis-live` connects this directly to date selection; the optional GitHub
+  workflow publishes daily processed maps to Pages after secret/Pages setup.
+  Requires a server-side `EARTHDATA_TOKEN`; authenticated real-data processing
+  is not yet validated in this session because no Earthdata account is connected.
+  Missing dates stay blank. [Setup and method](docs/DUST_MODIS.md).
 
 - **Earth Engine fire map** uses the existing **Risk zones** map, legend and
   details panel. The `fire-map` command reads actual Landsat / ERA5 pixels and

@@ -11,7 +11,7 @@ const adapter=sc=>types[type(sc)]?.adapter;
 const is=sc=>!!adapter(sc);
 const result={types,type,adapter,is,validate:sc=>adapter(sc).validate(sc),
  colors:sc=>adapter(sc).colors,labels:(sc,mn)=>adapter(sc).labels[mn?'mn':'en'],
- method:(sc,mn)=>adapter(sc).method(mn),title:(sc,mn)=>types[type(sc)].name[mn?1:0]};
+ method:(sc,mn)=>adapter(sc).method(mn,sc),title:(sc,mn)=>types[type(sc)].name[mn?1:0]};
 for(const key of ['summary','legend','inspect','csv'])result[key]=(sc,...args)=>adapter(sc)[key](sc,...args);
 root.TDRiskMaps=result;
 })(typeof window==='undefined'?globalThis:window);
