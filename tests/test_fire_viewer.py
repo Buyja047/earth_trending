@@ -38,7 +38,7 @@ def test_integrated_risk_map_and_return_to_trends(tmp_path):
             page.add_init_script("localStorage.setItem('td.seenGuide','1'); localStorage.setItem('td.lang','en')")
             errors=[];page.on('pageerror',lambda e:errors.append(e.stack))
             page.route('**/data/fire-risk.js',lambda route:route.fulfill(content_type='application/javascript',body='TD_DATA("fire-risk",'+json.dumps(fixture_map())+');'))
-            page.goto(f'http://127.0.0.1:{server.server_port}/web/index.html#risk')
+            page.goto(f'http://127.0.0.1:{server.server_port}/web/index.html#risk/fire/2025-06-01')
             playwright.expect(page.locator('#legend')).to_contain_text('Very high')
             assert page.locator('.workspace').count()==1
             assert page.locator('a[href="fire.html"]').count()==0

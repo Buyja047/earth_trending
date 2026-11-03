@@ -73,11 +73,43 @@ def main(argv=None):
     fs = sub.add_parser("fire-serve", help="serve the existing viewer with a date-driven Earth Engine endpoint")
     fs.add_argument("--project", required=True)
     fs.add_argument("--port", type=int, default=8000)
+    fs.add_argument("--dust-dir", type=Path, help="directory of YYYY-MM-DD.nc MODIS observations")
+
+    dm = sub.add_parser("dust-map", help="classify calibrated daily MODIS observations with IDI/Otsu")
+    dm.add_argument("--input", type=Path, required=True, help="co-registered daytime MODIS NetCDF")
+    dm.add_argument("--date", required=True, help="exact UTC day, YYYY-MM-DD")
+    dm.add_argument("--bbox", type=float, nargs=4)
+    dm.add_argument("--water-btd-min", type=float)
+    dm.add_argument("--water-r47-min", type=float)
+    dm.add_argument("--water-ndai-min", type=float)
+    dm.add_argument("--out", type=Path, default=ROOT / "web/data/dust-risk.js")
+
+    ds = sub.add_parser("dust-serve", help="serve daily MODIS observations in the existing viewer")
+    ds.add_argument("--input-dir", type=Path, required=True, help="directory of YYYY-MM-DD.nc files")
+    ds.add_argument("--port", type=int, default=8000)
 
     a = ap.parse_args(argv)
-    if a.cmd == "fire-serve":
+    if a.cmd == "dust-map":
+        from .dust import Settings
+        from .dust_map import build, publish
+        try:
+            result = build(a.input, a.date, a.bbox, Settings(
+                water_btd_min=a.water_btd_min, water_r47_min=a.water_r47_min,
+                water_ndai_min=a.water_ndai_min))
+            if a.out.suffix == ".json":
+                a.out.parent.mkdir(parents=True, exist_ok=True)
+                a.out.write_text(json.dumps(result, ensure_ascii=False, allow_nan=False))
+            else:
+                publish(result, a.out)
+        except (OSError, ValueError, RuntimeError) as exc:
+            ap.exit(2, f"dust-map: {exc}\n")
+        print(f"Wrote {a.out}; open Risk zones → Yellow dust storm")
+    elif a.cmd == "dust-serve":
         from .fire_server import serve
-        serve(a.project, a.port)
+        serve(None, a.port, a.input_dir)
+    elif a.cmd == "fire-serve":
+        from .fire_server import serve
+        serve(a.project, a.port, a.dust_dir)
     elif a.cmd == "fire-map":
         from .fire_map import build
         from .payload import write_payload

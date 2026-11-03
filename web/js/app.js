@@ -5,8 +5,8 @@
 (function () {
   "use strict";
   const S = window.TDStats, I = window.TDI18N, SEA = window.TDSeason;
-  const F = window.TDFireMap;
-  const isFire = () => F.is(state.sc);
+  const R = window.TDRiskMaps;
+  const isRisk = () => R.is(state.sc);
   const t = (k, v) => I.t(k, v);
   const $ = (sel, el = document) => el.querySelector(sel);
   const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
@@ -80,7 +80,7 @@
   const nf = (v) => (+v).toLocaleString("en-US");
   const L = () => I.lang();
   const mn = () => L() === "mn";
-  function sceneTitle(s) { return F.is(s)?(mn()?"Түймрийн бүс · Earth Engine":"Fire zones · Earth Engine"):I.sceneTitle(s.id, s.title); }
+  function sceneTitle(s) { return R.is(s)?R.title(s,mn()):I.sceneTitle(s.id, s.title); }
   function regionName(rm) { return mn() ? (REGION_MN[rm.key] || rm.name) : rm.name; }
   function sceneRegion(sc) { return mn() ? (SCENE_REGION_MN[sc.region_name] || sc.region_name) : sc.region_name; }
   function noteText(s) {
@@ -170,7 +170,7 @@
   async function loadScene(id) {
     if (state.cache[id]) return state.cache[id];
     const sc = await loadPayload(id);
-    if (F.is(sc)) { F.validate(sc); return state.cache[id] = {sc}; }
+    if (R.is(sc)) { R.validate(sc); return state.cache[id] = {sc}; }
     const bin = atob(sc.series.b64);
     const vals = new Float32Array(bin.length / 2), raw = new Int16Array(bin.length / 2);
     for (let k = 0, q = 0; k < vals.length; k++, q += 2) {
@@ -307,7 +307,7 @@
   }
 
   async function computeResults() {
-    if (isFire()) { state.res = {status: Int8Array.from(state.sc.classes,c=>c<0?0:4), cells:{}, counts:{valid:state.sc.classes.filter(c=>c>=0).length}}; return; }
+    if (isRisk()) { state.res = {status: Int8Array.from(state.sc.classes,c=>c<0?0:4), cells:{}, counts:{valid:state.sc.classes.filter(c=>c>=0).length}}; return; }
     state.res = await computeFor(state.sc, state.entry, state.y0, state.y1, state.alpha);
   }
   // every per-cell statistic for one scene and window; precomputed values when the window is the full record
@@ -387,7 +387,7 @@
   // datasets that can go on the right: same region (a live box only with itself)
   function cmpChoices() {
     const sc = state.sc;
-    return state.index.scenes.filter((s) => !F.is(s) && (sc.live ? s.id === sc.id : !s.live && s.region === sc.region));
+    return state.index.scenes.filter((s) => !R.is(s) && (sc.live ? s.id === sc.id : !s.live && s.region === sc.region));
   }
   function cmpDefault() {
     const sc = state.sc, pair = (state.index.comparisons || []).find((c) => c.a === sc.id || c.b === sc.id);
@@ -407,7 +407,7 @@
     Object.assign(cmp, { id, y0, y1, entry, res, busy: false });
   }
   async function setCompare(on) {
-    if (isFire()) return;
+    if (isRisk()) return;
     if (!on) {
       cmp.on = false; cmp.res = null;
       // give the left half back the years it had before the split
@@ -549,7 +549,7 @@
   const LAT = (y) => map.g.lat1 - (y - map.g.oy) / map.g.h * (map.g.lat1 - map.g.lat0);
 
   function layerLimit() {
-    if (isFire()) return 1;
+    if (isRisk()) return 1;
     const sc = state.sc, c = state.res.cells, st = state.res.status;
     if (state.layer === "anom") return annualCube(state.entry).lim;
     if (state.layer === "emerge" || state.layer === "zone") return 1;
@@ -566,7 +566,7 @@
   }
   // colour and signed height (in units of the colour limit) for one cell in the current layer
   function cellLook(k, lim) {
-    if (isFire()) { const c=state.sc.classes[k]; return c<0?null:{col:hexRgb(F.colors[c]),h:c/4}; }
+    if (isRisk()) { const c=state.sc.classes[k]; return c<0?null:{col:hexRgb(R.colors(state.sc)[c]),h:c/4}; }
     const st = state.res.status[k], c = state.res.cells, sc = state.sc;
     if (st === 0) return null;
     if (st === 6) return { col: pal.muted, h: NaN };
@@ -912,7 +912,7 @@
   // ------------------------------------------------------------ hover, click, box
   function hideTip() { $("#tip").hidden = true; }
   function cellText(i) {
-    if (isFire()) return state.sc.classes[i]<0?"–":F.labels[mn()?"mn":"en"][state.sc.classes[i]];
+    if (isRisk()) return state.sc.classes[i]<0?"–":R.labels(state.sc,mn())[state.sc.classes[i]];
     const sc = state.sc, c = state.res.cells, st = state.res.status[i];
     if (st === 6) return t("v6");
     if (state.layer === "detect") return `±${fmt(c.mdt[i] * unitFactor())} ${unitText(sc)}`;
@@ -932,7 +932,7 @@
     return c.sen[i] === null ? "–" : `${signed(c.sen[i] * unitFactor())} ${unitText(sc)}`;
   }
   function cellNumber(k) {
-    if (isFire()) return null;
+    if (isRisk()) return null;
     const c = state.res.cells, sc = state.sc;
     switch (state.layer) {
       case "verdict": return null;
@@ -976,7 +976,7 @@
     const i = cellAt(p.x, p.y), tip = $("#tip"), st = i >= 0 ? state.res.status[i] : 0;
     if (i < 0 || st === 0) { tip.hidden = true; status({ cursor: null }); return; }
     const g = state.sc.grid, lat = g.lat[Math.floor(i / g.nx)], lon = g.lon[i % g.nx], txt = cellText(i);
-    tip.innerHTML = `<div class="num">${ll(lat, lon)}</div><div><b>${esc(txt)}</b></div>${st >= 1 && st <= 5 ? `<div class="muted">${esc(t("v" + st))}</div>` : ""}`;
+    tip.innerHTML = `<div class="num">${ll(lat, lon)}</div><div><b>${esc(txt)}</b></div>${!isRisk() && st >= 1 && st <= 5 ? `<div class="muted">${esc(t("v" + st))}</div>` : ""}`;
     tip.hidden = false;
     tip.style.left = Math.max(4, Math.min(p.x + 14, map.W - 220)) + "px";
     tip.style.top = Math.max(4, Math.min(p.y + 14, map.H - 76)) + "px";
@@ -1040,16 +1040,16 @@
 
   // ------------------------------------------------------------ layer picker, legend, timeline, status bar
   function availLayers() {
-    if (isFire()) return ["zone"];
+    if (isRisk()) return ["zone"];
     const sc = state.sc;
     return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12));
   }
   const layerIcon = (l) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>`;
   function renderPicker() {
     const avail = availLayers();
-    if (!avail.includes(state.layer)) state.layer = isFire()?"zone":"trend";
+    if (!avail.includes(state.layer)) state.layer = isRisk()?"zone":"trend";
     $("#layerbtn").innerHTML = `${layerIcon(state.layer)}<span><span class="muted">${esc(t("layer_btn"))}:</span> <b>${esc(t(LAYER_KEY[state.layer]))}</b></span><span class="caret" aria-hidden="true">▾</span>`;
-    $("#picker").innerHTML = avail.map((l) => `<button type="button" role="menuitemradio" data-layer="${l}" aria-checked="${l === state.layer}">${layerIcon(l)}<span><b>${esc(t(LAYER_KEY[l]))}</b><small>${esc(isFire()?(mn()?"Тухайн өдрийн харьцангуй өртөмтгий байдал":"Relative susceptibility for the acquisition date"):t(LAYER_KEY[l] + "_d"))}</small></span></button>`).join("")
+    $("#picker").innerHTML = avail.map((l) => `<button type="button" role="menuitemradio" data-layer="${l}" aria-checked="${l === state.layer}">${layerIcon(l)}<span><b>${esc(t(LAYER_KEY[l]))}</b><small>${esc(isRisk()?(R.type(state.sc)==="dust"?(mn()?"Тухайн өдрийн MODIS тоосны тархалт":"MODIS dust detections for this date"):(mn()?"Тухайн өдрийн харьцангуй өртөмтгий байдал":"Relative susceptibility for the acquisition date")):t(LAYER_KEY[l] + "_d"))}</small></span></button>`).join("")
       + (avail.includes("zone") ? "" : `<button type="button" role="menuitem" data-risk>${layerIcon("zone")}<span><b>${esc(t("L_zone"))}</b><small>${esc(t("L_zone_go"))}</small></span></button>`);
     $$("[data-risk]").forEach((b) => { if (b.closest(".toolbar")) { b.setAttribute("aria-pressed", state.layer === "zone"); b.classList.toggle("primary", state.layer === "zone"); } });
   }
@@ -1062,7 +1062,7 @@
   function countStatus(k) { let n = 0; for (const s of state.res.status) if (s === k) n++; return n; }
   function renderLegend(lim) {
     const sc = state.sc, el = $("#legend");
-    if (isFire()) { el.innerHTML=F.legend(sc,mn())+csvBtn("cells"); return; }
+    if (isRisk()) { el.innerHTML=R.legend(sc,mn())+csvBtn("cells"); return; }
     const unitBtn = `<button type="button" class="unitbtn" id="unitbtn" title="${esc(t("lg_unit_hint"))}">${esc(unitText(sc))}</button>`;
     if (state.layer === "verdict") {
       const cols = verdictColors();
@@ -1116,7 +1116,7 @@
       <span class="muted">${note}</span>`;
   }
   function renderTimeline() {
-    if (isFire()) { $("#yearslider").min=0; $("#yearslider").max=0; $("#yearlbl").textContent=state.sc.period.start; return; }
+    if (isRisk()) { $("#yearslider").min=0; $("#yearslider").max=0; $("#yearlbl").textContent=state.sc.period.start; return; }
     const cube = annualCube(state.entry), sl = $("#yearslider");
     sl.min = 0; sl.max = cube.years.length - 1;
     if (state.year === null || !cube.years.includes(state.year)) state.year = cube.years[cube.years.length - 1];
@@ -1129,7 +1129,7 @@
   }
   function stopPlay() { if (state.playing) { clearInterval(state.playing); state.playing = null; } }
   function togglePlay() {
-    if (isFire()) return;
+    if (isRisk()) return;
     if (state.playing) { stopPlay(); renderTimeline(); return; }
     state.layer = "anom";
     renderPicker();
@@ -1143,7 +1143,7 @@
     drawMap();
   }
   function status(extra) {
-    if (isFire()) { $("#status").textContent=`Earth Engine · ${state.sc.acquired_utc||state.sc.period.start} · ${state.res.counts.valid} cells`; return; }
+    if (isRisk()) { $("#status").textContent=`${R.types[R.type(state.sc)].source} · ${state.sc.acquired_utc||state.sc.period.start} · ${state.res.counts.valid} cells`; return; }
     const sc = state.sc, r = state.res;
     if (!sc || !r) { $("#status").innerHTML = `<span>${esc(t("st_ready"))}</span>`; return; }
     state.statusExtra = Object.assign(state.statusExtra || {}, extra || {});
@@ -1291,7 +1291,7 @@
       { y0: state.y0, y1: state.y1, kind: se ? t("kind_season", { s: seasonText(se) }) : t(state.sc.series.kind === "monthly" ? "kind_monthly" : "kind_annual") });
   };
   function renderSummary() {
-    if (isFire()) { $("#summary").innerHTML=F.summary(state.sc,mn()); return; }
+    if (isRisk()) { $("#summary").innerHTML=R.summary(state.sc,mn()); return; }
     const sc = state.sc, r = state.res, k = r.counts, el = $("#summary");
     const rm = sc.region_means[0], rs = r.regionStats[0], title = sceneTitle(sc), yrs = yrsText();
     let head;
@@ -1359,7 +1359,7 @@
   const chartWindow = () => [state.y0, state.y1 + 1];
 
   function renderInspector() {
-    if (isFire()) { state.exportSeries=null; $("#inspector").innerHTML=F.inspect(state.sc,state.sel,mn()); return; }
+    if (isRisk()) { state.exportSeries=null; $("#inspector").innerHTML=R.inspect(state.sc,state.sel,mn()); return; }
     const sc = state.sc, el = $("#inspector"), sel = state.sel;
     state.exportSeries = null;
     if (!sel) { el.innerHTML = `<p class="eyebrow">${esc(t("d_selection"))}</p><p class="muted">${esc(t("sel_hint"))}</p>`; return; }
@@ -1566,7 +1566,7 @@
     return { name: "screen", meta: [["rows", "every screened variable, area mean over Mongolia; significant_fdr from a variable-level FDR (variables are correlated: a guide, not a test)"]], rows };
   }
   async function exportCsv(what, k) {
-    if (isFire()) { if (state.sc.unavailable) return; if (what === "cells") await saveFile("fire-risk.csv",F.csv(state.sc)); return; }
+    if (isRisk()) { if (state.sc.unavailable) return; if (what === "cells") await saveFile(`${state.sc.id}-${state.sc.period.start}.csv`,R.csv(state.sc)); return; }
     const sc = state.sc;
     let out;
     if (what === "cells") out = csvCells();
@@ -1601,7 +1601,7 @@
 
   // ------------------------------------------------------------ analysis document
   function renderAnalysis() {
-    if (isFire()) { $("#rmeans").innerHTML=F.summary(state.sc,mn()); $("#tri").textContent="–"; $("#tri-title").textContent=""; $("#case").textContent=F.method(mn()); $("#compare").hidden=true; return; }
+    if (isRisk()) { $("#rmeans").innerHTML=R.summary(state.sc,mn()); $("#tri").textContent="–"; $("#tri-title").textContent=""; $("#case").textContent=R.method(state.sc,mn()); $("#compare").hidden=true; return; }
     if (state.tab !== "analysis" || !state.res) return;
     const sc = state.sc, el = $("#rmeans");
     el.innerHTML = sc.region_means.map((rm, k) => {
@@ -1838,7 +1838,7 @@
     return rows;
   }
   function renderScreen() {
-    if (isFire()) { $("#screen-body").innerHTML=""; $("#screen-meta").textContent=F.method(mn()); return; }
+    if (isRisk()) { $("#screen-body").innerHTML=""; $("#screen-meta").textContent=R.method(state.sc,mn()); return; }
     if (state.tab !== "screen" || !state.screen || !state.res) return;
     const f = state.screenFilter, all = screenRows();
     const rows = all.filter((r) => f === "all" || (f === "fdr" && r.fdr) || r.kind === f);
@@ -1866,7 +1866,7 @@
 
   // ------------------------------------------------------------ method document
   function renderMethod() {
-    if (isFire()) { $("#method").textContent=F.method(mn()); return; }
+    if (isRisk()) { $("#method").textContent=R.method(state.sc,mn()); return; }
     if (state.tab !== "method") return;
     const v = state.validation, syn = state.cache["synthetic-truth"], tr = syn && syn.sc.truth;
     const keys = v ? Object.keys(v.tests) : [];
@@ -1956,7 +1956,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     return [
       { id: "file", label: t("m_file"), items: [
         { label: t("file_repo"), href: REPO }, { label: t("file_zip"), href: REPO + "/archive/refs/heads/main.zip" },
-        { label: t("file_live"), act: openLive }, { label: mn()?"Earth Engine газрын зураг оруулах…":"Import Earth Engine map…", act: importFire }, "-",
+        { label: t("file_live"), act: openLive }, { label: mn()?"Эрсдэлийн зураг оруулах…":"Import risk map…", act: importRisk }, "-",
         { label: t("file_csv_map"), act: () => exportCsv("cells") }, { label: t("file_csv_sel"), act: () => exportCsv("series") }, "-",
         { label: t("file_run"), act: () => setTab("method") }] },
       { id: "view", label: t("m_view"), items: [
@@ -1994,7 +1994,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     const groups = new Map();
     for (const s of state.index.scenes) { if (!groups.has(s.group)) groups.set(s.group, []); groups.get(s.group).push(s); }
     $("#tree-scenes").innerHTML = [...groups].map(([g, list]) => `<details open><summary>${esc(I.group(g))}</summary>${list.map((s) =>
-      `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${F.is(s) ? "GEE" : s.live ? "LIVE" : s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
+      `<button type="button" class="item" data-go="${s.id}" aria-current="${state.sc && state.sc.id === s.id}">${esc(sceneTitle(s))}<span class="tag">${R.is(s) ? R.types[R.type(s)].source : s.live ? "LIVE" : s.kind === "mission" ? "SAT" : s.kind === "model" ? "MOD" : "TEST"}</span></button>`).join("")}</details>`).join("");
   }
   function fillYears() {
     const [a, b] = fullRange();
@@ -2003,7 +2003,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#y1").innerHTML = opts(state.y1);
   }
   function fillSeason() {
-    const sel = $("#season"), ok = state.sc && !isFire() && state.sc.series.kind === "monthly";
+    const sel = $("#season"), ok = state.sc && !isRisk() && state.sc.series.kind === "monthly";
     sel.innerHTML = SEA.PRESETS.map((p, k) => `${k === 1 || k === 7 ? '<option disabled>──────</option>' : ""}<option value="${p.id}"${p.id === state.season ? " selected" : ""}>${esc(seasonText(p, true))}</option>`).join("");
     sel.disabled = !ok;
     sel.title = ok ? t("tb_season_title") : t("season_na");
@@ -2019,9 +2019,14 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
 
   // ------------------------------------------------------------ actions
   function renderAll() {
-    $("#fire-date-row").hidden=!isFire();
-    if(isFire()) $("#fire-date").value=state.sc.period.start;
-    for (const el of $$("#y0,#y1,#apply,#alpha,#season,#play,#yearslider,[data-cmp]")) el.disabled=isFire();
+    $("#fire-date-row").hidden=!isRisk();
+    $("#risk-type-row").hidden=!isRisk();
+    $("#risk-type").innerHTML=Object.entries(R.types).map(([k,v])=>`<option value="${k}" ${v.disabled?'disabled':''}>${esc(v.name[mn()?1:0])}</option>`).join('');
+    if(isRisk()) {
+      const type=R.type(state.sc); $("#risk-type").value=type;
+      $("#fire-date").value=state.sc.period.start; $("#fire-date").min=R.types[type].min;
+    }
+    for (const el of $$('#y0,#y1,#apply,#alpha,#season,#play,#yearslider,[data-cmp],[data-view="surf"]')) el.disabled=isRisk();
     renderMenus(); buildTree(); fillYears(); fillSeason(); renderPicker(); renderCmpBar(); renderTimeline(); renderSummary(); drawMap(); renderInspector();
     renderAnalysis(); renderScreen(); renderMethod(); status();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
@@ -2030,14 +2035,15 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   async function showScene(id, keepYears) {
     stopPlay();
     let entry;
-    try { entry = await loadScene(id); } catch (e) { if(id==="fire-risk") { await openRisk(); return; } throw e; }
-    ++fireRequest;
+    try { entry = await loadScene(id); } catch (e) { if(id==="fire-risk"||id==="dust-risk") { await openRisk(id==="fire-risk"?"fire":"dust"); return; } throw e; }
+    ++riskRequest;
     $("#fire-load").disabled=false;
     const prev = state.sc;
     state.res = null;
-    if (F.is(entry.sc) || F.is(prev)) { cmp.on=false; state.layer=F.is(entry.sc)?"zone":"trend"; resetView(); }
+    if (R.is(entry.sc) || R.is(prev)) { cmp.on=false; state.layer=R.is(entry.sc)?"zone":"trend"; resetView(); }
     if (entry.sc.case === "hazard" && state.mines === undefined) state.mines = await loadPayload("mines").catch(() => null);
     state.entry = entry; state.sc = entry.sc; state.sel = null; state.step = 0; state.year = null;
+    if(R.is(entry.sc))store.set("riskType",R.type(entry.sc));
     if (!prev || prev.region !== entry.sc.region) resetView();
     const [a, b] = fullRange();
     if (!keepYears || !prev) { state.y0 = a; state.y1 = b; } else {
@@ -2051,7 +2057,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAll();
   }
   async function applyYears() {
-    if (isFire()) return;
+    if (isRisk()) return;
     let y0 = +$("#y0").value, y1 = +$("#y1").value;
     if (y1 < y0) [y0, y1] = [y1, y0];
     if (y1 - y0 < 9) {
@@ -2070,7 +2076,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     applyYears();
   }
   async function setSeason(id) {
-    if (isFire()) return;
+    if (isRisk()) return;
     stopPlay();
     state.season = SEA.byId(id).id;
     state.year = null;
@@ -2079,60 +2085,65 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAll();
   }
   async function setAlpha(a) {
-    if (isFire()) return;
+    if (isRisk()) return;
     state.alpha = a;
     await computeResults();
     if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
     renderAll();
   }
-  function setLayer(l) { state.layer = isFire()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
-  // the risk-zone layer exists only for the daily hazard indices: go to one if needed
-  async function openRisk() {
-    const cached=state.cache["fire-risk"]?.sc;
-    const date=isFire()?state.sc.period.start:cached?.period.start||new Date().toISOString().slice(0,10);
-    await loadFireDate(date);
+  function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  // The shared date/selection flow dispatches through the risk-type registry.
+  let riskRequest=0;
+  async function openRisk(type, date) {
+    type=type||R.type(state.sc)||store.get("riskType")||"dust";
+    const config=R.types[type]; if(!config||config.disabled)return;
+    const cached=state.cache[config.id]?.sc;
+    date=date||(R.is(state.sc)?state.sc.period.start:cached?.period.start)||new Date(Date.now()-864e5).toISOString().slice(0,10);
+    store.set("riskType",type);
+    await loadRiskDate(date,type);
   }
-  let fireRequest=0;
-  async function loadFireDate(date) {
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return;
-    const request=++fireRequest;
-    const g=state.sc?baseGeom(state.sc):{lon0:106.7,lat0:47.7,lon1:107,lat1:47.9};
-    const bbox=state.sel?.type==="box"?state.sel.bounds:map.g?[Math.max(g.lon0,LON(0)),Math.max(g.lat0,LAT(map.H)),Math.min(g.lon1,LON(map.W)),Math.min(g.lat1,LAT(0))]:[g.lon0,g.lat0,g.lon1,g.lat1];
-    const cached=state.cache["fire-risk"]?.sc;
+  async function loadRiskDate(date,type=R.type(state.sc)||"dust") {
+    if(!window.TDDustMap.validDay(date))return;
+    const config=R.types[type];if(!config||config.disabled)return;
+    const request=++riskRequest,A=config.adapter;
+    const g=state.sc?baseGeom(state.sc):{lon0:87.5,lat0:41.5,lon1:120,lat1:52.5};
+    const bbox=state.sel?.type==="box"?state.sel.bounds:[g.lon0,g.lat0,g.lon1,g.lat1];
+    const cached=state.cache[config.id]?.sc;
     let sc=cached&&!cached.unavailable&&cached.period.start===date?cached:null;
-    let message=mn()?"Тухайн өдрийн Earth Engine зураг нийтлэгдээгүй эсвэл холболт идэвхжээгүй байна.":"No Earth Engine map has been published for this date, or the data service is not connected.";
+    let message=type==="dust"?(mn()?"Энэ өдрийн MODIS спектр, дулааны сувгийн боловсруулсан өгөгдөл нийтлэгдээгүй байна.":"No calibrated MODIS spectral/thermal observation has been published for this date."):(mn()?"Тухайн өдрийн Earth Engine зураг нийтлэгдээгүй эсвэл холболт идэвхжээгүй байна.":"No Earth Engine map has been published for this date, or the data service is not connected.");
     stopPlay();cmp.on=false;state.layer="zone";
-    $("#fire-date-row").hidden=false;$("#fire-date").value=date;$("#fire-load").disabled=true;
+    $("#fire-load").disabled=true;
     if(!sc) {
-      state.sc=F.empty(date,bbox,mn()?"Earth Engine өгөгдөл ачаалж байна…":"Loading Earth Engine data…");
+      state.sc=A.empty(date,bbox,mn()?"Тухайн өдрийн өгөгдөл ачаалж байна…":"Loading observations for this date…");
       state.entry={sc:state.sc};state.sel=null;state.y0=state.y1=+date.slice(0,4);
-      await computeResults();setView("map");renderAll();
+      await computeResults();if(request!==riskRequest)return;setView("map");renderAll();
     }
     try {
       if(!sc) {
-        const index=await fetch("data/fire-map-index.json").then(r=>r.ok?r.json():{maps:[]});
-        const item=(index.maps||[]).find(x=>x.date===date&&/^fire-risk-\d{4}-\d{2}-\d{2}$/.test(x.key));
-        if(item)sc=F.validate(await loadPayload(item.key));
-        if(!sc) {
-          const response=await fetch(`../api/fire-map?date=${encodeURIComponent(date)}&bbox=${bbox.join(',')}`);
+        const index=location.protocol==="file:"?await loadPayload(`${type}-map-index`).catch(()=>({maps:[]})):await fetch(`data/${type}-map-index.json`).then(r=>r.ok?r.json():{maps:[]});
+        const item=(index.maps||[]).find(x=>x.date===date&&x.key===`${config.id}-${date}`);
+        if(item)sc=A.validate(await loadPayload(item.key));
+        if(!sc&&location.protocol!=="file:") {
+          const response=await fetch(`../api/${type}-map?date=${encodeURIComponent(date)}&bbox=${bbox.join(',')}`);
           if(response.headers.get('content-type')?.includes('application/json')) {
             const data=await response.json();
-            if(response.ok)sc=F.validate(data);else if(data.error)message=data.error;
+            if(response.ok)sc=A.validate(data);else if(data.error)message=data.error;
           }
         }
         if(sc&&sc.period.start!==date)throw Error(mn()?"Буцаасан зураг сонгосон өдрийнх биш байна.":"Returned map is not for the requested date.");
       }
     } catch(e) { message=String(e.message||message);sc=null; }
-    if(request!==fireRequest)return;
+    if(request!==riskRequest)return;
     $("#fire-load").disabled=false;
-    if(sc)registerFire(sc);
-    else sc=F.empty(date,bbox,message);
+    if(sc)registerRisk(sc);
+    else sc=A.empty(date,bbox,message);
     state.entry={sc};state.sc=sc;state.sel=null;state.y0=state.y1=+date.slice(0,4);
-    state.year=null;resetView();await computeResults();setView("map");renderAll();
-    try { history.replaceState(null,"","#risk"); } catch(e) { /* file origin */ }
+    state.year=null;resetView();await computeResults();if(request!==riskRequest)return;setView("map");renderAll();
+    try { history.replaceState(null,"",`#risk/${type}/${date}`); } catch(e) { /* file origin */ }
   }
 
   function setView(v) {
+    if(isRisk()&&v==="surf")v="map";
     state.view = v;
     $("#map").hidden = v !== "map"; $("#surf").hidden = v !== "surf"; $("#surfctl").hidden = v !== "surf"; $("#zoomctl").hidden = v !== "map";
     renderCmpBar();
@@ -2278,19 +2289,19 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     }
   }
 
-  function registerFire(sc) {
-    F.validate(sc); state.cache[sc.id]={sc};
-    if(!state.index.scenes.some(s=>s.id===sc.id)) state.index.scenes.push({id:sc.id,title:sc.title,group:"Earth Engine",kind:"fire-risk",region:sc.region});
+  function registerRisk(sc) {
+    R.validate(sc); state.cache[sc.id]={sc};
+    if(!state.index.scenes.some(s=>s.id===sc.id)) state.index.scenes.push({id:sc.id,title:sc.title,group:"Risk zones",kind:sc.kind,region:sc.region});
   }
-  function importFire() {
-    modal(`<h2>${mn()?"Түймрийн бүс · Earth Engine":"Fire zones · Earth Engine"}</h2><p>${mn()?"Earth Engine-ийн бодит пикселийн газрын зургийг оруулна. Өгөгдөлгүй үед эрсдэлийн зураг харуулахгүй.":"Import a map of actual Earth Engine pixels. No risk map is displayed without data."}</p><input id="fire-import" type="file" accept=".json,.js"><p id="fire-error" role="status"></p>`);
+  function importRisk() {
+    modal(`<h2>${mn()?"Эрсдэлийн зураг оруулах":"Import risk map"}</h2><p>${mn()?"MODIS тоосны тархалт эсвэл Earth Engine түймрийн зургийн боловсруулсан файлыг оруулна.":"Import a processed MODIS dust or Earth Engine fire map."}</p><input id="fire-import" type="file" accept=".json,.js"><p id="fire-error" role="status"></p>`);
     $("#fire-import").onchange=async(e)=>{
       const file=e.target.files[0]; if(!file)return;
       try {
         if(file.size>40*1024*1024)throw Error("Map exceeds 40 MB");
         const text=await file.text();
         const sc=JSON.parse(text.trim().startsWith("TD_DATA(")?text.slice(text.indexOf(",")+1,text.lastIndexOf(")")):text);
-        registerFire(sc); $("#modal").hidden=true; await showScene(sc.id); setTab("map");
+        registerRisk(sc); $("#modal").hidden=true; await showScene(sc.id); setTab("map");
       } catch(err) { $("#fire-error").textContent=String(err.message); }
     };
   }
@@ -2320,16 +2331,22 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       return;
     }
     applyStatic();
-    const fireEntry=await loadScene("fire-risk").catch(()=>null);
-    if(fireEntry) registerFire(fireEntry.sc);
+    for(const config of Object.values(R.types).filter(c=>!c.disabled)) {
+      const entry=await loadScene(config.id).catch(()=>null);if(entry)registerRisk(entry.sc);
+    }
     await loadScene("synthetic-truth").catch(() => null);
     const first = location.hash.slice(1);
-    if (first === "risk") { await showScene("mn-t2m"); await openRisk(); }   // #risk: a shareable link straight to the risk zones
+    if (first === "risk"||first.startsWith("risk/")) { const [,type,date]=first.split('/'); await showScene("mn-t2m"); await openRisk(type,date); }   // #risk: a shareable link straight to the risk zones
     else await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
     if (!store.get("seenGuide")) { store.set("seenGuide", "1"); showGuide(); }
 
-    $("#fire-date").addEventListener("change",e=>loadFireDate(e.target.value));
-    $("#fire-load").addEventListener("click",()=>loadFireDate($("#fire-date").value));
+    $("#risk-type").addEventListener("change",e=>openRisk(e.target.value));
+    $("#fire-date").addEventListener("change",e=>loadRiskDate(e.target.value));
+    $("#fire-load").addEventListener("click",()=>loadRiskDate($("#fire-date").value));
+    for(const [id,step] of [["risk-prev",-1],["risk-next",1]])$("#"+id).addEventListener("click",()=>{
+      const date=new Date($("#fire-date").value);date.setUTCDate(date.getUTCDate()+step);
+      const day=date.toISOString().slice(0,10);if(day>=$("#fire-date").min)loadRiskDate(day);
+    });
     document.addEventListener("click", (e) => {
       const mb = e.target.closest("[data-menu]");
       if (mb) { openMenu = openMenu === mb.dataset.menu ? null : mb.dataset.menu; renderMenus(); return; }
@@ -2472,7 +2489,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     $("#zreset").addEventListener("click", () => { resetView(); paint(); status(); });
     window.addEventListener("hashchange", () => {
       const id = location.hash.slice(1);
-      if (id === "risk") openRisk();
+      if (id === "risk"||id.startsWith("risk/")) { const [,type,date]=id.split("/");openRisk(type,date); }
       else if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
     });
     let rz;
