@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
   const B = (en, mn) => ({ en, mn });
-  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "anom", "steps", "truth"];
+  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "anom", "steps", "truth", "shift"];
   const SEASONS = ["all", "djf", "mam", "jja", "son", "ndjfm", "mjjas", ...Array.from({ length: 12 }, (_, k) => "m" + (k + 1))];
   const TABS = ["map", "analysis", "screen", "method"];
   const ACTION_KEYS = ["scene", "risk", "years", "season", "alpha", "layer", "tab", "view", "compare", "place", "box", "zoom", "sel"];
@@ -42,6 +42,61 @@
     return B(c.detectShort(d), c.detectShort(d));
   }
   const NA = B("—", "—");
+
+  // ---- MODIS cases (docs/MODIS_TRENDS.md): boxes in degrees [west, south, east, north] and evidence helpers
+  const UB_CITY = [106.74, 47.84, 107.06, 47.98];            // the built-up capital, about 24 × 16 km
+  const TAVAN_TOLGOI = [105.365, 43.54, 105.615, 43.72];     // 20 km around the pit centre 105.49°E 43.63°N (read off NASA HLS)
+  const OYU_TOLGOI = [106.72, 42.92, 106.97, 43.10];         // 20 km around the mine point 106.843°E 43.008°N (GeoNames)
+  // a box selection against the scene's first area mean
+  function boxVsMean(c, name) {
+    const s = c.sel, n = c.st.sel && c.st.sel.cells ? c.st.sel.cells.length : 0;
+    if (!s) return NA;
+    const ref = c.sc.region_means && c.sc.region_means[0] ? c.A.regionName(c.sc.region_means[0]) : "";
+    return join(B(`${name.en} (${c.nf(n)} cells): ${meanLine(c, s, c.unit).en}: ${trendWord(c, s).en}`, `${name.mn} (${c.nf(n)} нүд): ${meanLine(c, s, c.unit).mn}: ${trendWord(c, s).mn}`),
+      B(`${ref}: ${c.signed(c.rs.sen)} ${c.unit} per decade`, `${ref}: арван жилд ${c.signed(c.rs.sen)} ${c.unit}`));
+  }
+  // a selected cell: its trend, verdict and detectable year
+  const cellLine = (c, name) => (c.sel ? B(`${name.en}: ${meanLine(c, c.sel, c.unit).en}: ${trendWord(c, c.sel).en}; ${whenLine(c, c.sel).en}`,
+    `${name.mn}: ${meanLine(c, c.sel, c.unit).mn}: ${trendWord(c, c.sel).mn}; ${whenLine(c, c.sel).mn}`) : NA);
+  const stepsLine = (c) => {
+    const has = c.sc.steps && c.sc.steps.length;
+    return B(`${c.nf(c.k.step_flagged || 0)} of ${c.nf(c.k.valid)} cells show a significant step at a documented transition${has ? "" : " (no transition inside these years)"}.`,
+      `${c.nf(c.k.valid)} нүдний ${c.nf(c.k.step_flagged || 0)} нь баримтжуулсан шилжилт дээр ач холбогдолтой алхамтай${has ? "" : " (эдгээр онуудад шилжилт алга)"}.`);
+  };
+  const pstarLine = (c) => (c.res.pstar > 0 ? B(`FDR threshold p* = ${c.fmt(c.res.pstar, 3)}`, `FDR босго p* = ${c.fmt(c.res.pstar, 3)}`) : B("no cell passes the FDR test", "FDR тестийг нэг ч нүд давахгүй"));
+  // the compare side cell by cell, across grids: for each valid cell on screen, the compare cell that holds its centre
+  function crossGrid(c) {
+    const cmp = c.A.cmp;
+    if (!cmp.on || !cmp.res || !cmp.entry || !c.res || !c.res.cells) return null;
+    const g = c.sc.grid, h = cmp.entry.sc.grid, ca = c.res.cells, cb = cmp.res.cells, sa = c.res.status, sb = cmp.res.status;
+    const valid = (s) => s >= 1 && s <= 5, sig = (s) => s === 1 || s === 2;
+    let n = 0, agree = 0, both = 0, bothAgree = 0;
+    for (let j = 0; j < g.ny; j++) {
+      const jj = Math.round((g.lat[j] - h.lat[0]) / h.dlat);
+      if (jj < 0 || jj >= h.ny) continue;
+      for (let i = 0; i < g.nx; i++) {
+        const k = j * g.nx + i;
+        if (!valid(sa[k]) || ca.sen[k] === null || ca.sen[k] === undefined) continue;
+        const ii = Math.round((g.lon[i] - h.lon[0]) / h.dlon);
+        if (ii < 0 || ii >= h.nx) continue;
+        const m = jj * h.nx + ii;
+        if (!valid(sb[m]) || cb.sen[m] === null || cb.sen[m] === undefined) continue;
+        const a = Math.sign(ca.sen[k]), b = Math.sign(cb.sen[m]);
+        if (!a || !b) continue;
+        n++; if (a === b) agree++;
+        if (sig(sa[k]) && sig(sb[m])) { both++; if (a === b) bothAgree++; }
+      }
+    }
+    return n ? { n, agree: agree / n, both, bothAgree: both ? bothAgree / both : 0, rs: cmp.res.regionStats ? cmp.res.regionStats[0] : null, y0: cmp.y0, y1: cmp.y1 } : null;
+  }
+  function agreeLine(c) {
+    const x = crossGrid(c);
+    if (!x) return NA;
+    const ru = x.rs ? c.A.unitLabel(c.A.cmp.entry.sc.units) : "";
+    return join(B(`${pct(x.agree)} of ${c.nf(x.n)} cells share the sign of the cell that holds them; ${x.both ? `${pct(x.bothAgree)} of the ${c.nf(x.both)} significant in both` : "none significant in both"}`,
+        `${c.nf(x.n)} нүдний ${pct(x.agree)} нь агуулж буй нүдтэйгээ ижил тэмдэгтэй; ${x.both ? `хоёуланд нь ач холбогдолтой ${c.nf(x.both)} нүдний ${pct(x.bothAgree)}` : "хоёуланд нь ач холбогдолтой нүд алга"}`),
+      x.rs ? B(`means: surface ${c.signed(c.rs.sen)} ${c.unit} vs air ${c.signed(x.rs.sen)} ${ru} per decade`, `дундаж: гадаргуу ${c.signed(c.rs.sen)} ${c.unit}, агаар ${c.signed(x.rs.sen)} ${ru} арван жилд`) : NA);
+  }
 
   // ------------------------------------------------------------ the cases
   const CASES = [
@@ -470,6 +525,212 @@
           }) },
       ],
     },
+    // ------------------------------------------------------------ MODIS scenes at 1 km and 5 km (docs/MODIS_TRENDS.md)
+    // These four cases need the scenes that `python -m trend_detective modis-trend` builds; they are listed
+    // only when their scenes are in the index (`requires`), so a site without the MODIS data still works.
+    {
+      id: "ub-surface", tag: "mongolia", requires: ["ub-modis-lst-day", "ub-modis-lst-night"],
+      title: B("Ulaanbaatar at 1 km: is the city's surface warming faster than the land around it?",
+        "Улаанбаатар 1 км-д: хотын гадаргуу эргэн тойрны газраас хурдан дулаарч байна уу?"),
+      question: B("Terra MODIS land surface temperature, one pixel per kilometre, 2000–2025: the city box against the 160 km box, by day and by night, with Terra's orbit drift tested as a step.",
+        "Terra MODIS-ийн газрын гадаргын температур, километр бүрт нэг пиксел, 2000–2025: хотын хайрцгийг 160 км-ийн хайрцагтай өдөр, шөнөөр харьцуулж, Terra-гийн тойргийн шилжилтийг алхамаар шалгасан."),
+      steps: [
+        { action: { scene: "ub-modis-lst-day", view: "map", layer: "trend", years: "full", zoom: "reset", sel: null },
+          title: B("160 km around the capital, one pixel per kilometre", "Нийслэлийн эргэн тойрны 160 км, километр бүрт нэг пиксел"),
+          text: B("Daytime clear-sky land surface temperature from MOD11A2 (Terra, about 10:30 local), 2000–2025, each cell one 1 km pixel: up to 25,600 cells where the 50 km map has about ten. One value per year (the mean of the monthly means), the same Mann-Kendall test, the same false discovery rate across the box. This is the temperature of the ground, roofs and roads, not the air at 2 m.",
+            "MOD11A2-ийн (Terra, орон нутгийн цагаар ~10:30) өдрийн цэлмэг тэнгэрийн газрын гадаргын температур, 2000–2025, нүд бүр нэг 1 км пиксел: 50 км-ийн зурагт арав орчим нүд байсан газарт 25,600 хүртэл нүд. Жилд нэг утга (сарын дунджуудын дундаж), ижил Mann-Kendall тест, хайрцаг даяар ижил хуурамч нээлтийн хувь. Энэ бол 2 м-ийн агаар биш, газар, дээвэр, замын температур."),
+          evidence: (c) => join(B(`160 km box mean: ${meanLine(c, c.rs, c.unit).en}`, `160 км хайрцгийн дундаж: ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { layer: "trend", box: UB_CITY, zoom: { lon: 106.9, lat: 47.91, z: 2.5 } },
+          title: B("The city box", "Хотын хайрцаг"),
+          text: B("A box of about 24 × 16 km over the built-up city averages its cells and runs the same tests on the mean series. The question is not whether the city is warmer than the steppe (it is; the urban heat island is a level) but whether its trend differs. Compare the box trend with the 160 km mean of the first step.",
+            "Барилгажсан хотын дээрх ойролцоогоор 24 × 16 км-ийн хайрцаг нүднүүдээ дундажлаад дундаж цуваанд ижил тестүүдийг ажиллуулна. Асуулт нь хот хээрээс дулаан эсэх биш (тийм; хотын дулааны арал бол түвшин), харин түүний чиг ялгаатай эсэх. Хайрцгийн чигийг эхний алхмын 160 км-ийн дундажтай харьцуул."),
+          evidence: (c) => boxVsMean(c, B("City box", "Хотын хайрцаг")) },
+        { action: { scene: "ub-modis-lst-night", layer: "trend", years: "full", box: UB_CITY, zoom: { lon: 106.9, lat: 47.91, z: 2.5 } },
+          title: B("The same box at night", "Ижил хайрцаг шөнөөр"),
+          text: B("Night-time surface temperature (Terra, about 22:30 local). The urban heat island is strongest at night, when the city's stone and asphalt give back the day's heat. A night trend that outruns the box mean is the signature of a growing city; one that matches it is regional warming.",
+            "Шөнийн гадаргын температур (Terra, орон нутгийн цагаар ~22:30). Хотын чулуу, асфальт өдрийн дулаанаа буцааж өгдөг шөнө хотын дулааны арал хамгийн хүчтэй. Хайрцгийн дундажаас давсан шөнийн чиг бол өсөж буй хотын шинж; түүнтэй тохирох чиг бол бүс нутгийн дулаарал."),
+          evidence: (c) => boxVsMean(c, B("City box at night", "Хотын хайрцаг шөнөөр")) },
+        { action: { scene: "ub-modis-lst-day", layer: "steps", years: "full", sel: null, zoom: "reset" },
+          title: B("Terra's orbit drift, tested as a step", "Terra-гийн тойргийн шилжилт, алхамаар шалгасан"),
+          text: B("Terra's last orbit-raising manoeuvre was on 27 February 2020; since then its morning crossing has drifted earlier (10:15 by autumn 2022), with a lower sun and cooler daytime surfaces. The tool lists it as a documented transition and tests every cell for a step at 2020-03. A flagged step says the last years are sampled differently, not that the climate jumped.",
+            "Terra-гийн тойргоо өргөх сүүлчийн маневр 2020 оны 2-р сарын 27-нд болсон; түүнээс хойш өглөөний өнгөрөлт нь эрт болж (2022 оны намар 10:15), нар намхан, өдрийн гадаргуу сэрүүн болсон. Хэрэгсэл үүнийг баримтжуулсан шилжилт гэж бүртгэж, нүд бүрийг 2020-03-д алхамтай эсэхээр шалгана. Тэмдэглэгдсэн алхам нь уур амьсгал үсэрсэн биш, сүүлийн жилүүд өөрөөр түүвэрлэгдсэнийг хэлнэ."),
+          evidence: (c) => stepsLine(c) },
+        { action: { years: [2000, 2019], layer: "trend", sel: null },
+          title: B("Before the drift: 2000–2019", "Шилжилтээс өмнө: 2000–2019"),
+          text: B("The same cells re-tested on the twenty years before the manoeuvre. If the warming survives without the drifted years, the drift is not what made it. A shorter record widens every confidence interval and raises the count of “not yet detectable” cells.",
+            "Ижил нүднүүдийг маневраас өмнөх хорин жилээр дахин шалгав. Шилжсэн жилүүдгүйгээр дулаарал хадгалагдвал шилжилт түүнийг үүсгээгүй. Богино бүртгэл итгэлийн завсар бүрийг өргөсгөж, «хараахан илрэхгүй» нүдний тоог нэмнэ."),
+          evidence: (c) => join(B(`${c.yrs}: 160 km box mean ${meanLine(c, c.rs, c.unit).en}`, `${c.yrs}: 160 км хайрцгийн дундаж ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { scene: "ub-modis-lst-day", years: "full", layer: "trend", box: UB_CITY, zoom: { lon: 106.9, lat: 47.91, z: 2.5 } }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("The four questions for the capital's surface at 1 km.", "Нийслэлийн гадаргын дөрвөн асуулт 1 км-д."),
+          verdict: (c) => {
+            const s = c.sel, ratio = s && c.rs && c.rs.sen ? c.fmt(s.sen / c.rs.sen, 2) : null;
+            return {
+              what: B(`Daytime land surface temperature in the 160 km box: ${trendWord(c, c.rs).en}; in the city box: ${s ? trendWord(c, s).en : "?"}.`,
+                `160 км хайрцгийн өдрийн газрын гадаргын температур: ${trendWord(c, c.rs).mn}; хотын хайрцагт: ${s ? trendWord(c, s).mn : "?"}.`),
+              where: B(`${c.nf(c.k.fdr_up)} cells warming and ${c.nf(c.k.fdr_down)} cooling after FDR, of ${c.nf(c.k.valid)} at 1 km.`,
+                `1 км-ийн ${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_up)} нь дулаарч, ${c.nf(c.k.fdr_down)} нь хөрч байна (FDR-ийн дараа).`),
+              howmuch: B(`160 km box ${meanLine(c, c.rs, c.unit).en}; city box ${s ? meanLine(c, s, c.unit).en : "—"}${ratio ? ` (${ratio} × the box mean)` : ""}.`,
+                `160 км хайрцаг ${meanLine(c, c.rs, c.unit).mn}; хотын хайрцаг ${s ? meanLine(c, s, c.unit).mn : "—"}${ratio ? ` (хайрцгийн дундажаас ${ratio} дахин)` : ""}.`),
+              significant: B(`Box mean corrected p ${c.fmtP(c.rs.p_mk)}; city box ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).en}.`,
+                `Хайрцгийн дундажийн засварласан p ${c.fmtP(c.rs.p_mk)}; хотын хайрцаг ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).mn}.`),
+              when: whenLine(c, s || c.rs),
+              caveats: [B("Skin temperature under clear skies at one overpass time, not the 2 m air temperature of a station or a reanalysis; a cloudier decade is also a differently sampled one.",
+                "Нэг өнгөрөлтийн цагт, цэлмэг тэнгэрт хэмжсэн гадаргын температур; станц, дахин шинжилгээний 2 м-ийн агаарын температур биш. Үүлэрхэг арван жил бол өөрөөр түүвэрлэгдсэн арван жил."),
+                B("Terra's orbit drift since 2020 is tested as a step in every cell (step 4) and the window 2000–2019 is one click away (step 5); the record is 26 years, so “not yet detectable” is common.",
+                  "2020 оноос хойших Terra-гийн тойргийн шилжилтийг нүд бүрт алхамаар шалгасан (4-р алхам), 2000–2019 цонх нэг товшилтын зайд (5-р алхам); бүртгэл 26 жил тул «хараахан илрэхгүй» түгээмэл."),
+                B("Two means over the same place are not independent samples: the difference between the city box and the 160 km box carries no p-value here.",
+                  "Нэг газрын хоёр дундаж бол хараат бус түүвэр биш: хотын хайрцаг ба 160 км-ийн хайрцгийн зөрүүнд энд p-утга өгөхгүй.")],
+            };
+          } },
+      ],
+    },
+    {
+      id: "gobi-mines-1km", tag: "mongolia", requires: ["gobi-modis-ndvi", "gobi-modis-lst-day"],
+      title: B("The South Gobi mines at 1 km: has the ground around Tavan Tolgoi and Oyu Tolgoi changed?",
+        "Өмнөговийн уурхайнууд 1 км-д: Таван толгой, Оюу толгойн эргэн тойрны газар өөрчлөгдсөн үү?"),
+      question: B("Growing-season greenness and daytime surface temperature from Terra MODIS, 2000–2025, in 20 km boxes around the pits against the 160 km box.",
+        "Terra MODIS-ийн ургалтын улирлын ногоон байдал ба өдрийн гадаргын температур, 2000–2025, карьеруудын эргэн тойрны 20 км-ийн хайрцгийг 160 км-ийн хайрцагтай харьцуулсан нь."),
+      steps: [
+        { action: { scene: "gobi-modis-ndvi", view: "map", layer: "trend", years: "full", zoom: "reset", sel: null },
+          title: B("Greenness May–September", "5–9-р сарын ногоон байдал"),
+          text: B("NDVI from MOD13A3 at 1 km, the mean of the five growing-season months, one value per year, 2000–2025, in a 160 km box that holds both mines. The Gobi is sparsely vegetated, so NDVI is low and its trend small; a year with a cloudy month is excluded rather than filled.",
+            "MOD13A3-ийн 1 км-ийн NDVI, ургалтын улирлын таван сарын дундаж, жилд нэг утга, 2000–2025, хоёр уурхайг хоёуланг нь агуулсан 160 км-ийн хайрцагт. Говь ургамал сийрэгтэй тул NDVI бага, чиг нь жижиг; үүлэрхэг сартай жилийг нөхөхгүй, хасна."),
+          evidence: (c) => join(B(`160 km box mean: ${meanLine(c, c.rs, c.unit).en}`, `160 км хайрцгийн дундаж: ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { layer: "trend", box: TAVAN_TOLGOI, zoom: { lon: 105.49, lat: 43.63, z: 4 } },
+          title: B("Tavan Tolgoi", "Таван толгой"),
+          text: B("A 20 km box around the coal pits (their centre read off NASA HLS imagery). Open-pit mining at Ukhaa Khudag began in 2009 and exports to China in 2011, so most of the pits, dumps and haul roads grew inside this record. Bare ground and dust lower NDVI; compare the box with the 160 km mean.",
+            "Нүүрсний карьеруудын эргэн тойрны 20 км-ийн хайрцаг (төвийг нь NASA HLS зургаас уншсан). Ухаа худагт ил уурхайн олборлолт 2009 онд, Хятад руу экспорт 2011 онд эхэлсэн тул карьер, овоолго, тээврийн замын ихэнх нь энэ бүртгэлийн дотор өссөн. Нүцгэн газар, тоос NDVI-г бууруулна; хайрцгийг 160 км-ийн дундажтай харьцуул."),
+          evidence: (c) => boxVsMean(c, B("Tavan Tolgoi box", "Таван толгойн хайрцаг")) },
+        { action: { layer: "trend", box: OYU_TOLGOI, zoom: { lon: 106.843, lat: 43.008, z: 4 } },
+          title: B("Oyu Tolgoi", "Оюу толгой"),
+          text: B("A 20 km box around the copper-gold mine, which shipped its first concentrate in July 2013. The same test at the same scale: a mine footprint shows as a browning box only if it is large against 1 km pixels and against the year-to-year swings of a desert's greenness.",
+            "2013 оны 7-р сард анхны баяжмалаа ачуулсан зэс-алтны уурхайн эргэн тойрны 20 км-ийн хайрцаг. Ижил масштабад ижил тест: уурхайн ул мөр нь 1 км-ийн пиксел болон цөлийн ногоон байдлын жил хоорондын хэлбэлзэлтэй харьцуулахад том байж л бор хайрцаг болж харагдана."),
+          evidence: (c) => boxVsMean(c, B("Oyu Tolgoi box", "Оюу толгойн хайрцаг")) },
+        { action: { scene: "gobi-modis-lst-day", layer: "trend", years: "full", box: TAVAN_TOLGOI, zoom: { lon: 105.49, lat: 43.63, z: 4 } },
+          title: B("The same box in daytime surface temperature", "Ижил хайрцаг өдрийн гадаргын температураар"),
+          text: B("A pit and its waste dumps are darker and drier than the steppe, so bare ground warms faster in the sun. A daytime surface warming at Tavan Tolgoi beyond the 160 km mean is the thermal fingerprint of ground laid bare; regional warming alone would warm the box and its surroundings alike.",
+            "Карьер, түүний овоолго хээрээс бараан, хуурай тул нүцгэн газар наранд хурдан халдаг. Таван толгойд 160 км-ийн дундажаас давсан өдрийн гадаргын дулаарал бол нүцгэрсэн газрын дулааны ул мөр; зөвхөн бүс нутгийн дулаарал бол хайрцаг, эргэн тойрныг адилхан дулаацуулна."),
+          evidence: (c) => boxVsMean(c, B("Tavan Tolgoi box, daytime surface", "Таван толгойн хайрцаг, өдрийн гадаргуу")) },
+        { action: { scene: "gobi-modis-ndvi", years: "full", layer: "trend", box: TAVAN_TOLGOI, zoom: { lon: 105.49, lat: 43.63, z: 4 } }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("The four questions for the ground around the mines.", "Уурхайн эргэн тойрны газрын дөрвөн асуулт."),
+          verdict: (c) => {
+            const s = c.sel;
+            return {
+              what: B(`Growing-season greenness in the 160 km box: ${trendWord(c, c.rs).en}; in the 20 km box at Tavan Tolgoi: ${s ? trendWord(c, s).en : "?"}.`,
+                `160 км хайрцгийн ургалтын улирлын ногоон байдал: ${trendWord(c, c.rs).mn}; Таван толгойн 20 км-ийн хайрцагт: ${s ? trendWord(c, s).mn : "?"}.`),
+              where: B(`${c.nf(c.k.fdr_up)} cells greening and ${c.nf(c.k.fdr_down)} browning after FDR, of ${c.nf(c.k.valid)} at 1 km.`,
+                `1 км-ийн ${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_up)} нь ногоорч, ${c.nf(c.k.fdr_down)} нь борлож байна (FDR-ийн дараа).`),
+              howmuch: B(`160 km box ${meanLine(c, c.rs, c.unit).en}; Tavan Tolgoi box ${s ? meanLine(c, s, c.unit).en : "—"}.`,
+                `160 км хайрцаг ${meanLine(c, c.rs, c.unit).mn}; Таван толгойн хайрцаг ${s ? meanLine(c, s, c.unit).mn : "—"}.`),
+              significant: B(`Box mean corrected p ${c.fmtP(c.rs.p_mk)}; Tavan Tolgoi box ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).en}.`,
+                `Хайрцгийн дундажийн засварласан p ${c.fmtP(c.rs.p_mk)}; Таван толгойн хайрцаг ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).mn}.`),
+              when: whenLine(c, s || c.rs),
+              caveats: [B("A mine opening is a step, not a trend; the step tests here only know documented source changes (Terra's drift), so read the box series in the details pane around 2009–2013 before calling a slope a mine effect. Daytime surface temperature at the same box (step 4) is the second witness.",
+                "Уурхай нээгдэх нь чиг биш, алхам; эндэх алхмын тест зөвхөн баримтжуулсан эх сурвалжийн өөрчлөлтийг (Terra-гийн шилжилт) мэднэ, тиймээс налууг уурхайн нөлөө гэхээсээ өмнө хайрцгийн цувааг дэлгэрэнгүй самбарт 2009–2013 оны орчим уншина уу. Ижил хайрцгийн өдрийн гадаргын температур (4-р алхам) бол хоёр дахь гэрч."),
+                B("NDVI needs all five months clear; a 1 km pixel mixes pit, dump, road and steppe, and dust from the pits and the haul road can lower greenness downwind.",
+                  "NDVI-д таван сар бүгд цэлмэг байх шаардлагатай; 1 км-ийн пиксел карьер, овоолго, зам, хээрийг холино, карьер болон тээврийн замын тоос салхины доод талд ногоон байдлыг бууруулж болно."),
+                B("Twenty-six years in a desert with large year-to-year swings: “not yet detectable” is the honest answer for many cells.",
+                  "Жил хоорондын хэлбэлзэл ихтэй цөлд хорин зургаан жил: олон нүдэнд «хараахан илрэхгүй» бол шударга хариулт.")],
+            };
+          } },
+      ],
+    },
+    {
+      id: "khovsgol-snow", tag: "mongolia", requires: ["khovsgol-modis-snowdays", "khovsgol-modis-lst-night"],
+      title: B("Khövsgöl at 1 km: are winters losing snow-covered days?", "Хөвсгөл 1 км-д: өвөл цастай өдрөө алдаж байна уу?"),
+      question: B("Snow-covered days November–March counted from daily Terra MODIS at 500 m, 25 winters, with winter-night surface temperature as the second witness.",
+        "Terra MODIS-ийн 500 м-ийн өдөр тутмын өгөгдлөөс тоолсон 11–3-р сарын цастай өдөр, 25 өвөл; хоёр дахь гэрч нь шөнийн гадаргын температур."),
+      steps: [
+        { action: { scene: "khovsgol-modis-snowdays", view: "map", layer: "trend", years: "full", zoom: "reset", sel: null },
+          title: B("Snow-covered days per winter", "Нэг өвлийн цастай өдөр"),
+          text: B("MOD10A1 flags a 500 m pixel as snow-covered when its NDSI is 40 or more; cloudy and night observations are left out, each month's count is scaled to its length, and the five months November–March are summed: one number per winter, 2000/01 to 2024/25. Lake Khövsgöl is inland water in this product and carries no value.",
+            "MOD10A1 500 м-ийн пикселийн NDSI 40 ба түүнээс дээш бол цастай гэж тэмдэглэнэ; үүлтэй, шөнийн ажиглалтыг орхиж, сар бүрийн тоог уртад нь тааруулж, 11–3-р сарын таван сарыг нэмнэ: нэг өвөлд нэг тоо, 2000/01-ээс 2024/25. Хөвсгөл нуур энэ бүтээгдэхүүнд дотоод ус тул утгагүй."),
+          evidence: (c) => join(B(`160 km box mean: ${meanLine(c, c.rs, c.unit).en}`, `160 км хайрцгийн дундаж: ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+          title: B("Mörön", "Мөрөн"),
+          text: B("The 1 km cell holding the aimag centre; its 25 winters, confidence interval and the year its trend becomes detectable are in the details pane. Snow is the dzud ingredient that satellites see directly; the reanalysis only models it.",
+            "Аймгийн төвийг агуулсан 1 км-ийн нүд; түүний 25 өвөл, итгэлийн завсар, чиг нь илрэх он дэлгэрэнгүй самбарт байна. Цас бол хиймэл дагуул шууд хардаг зудын орц; дахин шинжилгээ түүнийг зөвхөн загварчилдаг."),
+          evidence: (c) => cellLine(c, B("Mörön cell", "Мөрөнгийн нүд")) },
+        { action: { scene: "khovsgol-modis-lst-night", layer: "trend", years: "full", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+          title: B("Nights at the surface", "Шөнийн гадаргуу"),
+          text: B("Night-time surface temperature (all months, annual mean) at the same cell. Snow insulates the ground and reflects the sun; fewer snow days and warmer night surfaces go together, and a cell showing both is harder to dismiss as a cloud-sampling artifact.",
+            "Ижил нүдний шөнийн гадаргын температур (бүх сар, жилийн дундаж). Цас газрыг дулаалж, нарыг ойлгодог; цастай өдөр цөөрөх, шөнийн гадаргуу дулаарах хоёр хамт явдаг бөгөөд хоёуланг нь үзүүлж буй нүдийг үүлний түүврийн хуурмаг гэж үгүйсгэхэд хэцүү."),
+          evidence: (c) => cellLine(c, B("Mörön cell, night surface", "Мөрөнгийн нүд, шөнийн гадаргуу")) },
+        { action: { scene: "khovsgol-modis-snowdays", layer: "emerge", years: "full", sel: null, zoom: "reset" },
+          title: B("When would a snow trend show?", "Цасны чиг хэзээ харагдах вэ?"),
+          text: B("Twenty-five winters is a short record for a quantity that swings by weeks from one winter to the next. The year-detectable layer gives, cell by cell, the winter by which a trend of the measured size would be detected with 90 % probability if it continues.",
+            "Өвлөөс өвөлд долоо хоногоор хэлбэлздэг хэмжигдэхүүний хувьд хорин таван өвөл бол богино бүртгэл. Илрэх оны давхарга нүд бүрт хэмжсэн хэмжээтэй чиг үргэлжилбэл 90 %-ийн магадлалтайгаар илрэх өвлийг өгнө."),
+          evidence: (c) => B(`160 km box mean: ${c.detectSentence(c.det(c.rs))}`, `160 км хайрцгийн дундаж: ${c.detectSentence(c.det(c.rs))}`) },
+        { action: { scene: "khovsgol-modis-snowdays", years: "full", layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("The four questions for Khövsgöl's snow.", "Хөвсгөлийн цасны дөрвөн асуулт."),
+          verdict: (c) => {
+            const s = c.sel;
+            return {
+              what: B(`Snow-covered days per winter in the 160 km box: ${trendWord(c, c.rs).en}; at Mörön's cell: ${s ? trendWord(c, s).en : "?"}.`,
+                `160 км хайрцгийн нэг өвлийн цастай өдөр: ${trendWord(c, c.rs).mn}; Мөрөнгийн нүдэнд: ${s ? trendWord(c, s).mn : "?"}.`),
+              where: B(`${c.nf(c.k.fdr_down)} cells losing and ${c.nf(c.k.fdr_up)} gaining snow days after FDR, of ${c.nf(c.k.valid)} at 1 km.`,
+                `1 км-ийн ${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_down)} нь цастай өдрөө алдаж, ${c.nf(c.k.fdr_up)} нь нэмж байна (FDR-ийн дараа).`),
+              howmuch: B(`160 km box ${meanLine(c, c.rs, c.unit).en}; Mörön ${s ? meanLine(c, s, c.unit).en : "—"}.`,
+                `160 км хайрцаг ${meanLine(c, c.rs, c.unit).mn}; Мөрөн ${s ? meanLine(c, s, c.unit).mn : "—"}.`),
+              significant: B(`Box mean corrected p ${c.fmtP(c.rs.p_mk)}; Mörön ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).en}.`,
+                `Хайрцгийн дундажийн засварласан p ${c.fmtP(c.rs.p_mk)}; Мөрөн ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).mn}.`),
+              when: whenLine(c, s || c.rs),
+              caveats: [B("NDSI ≥ 40 is the product's own threshold: thin or patchy snow below it does not count. A month with clear observations on fewer than half its days is missing, and a winter with a missing month is excluded, never filled.",
+                "NDSI ≥ 40 бол бүтээгдэхүүний өөрийн босго: түүнээс доош нимгэн, тасархай цас тоологдохгүй. Өдрийн тал хувьд нь цэлмэг ажиглалтгүй сар дутуу, дутуу сартай өвлийг нөхөхгүй, хасна."),
+                B("Lake Khövsgöl and other inland water carry no value; a cloudier winter is a differently sampled one; Terra's orbit drift since 2020 is tested as a step in every cell.",
+                  "Хөвсгөл нуур болон бусад дотоод ус утгагүй; үүлэрхэг өвөл бол өөрөөр түүвэрлэгдсэн өвөл; 2020 оноос хойших Terra-гийн тойргийн шилжилтийг нүд бүрт алхамаар шалгасан.")],
+            };
+          } },
+      ],
+    },
+    {
+      id: "skin-vs-air", tag: "method", requires: ["mn-modis-lst-day"],
+      title: B("Do 1 km satellites and the 50 km model agree? Surface against air over Mongolia",
+        "1 км-ийн хиймэл дагуул, 50 км-ийн загвар хоёр тохирох уу? Монгол дээрх гадаргуу ба агаар"),
+      question: B("Terra's daytime land surface temperature at 5 km against MERRA-2 air temperature at 50 km, the same 26 years, each cell against the cell that holds it.",
+        "Terra-гийн 5 км-ийн өдрийн газрын гадаргын температурыг MERRA-2-ийн 50 км-ийн агаарын температуртай ижил 26 жилд, нүд бүрийг агуулж буй нүдтэй нь тулгасан нь."),
+      steps: [
+        { action: { scene: "mn-modis-lst-day", view: "map", layer: "trend", years: "full", zoom: "reset", sel: null },
+          title: B("The country at 5 km", "Улс 5 км-д"),
+          text: B("Daytime clear-sky land surface temperature, 2000–2025, each 5 km cell the mean of its 1 km Terra pixels: about 62,000 cells inside the border where MERRA-2 has 1,272. One value per year, the same tests, the FDR threshold set across all cells.",
+            "Өдрийн цэлмэг тэнгэрийн газрын гадаргын температур, 2000–2025, 5 км-ийн нүд бүр өөрийн 1 км-ийн Terra пикселүүдийн дундаж: MERRA-2 1,272 нүдтэй байдаг хилийн дотор ойролцоогоор 62,000 нүд. Жилд нэг утга, ижил тестүүд, FDR босгыг бүх нүдээр тогтооно."),
+          evidence: (c) => join(B(`Mongolia (country mask): ${meanLine(c, c.rs, c.unit).en}`, `Монгол (улсын хилээр): ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-t2m", years: [2000, 2025], season: "all", layer: "trend", zoom: "reset", sel: null },
+          title: B("The same years in the reanalysis", "Ижил жилүүд дахин шинжилгээнд"),
+          text: B("MERRA-2 air temperature at 2 m, restricted to 2000–2025 so that both records cover the same years. Every test is recomputed in the browser for the shorter window.",
+            "MERRA-2-ийн 2 м-ийн агаарын температур, хоёр бүртгэл ижил жилүүдийг хамрахаар 2000–2025 оноор хязгаарласан. Богино цонхонд бүх тест хөтөч дээр дахин тооцогдоно."),
+          evidence: (c) => join(B(`${c.yrs}: Mongolia mean ${meanLine(c, c.rs, c.unit).en}`, `${c.yrs}: Монголын дундаж ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-modis-lst-day", years: "full", layer: "trend", compare: { id: "mn-t2m", y0: 2000, y1: 2025 }, zoom: "reset", sel: null },
+          title: B("Each cell against the cell that holds it", "Нүд бүрийг агуулж буй нүдтэй нь"),
+          text: B("Split view: surface at 5 km on the left, air at 50 km on the right. For every 5 km cell the tool finds the 50 km cell above it and compares the signs of the two Sen slopes. Skin and air are different quantities, clear sky and all sky different samples, so the sizes need not match; the signs should, over most of the country, if both records see the same climate.",
+            "Хуваасан харагдац: зүүн талд 5 км-ийн гадаргуу, баруун талд 50 км-ийн агаар. 5 км-ийн нүд бүрт хэрэгсэл түүний дээрх 50 км-ийн нүдийг олж, хоёр Sen-ий налуугийн тэмдгийг харьцуулна. Гадаргуу ба агаар өөр хэмжигдэхүүн, цэлмэг ба бүх тэнгэр өөр түүвэр тул хэмжээ тохирох албагүй; хоёр бүртгэл нэг уур амьсгалыг харж байвал тэмдэг улсын ихэнх хэсэгт тохирох ёстой."),
+          evidence: (c) => agreeLine(c) },
+        { action: { scene: "mn-modis-lst-day", years: "full", layer: "trend", compare: { id: "mn-t2m", y0: 2000, y1: 2025 }, zoom: "reset", sel: null }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("Two records, one country, the same years.", "Хоёр бүртгэл, нэг улс, ижил жилүүд."),
+          verdict: (c) => {
+            const x = crossGrid(c), ru = x && x.rs ? c.A.unitLabel(c.A.cmp.entry.sc.units) : "";
+            return {
+              what: B(`Daytime land surface temperature (5 km): ${trendWord(c, c.rs).en} over the country mean; MERRA-2 air temperature (50 km) over the same years: ${x && x.rs ? trendWord(c, x.rs).en : "open step 3"}.`,
+                `Өдрийн газрын гадаргын температур (5 км): улсын дундажид ${trendWord(c, c.rs).mn}; MERRA-2-ийн агаарын температур (50 км) ижил жилүүдэд: ${x && x.rs ? trendWord(c, x.rs).mn : "3-р алхмыг нээнэ үү"}.`),
+              where: x ? B(`${pct(x.agree)} of ${c.nf(x.n)} 5 km cells share the sign of the 50 km cell above them; ${x.both ? `${pct(x.bothAgree)} of the ${c.nf(x.both)} cells significant in both` : "no cell is significant in both records"}.`,
+                `5 км-ийн ${c.nf(x.n)} нүдний ${pct(x.agree)} нь дээрх 50 км-ийн нүдтэйгээ ижил тэмдэгтэй; ${x.both ? `хоёуланд нь ач холбогдолтой ${c.nf(x.both)} нүдний ${pct(x.bothAgree)}` : "хоёр бүртгэлд хоёуланд нь ач холбогдолтой нүд алга"}.`) : NA,
+              howmuch: B(`Surface ${meanLine(c, c.rs, c.unit).en}${x && x.rs ? `; air ${meanLine(c, x.rs, ru).en}` : ""}.`,
+                `Гадаргуу ${meanLine(c, c.rs, c.unit).mn}${x && x.rs ? `; агаар ${meanLine(c, x.rs, ru).mn}` : ""}.`),
+              significant: B(`Surface corrected p ${c.fmtP(c.rs.p_mk)}${x && x.rs ? `; air ${c.fmtP(x.rs.p_mk)}` : ""}; ${pstarLine(c).en}.`,
+                `Гадаргын засварласан p ${c.fmtP(c.rs.p_mk)}${x && x.rs ? `; агаар ${c.fmtP(x.rs.p_mk)}` : ""}; ${pstarLine(c).mn}.`),
+              when: whenLine(c, c.rs),
+              caveats: [B("Skin under clear skies at ~10:30 against air at 2 m in all weather: agreement in sign is the test, not agreement in size. Two records over the same place are not independent samples, so their difference carries no p-value.",
+                "Цэлмэг тэнгэрт ~10:30-д хэмжсэн гадаргуу ба бүх цаг агаарт 2 м-ийн агаар: тест нь хэмжээний биш, тэмдгийн тохироо. Нэг газрын хоёр бүртгэл бол хараат бус түүвэр биш тул зөрүүнд нь p-утга өгөхгүй."),
+                B(`Terra's orbit drift since 2020 is tested as a step in every 5 km cell (${c.nf(c.k.step_flagged || 0)} flagged); MERRA-2's own stream boundaries (2001, 2011) fall inside these years.`,
+                  `2020 оноос хойших Terra-гийн тойргийн шилжилтийг 5 км-ийн нүд бүрт алхамаар шалгасан (${c.nf(c.k.step_flagged || 0)} тэмдэглэгдсэн); MERRA-2-ийн өөрийн урсгалын хил (2001, 2011) эдгээр жилүүдийн дотор байна.`)],
+            };
+          } },
+      ],
+    },
   ];
 
   // ------------------------------------------------------------ "your own case": a live NASA POWER scene as a case
@@ -538,7 +799,9 @@
   }
 
   // ------------------------------------------------------------ pure API (node-testable)
-  const list = () => CASES.map((c) => ({ id: c.id, tag: c.tag, title: c.title, question: c.question, steps: c.steps.length }));
+  // the cases whose required scenes are in the index (all of them when no index is given)
+  const avail = (ids) => (ids ? CASES.filter((c) => !c.requires || c.requires.every((r) => ids.includes(r))) : CASES);
+  const list = (ids) => avail(ids).map((c) => ({ id: c.id, tag: c.tag, title: c.title, question: c.question, steps: c.steps.length, requires: c.requires || null }));
   const get = (id) => CASES.find((c) => c.id === id) || dynamic.get(id) || null;
   // problems with the definitions against a scene index and place list: [] when all is well
   function check(sceneIds, placeNames) {
@@ -548,13 +811,16 @@
       if (!/^[a-z][a-z0-9-]*$/.test(c.id)) out.push(`${c.id}: bad id`);
       if (ids.has(c.id)) out.push(`${c.id}: duplicate id`); ids.add(c.id);
       if (!TAGS.includes(c.tag)) out.push(`${c.id}: unknown tag ${c.tag}`);
+      if (c.requires !== undefined && !(Array.isArray(c.requires) && c.requires.length && c.requires.every((r) => /^[a-z][a-z0-9-]*$/.test(r)))) out.push(`${c.id}: bad requires`);
+      const known = (id) => sceneIds.includes(id) || (c.requires || []).includes(id);
       text(c.title, c.id + ".title"); text(c.question, c.id + ".question");
       if (!Array.isArray(c.steps) || c.steps.length < 3) out.push(`${c.id}: needs at least 3 steps`);
       c.steps.forEach((s, k) => {
         const w = `${c.id}[${k}]`, a = s.action || {};
         text(s.title, w + ".title"); text(s.text, w + ".text");
         for (const key of Object.keys(a)) if (!ACTION_KEYS.includes(key)) out.push(`${w}: unknown action ${key}`);
-        if (a.scene && !sceneIds.includes(a.scene)) out.push(`${w}: unknown scene ${a.scene}`);
+        if (a.scene && !known(a.scene)) out.push(`${w}: unknown scene ${a.scene}`);
+        if (a.compare && typeof a.compare === "object" && (!known(a.compare.id) || !(a.compare.y1 - a.compare.y0 >= 9))) out.push(`${w}: bad compare`);
         if (a.risk && (!["fire", "dust"].includes(a.risk.type) || !/^\d{4}-\d{2}-\d{2}$/.test(a.risk.date))) out.push(`${w}: bad risk action`);
         if (a.layer && !LAYERS.includes(a.layer)) out.push(`${w}: unknown layer ${a.layer}`);
         if (a.season && !SEASONS.includes(a.season)) out.push(`${w}: unknown season ${a.season}`);
@@ -578,6 +844,7 @@
   const A = () => root.TDApp, I = () => root.TDI18N, $ = (s) => document.querySelector(s);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const lang = () => I().lang();
+  const indexIds = () => (A() && A().state.index ? A().state.index.scenes.map((s) => s.id) : null);
   const tx = (o) => (o ? (o[lang()] || o.en || "") : "");
   const t = (k, v) => I().t(k, v);
 
@@ -609,8 +876,10 @@
     else if (action.scene && (!st.sc || st.sc.id !== action.scene)) await a.showScene(action.scene);
     if (!a.isRisk() && st.sc) {
       await a.configure({ years: action.years || (action.scene ? "full" : undefined), season: action.season !== undefined ? action.season : (action.scene ? "all" : undefined), alpha: action.alpha });
-      if (action.compare !== undefined && !!action.compare !== a.cmp.on) await a.setCompare(!!action.compare);
-      if (action.compare && typeof action.compare === "object") await a.cmpLoad(action.compare.id, action.compare.y0, action.compare.y1);
+      // an explicit compare side is loaded as given (the default would split the years in two halves)
+      if (action.compare && typeof action.compare === "object") { a.cmp.on = true; a.cmp.prev = null; await a.cmpLoad(action.compare.id, action.compare.y0, action.compare.y1); }
+      else if (action.compare !== undefined && !!action.compare !== a.cmp.on) await a.setCompare(!!action.compare);
+      else if (action.scene && action.compare === undefined && a.cmp.on) await a.setCompare(false);   // a step that opens a scene starts without a split
       if (action.layer && a.availLayers().includes(action.layer)) a.setLayer(action.layer);
     }
     if (action.view) a.setView(action.view);
@@ -631,6 +900,7 @@
   async function open(id, step = 0) {
     const c = get(id);
     if (!c || !A() || !A().state.index) return;
+    if (c.requires && !avail(indexIds()).includes(c)) { board(); return; }   // its scenes are not built on this site
     const my = ++token;
     cur = { id, step: Math.max(0, Math.min(c.steps.length - 1, step)) };
     A().closeModal();
@@ -650,9 +920,11 @@
     try { history.replaceState(null, "", sc ? "#" + (A().isRisk() ? `risk/${sc.kind.replace("-risk", "")}/${sc.period.start}` : sc.id) : " "); } catch (e) { /* file:// */ }
   }
   function board() {
-    const cards = CASES.map((c) => `<button type="button" class="casecard" data-case="${c.id}"><span class="tag">${esc(t("cases_tag_" + c.tag))}</span><b>${esc(tx(c.title))}</b><span>${esc(tx(c.question))}</span><small>${esc(t("cases_steps", { n: c.steps.length }))}</small></button>`).join("")
+    const cases = avail(indexIds()), hidden = CASES.length - cases.length;
+    const cards = cases.map((c) => `<button type="button" class="casecard" data-case="${c.id}"><span class="tag">${esc(t("cases_tag_" + c.tag))}</span><b>${esc(tx(c.title))}</b><span>${esc(tx(c.question))}</span><small>${esc(t("cases_steps", { n: c.steps.length }))}</small></button>`).join("")
       + `<button type="button" class="casecard own" data-case-nav="own"><span class="tag">${esc(t("cases_tag_own"))}</span><b>${esc(t("cases_own"))}</b><span>${esc(t("cases_own_q"))}</span><small>${esc(t("cases_steps", { n: 5 }))}</small></button>`;
     A().modal(`<h2>${esc(t("cases_title"))}</h2><p class="muted">${esc(t("cases_intro"))}</p><div class="caseboard">${cards}</div>
+      ${hidden ? `<p class="small muted">${esc(t("cases_more", { n: hidden }))}</p>` : ""}
       <p class="small muted">${esc(t("cases_or"))} <button type="button" class="linkbtn" data-case-nav="guide">${esc(t("cases_guide"))}</button></p>`);
     $("#modalbox").classList.add("wide");
     $("#modalclose").textContent = t("cases_workbench");
@@ -718,7 +990,7 @@
       const ev = ctx && s.evidence ? safe(s.evidence, ctx) : null;
       body = `<p>${esc(tx(s.text))}</p>${ev && tx(ev) ? `<p class="evidence"><b>${esc(t("cases_evidence"))}:</b> ${esc(tx(ev))}</p>` : ""}`;
     }
-    const k = CASES.indexOf(c), nextCase = CASES[(k + 1) % CASES.length], url = location.href.split("#")[0] + `#case/${cur.id}/${cur.step + 1}`;
+    const cs = avail(indexIds()), k = cs.indexOf(c), nextCase = cs[(k + 1) % cs.length] || c, url = location.href.split("#")[0] + `#case/${cur.id}/${cur.step + 1}`;
     const qr = qrOpen && !c.own && root.TDQR ? `<div class="qr">${root.TDQR.svg(url, 3, 2)}<span class="small muted">${esc(t("cases_qr_hint"))}</span></div>` : "";
     el.innerHTML = `<div class="casehead"><span class="eyebrow">${esc(t("cases_step", { n: cur.step + 1, m: n }))}</span><b>${esc(tx(c.title))}</b><span class="dots" aria-hidden="true">${dots}</span>
         <button type="button" class="btn" data-case-nav="exit" aria-label="${esc(t("cases_exit"))}">✕ ${esc(t("cases_exit"))}</button></div>
@@ -755,5 +1027,5 @@
     });
   }
 
-  root.TDCases = { list, get, check, template, openOwn, current, open, openHash, next, prev, close, board, sync, ACTION_KEYS, LAYERS, SEASONS, TAGS };
+  root.TDCases = { list, avail, get, check, template, openOwn, current, open, openHash, next, prev, close, board, sync, ACTION_KEYS, LAYERS, SEASONS, TAGS };
 })(typeof window === "undefined" ? globalThis : window);

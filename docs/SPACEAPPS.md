@@ -122,8 +122,9 @@ challenge into case files: guided investigations where every number is
 computed live from NASA data in the browser. It tests every grid cell with an
 autocorrelation-corrected Mann-Kendall test, controls false discoveries across
 the map, says "not yet detectable" instead of "no trend", and checks each
-dataset against an independent record. Nine cases ship today, from global
-warming and a sea-ice data artifact to Mongolia's dust, rain and fire hazards;
+dataset against an independent record. Ten cases ship today, from global
+warming and a sea-ice data artifact to Mongolia's dust, rain and fire hazards,
+and four more at 1 km open with the MODIS scenes;
 a new case is a page of text, not new code. It works offline, on phones, in
 English and Mongolian.
 

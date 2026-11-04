@@ -57,7 +57,9 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   <https://buyja047.github.io/earth_trending/#case/antarctic-ice/2>) and a
   **QR code** for a phone; a verdict can be saved as a **1200 × 630 PNG
   card**. Cases are plain bilingual data in `web/js/cases.js`; a new case
-  needs no new code.
+  needs no new code. Four more cases at 1 km (*Ulaanbaatar's surface, the
+  South Gobi mines, Khövsgöl's snow days, surface against air*) open on
+  their own once the MODIS scenes are built (`docs/MODIS_TRENDS.md`).
   - **Your own case**: the last card on the board starts the live analysis;
     pick any of the 1,320 NASA POWER variables and a box anywhere on Earth,
     and the result is presented as a five-step case with the same verdict.

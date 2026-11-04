@@ -86,3 +86,22 @@ def test_single_file_build_includes_the_case_files():
     assert 'src="js/cases.js"' in html and 'id="casebar"' in html and 'id="casesbtn"' in html
     assert html.index('src="js/qr.js"') < html.index('src="js/cases.js"') < html.index('src="js/app.js"')
     assert '"qr.js"' in (ROOT / "scripts/make_artifact.py").read_text()
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_cases_that_need_the_modis_scenes_wait_for_them():
+    scenes = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"]] + ["fire-risk", "dust-risk"]
+    places = [p["en"] for p in read_payload(ROOT / "web/data/places.js")["places"]]
+    modis = [f"{r}-modis-{v}" for r in ("mn", "ub", "gobi", "khovsgol") for v in ("lst-day", "lst-night", "ndvi", "snowdays")]
+    out = _node(f"""
+      require('./web/js/cases.js'); const C = globalThis.TDCases;
+      const all = C.list(), now = C.list({json.dumps(scenes)}), later = C.list({json.dumps(scenes + modis)});
+      console.log(JSON.stringify({{all: all.map((c) => c.id), now: now.map((c) => c.id), later: later.map((c) => c.id),
+        needs: Object.fromEntries(all.filter((c) => c.requires).map((c) => [c.id, c.requires])),
+        problems: C.check({json.dumps(scenes + modis)}, {json.dumps(places)}),
+        broken: C.check({json.dumps(scenes)}, {json.dumps(places)}).length}}));""")
+    r = json.loads(out)
+    assert set(r["needs"]) == {"ub-surface", "gobi-mines-1km", "khovsgol-snow", "skin-vs-air"}
+    assert all(set(v) <= set(modis) for v in r["needs"].values())
+    assert r["now"] == [c for c in r["all"] if c not in r["needs"]] and r["later"] == r["all"]   # order kept, nothing else hidden
+    assert r["problems"] == [] and r["broken"] == 0                                              # valid with and without the scenes

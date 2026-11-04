@@ -107,6 +107,23 @@ and the same with `ub-`, `gobi-`, `khovsgol-`.
   should agree over most of the country, the sizes need not (skin vs air, clear sky vs
   all sky, 26 vs 45 years).
 
+## Case files
+
+Four case files (`web/js/cases.js`) are written for these scenes and appear on the case board
+only once their scenes are in `web/data/index.js`; until then the board says how many are
+waiting. Every number in them is computed from the scene on screen, so nothing needs editing
+after a real run:
+
+| Case | Scenes | What it does |
+|---|---|---|
+| Ulaanbaatar at 1 km: is the city's surface warming faster than the land around it? | `ub-modis-lst-day`, `ub-modis-lst-night` | a 24 × 16 km city box against the 160 km box mean, by day and by night; Terra's drift as a step; the 2000–2019 window |
+| The South Gobi mines at 1 km | `gobi-modis-ndvi`, `gobi-modis-lst-day` | 20 km boxes around Tavan Tolgoi (105.49°E 43.63°N) and Oyu Tolgoi (106.843°E 43.008°N) in greenness and daytime surface temperature. Dates used: open-pit mining at Ukhaa Khudag from 2009, exports from 2011 (Mongolian Mining Corporation); Oyu Tolgoi's first concentrate shipment July 2013 (Oyu Tolgoi LLC) |
+| Khövsgöl at 1 km: are winters losing snow-covered days? | `khovsgol-modis-snowdays`, `khovsgol-modis-lst-night` | the Mörön cell, night-time surface temperature as the second witness, the winter a trend would show |
+| Do 1 km satellites and the 50 km model agree? | `mn-modis-lst-day` with `mn-t2m` | split view over 2000–2025; for every 5 km cell the sign of its Sen slope against the 50 km MERRA-2 cell that holds it, overall and among cells significant in both |
+
+`tests/test_modis.py` builds synthetic versions of the seven scenes (the real boxes at 4 km)
+and walks the four cases to their verdicts in Chromium.
+
 ## Sources
 
 - MOD11A2.061 and MOD13A3.061: NASA LP DAAC, "no restrictions on subsequent use, sale, or
@@ -152,6 +169,14 @@ SummaryQA сайн/дунд, 5–9-р сар бүгд; цас: NDSI ≥ 40, са
 ```bash
 python -m trend_detective modis-trend --project <PROJECT_ID> --regions ub --vars lstd ndvi
 ```
+
+**Хэргийн хавтас.** Эдгээр багцад зориулсан дөрвөн хэргийн хавтас (`web/js/cases.js`) бий:
+Улаанбаатарын гадаргуу 1 км-д (хотын хайрцаг ба 160 км-ийн хайрцаг, өдөр/шөнө, Terra-гийн
+шилжилт), Өмнөговийн уурхайнууд (Таван толгой, Оюу толгойн эргэн тойрны 20 км-ийн хайрцаг, NDVI ба
+өдрийн гадаргын температур), Хөвсгөлийн цастай өдөр (Мөрөнгийн нүд, шөнийн гадаргуу), 5 км-ийн
+гадаргуу ба 50 км-ийн агаарын тохироо (нүд бүрийг агуулж буй MERRA-2 нүдтэй нь тэмдгээр тулгана).
+Багц нь `index.js`-д орсон үед л хэргийн самбарт гарна; түүнээс өмнө самбар хэдэн хэрэг хүлээж
+байгааг хэлнэ. Тоо бүр дэлгэц дээрх багцаас тооцогддог тул бодит ажиллуулалтын дараа засах зүйлгүй.
 
 Бүгдийг (16 багц) `--regions`, `--vars`-гүйгээр. Жил бүрийн пикселийг `cache/modis/`-д хадгалдаг тул
 тасарсан ажил үргэлжилнэ. Үр дүн `web/data/<бүс>-modis-<хувьсагч>.js`-д бичигдэж, `index.js`-д

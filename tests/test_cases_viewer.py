@@ -10,6 +10,8 @@ import threading
 
 import pytest
 
+from trend_detective.payload import read_payload
+
 playwright = pytest.importorskip("playwright.sync_api")
 pytestmark = pytest.mark.skipif(not shutil.which("chromium"), reason="system Chromium unavailable")
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,9 +22,11 @@ class QuietHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def case_list():
-    out = subprocess.run([shutil.which("node"), "-e", "require('./web/js/cases.js');console.log(JSON.stringify(globalThis.TDCases.list()))"],
-                         cwd=ROOT, capture_output=True, text=True, check=True).stdout
+def case_list(every=False):
+    """The cases the board shows for the real index (MODIS cases wait for their scenes); every=True lists them all."""
+    ids = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"]]
+    js = f"require('./web/js/cases.js');console.log(JSON.stringify(globalThis.TDCases.list({'' if every else json.dumps(ids)})))"
+    out = subprocess.run([shutil.which("node"), "-e", js], cwd=ROOT, capture_output=True, text=True, check=True).stdout
     return json.loads(out)
 
 
@@ -56,6 +60,8 @@ def test_every_case_walks_to_a_verdict_with_live_evidence(server):
         # first visit: the case board, not the ten-step guide
         playwright.expect(page.locator("#modal .caseboard")).to_be_visible()
         assert page.locator("#modal .casecard").count() == len(cases) + 1   # plus "your own case"
+        waiting = len(case_list(every=True)) - len(cases)                      # the MODIS cases, until their scenes are built
+        assert waiting == 0 or f"{waiting} more case files" in page.locator("#modal").inner_text()
         page.locator("#modalclose").click()
         assert page.locator("#modal").is_hidden()
         for c in cases:

@@ -1,7 +1,9 @@
 """MODIS 1 km / 5 km scenes: grids, seasons, the Earth Engine graph (offline) and the payload the viewer reads."""
 import functools
 import json
+import re
 import shutil
+import subprocess
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,13 +67,16 @@ def _fake_pixels(grid, names, year, trend=0.03, seed=0):
     return out
 
 
-def build_offline(tmp_path, var_key, region_key="ub", years=(2000, 2012)):
-    """Run the real Earth Engine client offline: graphs are built, computePixels is answered locally."""
+def build_offline(tmp_path, var_key, region_key="ub", years=(2000, 2012), spec=None, out=None):
+    """Run the real Earth Engine client offline: graphs are built, computePixels is answered locally.
+
+    `spec` replaces the region (default: a 12 km box over Ulaanbaatar, or 1° over 106–107°E at 10 km for the country);
+    `out` reuses a data folder so that several scenes share one index.js."""
     ee = pytest.importorskip("ee")
     from ee.apitestcase import GetAlgorithms
     ee.Reset()
-    small = dict(modis.REGIONS[region_key], centre=(106.9, 47.9), size_km=12, km=1)
-    if region_key == "country":
+    small = spec or dict(modis.REGIONS[region_key], centre=(106.9, 47.9), size_km=12, km=1)
+    if region_key == "country" and spec is None:
         small = dict(modis.REGIONS["country"], bbox=(106.0, 47.0, 107.0, 48.0), km=10)
     grid = modis.grid_for(modis.bbox_of(small), small["km"])
     var = modis.VARS[var_key]
@@ -90,9 +95,10 @@ def build_offline(tmp_path, var_key, region_key="ub", years=(2000, 2012)):
         seen["n"] += 1
         return _fake_pixels(grid, params["bandIds"], year, seed={"lstd": 1, "lstn": 2, "ndvi": 3, "snowdays": 4}[var_key])
 
-    out = tmp_path / "data"
+    out = out or tmp_path / "data"
     out.mkdir(exist_ok=True)
-    shutil.copy(ROOT / "web/data/index.js", out / "index.js")
+    if not (out / "index.js").exists():
+        shutil.copy(ROOT / "web/data/index.js", out / "index.js")
     initialize = ee.Initialize
     with patch.object(ee, "Initialize", side_effect=lambda **kw: initialize(None, "", project=kw["project"])), \
          patch.object(ee.data, "_install_cloud_api_resource"), patch.object(ee.data, "getAlgorithms", GetAlgorithms), \
@@ -175,6 +181,92 @@ def test_viewer_opens_a_modis_scene(tmp_path):
             page.wait_for_timeout(600)                             # the first paint is scheduled on an animation frame
             px = page.locator("#map").evaluate("c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - d[i+2]) > 20) n++; return n; }")
             assert px > 100                                        # faded (not significant) cells still carry a hue
+            assert not errors, errors
+            browser.close()
+    finally:
+        srv.shutdown(); srv.server_close()
+
+
+def _settled(page):
+    page.wait_for_function("() => { const b = document.querySelector('#casebar'); return b && !b.hidden && !b.querySelector('[data-case-nav=next][disabled], .casenav [data-case][disabled]') && document.querySelector('#busy').hidden; }", timeout=60000)
+    page.wait_for_timeout(150)
+
+
+def test_modis_case_files_walk_to_their_verdicts(tmp_path):
+    """The four MODIS cases are hidden until their scenes exist; with synthetic scenes in the index they walk to a verdict."""
+    playwright = pytest.importorskip("playwright.sync_api")
+    if not shutil.which("chromium"):
+        pytest.skip("system Chromium unavailable")
+    # the real boxes at 4 km (1,600 cells) so that the city, the mine boxes and Mörön fall inside; a slice of the country at 10 km
+    specs = {k: dict(modis.REGIONS[k], km=4) for k in ("ub", "gobi", "khovsgol")}
+    specs["country"] = dict(modis.REGIONS["country"], bbox=(104.5, 46.5, 108.5, 49.0), km=10)
+    out = tmp_path / "data"
+    built = []
+    for region, var in [("ub", "lstd"), ("ub", "lstn"), ("gobi", "ndvi"), ("gobi", "lstd"), ("khovsgol", "snowdays"), ("khovsgol", "lstn"), ("country", "lstd")]:
+        built += build_offline(tmp_path, var, region, years=(2000, 2014), spec=specs[region], out=out)[0]
+    ids = [s["id"] for s in built]
+    assert ids == ["ub-modis-lst-day", "ub-modis-lst-night", "gobi-modis-ndvi", "gobi-modis-lst-day", "khovsgol-modis-snowdays", "khovsgol-modis-lst-night", "mn-modis-lst-day"]
+    index_ids = [s["id"] for s in read_payload(out / "index.js")["scenes"]]
+    real_ids = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"]]
+    node = shutil.which("node")
+    js = f"require('./web/js/cases.js');const C=globalThis.TDCases;console.log(JSON.stringify({{later: C.list({json.dumps(index_ids)}), now: C.list({json.dumps(real_ids)})}}))"
+    r = json.loads(subprocess.run([node, "-e", js], cwd=ROOT, capture_output=True, text=True, check=True).stdout)
+    cases = [c for c in r["later"] if c["requires"]]
+    assert {c["id"] for c in cases} == {"ub-surface", "gobi-mines-1km", "khovsgol-snow", "skin-vs-air"}
+    assert not any(c["requires"] for c in r["now"]) and len(r["later"]) == len(r["now"]) + 4
+
+    class Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(ROOT)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        with playwright.sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=shutil.which("chromium"), args=["--no-sandbox"])
+            page = browser.new_page(viewport=dict(width=1440, height=950), service_workers="block")
+            page.add_init_script("localStorage.setItem('td.lang','en')")
+            errors = []
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.route("**/data/index.js", lambda r: r.fulfill(content_type="application/javascript", body=(out / "index.js").read_text(encoding="utf-8")))
+            def serve(sid):                               # one handler per scene (the route handler receives route and request)
+                return lambda r: r.fulfill(content_type="application/javascript", body=(out / f"{sid}.js").read_text(encoding="utf-8"))
+            for sid in ids:
+                page.route(f"**/data/{sid}.js", serve(sid))
+            page.goto(f"http://127.0.0.1:{srv.server_port}/web/index.html")
+            playwright.expect(page.locator("#modal .caseboard")).to_be_visible()
+            assert page.locator("#modal .casecard").count() == len(r["later"]) + 1 and "more case files" not in page.locator("#modal").inner_text()
+            page.locator("#modalclose").click()
+            seen = {}
+            for c in cases:
+                page.locator("#casesbtn").click()
+                page.locator(f'#modal [data-case="{c["id"]}"]').click()
+                for k in range(c["steps"]):
+                    _settled(page)
+                    assert page.evaluate("location.hash") == f"#case/{c['id']}/{k + 1}"
+                    body = page.locator("#casebar .casebody").inner_text()
+                    assert "Resume the case" not in body and "NaN" not in body and "undefined" not in body, (c["id"], k, body)
+                    if k < c["steps"] - 1:
+                        ev = page.locator("#casebar .evidence").inner_text()
+                        assert re.search(r"\d", ev), (c["id"], k, body)
+                        seen[(c["id"], k)] = ev
+                        page.locator('[data-case-nav="next"]').click()
+                    else:
+                        assert page.locator("#casebar .verdict").count() == 1 and "What is changing" in body, (c["id"], body)
+                        seen[(c["id"], k)] = body
+                page.locator('[data-case-nav="exit"]').click()
+            # the selections and the cross-grid comparison really happened
+            assert "City box (" in seen[("ub-surface", 1)] and "cells)" in seen[("ub-surface", 1)]
+            assert "Tavan Tolgoi box (" in seen[("gobi-mines-1km", 1)] and "Oyu Tolgoi box (" in seen[("gobi-mines-1km", 2)]
+            assert "Mörön cell:" in seen[("khovsgol-snow", 1)] and "night surface" in seen[("khovsgol-snow", 2)]
+            assert "share the sign" in seen[("skin-vs-air", 2)] and "%" in seen[("skin-vs-air", 2)] and "surface" in seen[("skin-vs-air", 2)]
+            assert "of 5 km cells" not in seen[("skin-vs-air", 3)] and "share the sign" in seen[("skin-vs-air", 3)]
+            # the last verdict keeps the split view; the next case's first step (a scene without a compare action) closes it
+            assert page.evaluate("TDApp.cmp.on") is True
+            page.locator("#casesbtn").click()
+            page.locator('#modal [data-case="planet-warming"]').click()
+            _settled(page)
+            assert page.evaluate("TDApp.cmp.on") is False and page.evaluate("TDApp.state.sc.id") == "global-t2m"
+            page.locator('[data-case-nav="exit"]').click()
             assert not errors, errors
             browser.close()
     finally:
