@@ -4,7 +4,8 @@ Country, on the 0.05° climate modelling grid (CMG): MOD11C3 monthly land surfac
 MOD13C2 monthly NDVI are subset by OPeNDAP from the LP DAAC cloud; MOD10C1 daily snow cover is
 downloaded from the NSIDC cloud. Boxes at 1 km: MOD11A2 and MOD10A1 tiles are read as windows of
 cloud-optimised GeoTIFFs from Microsoft's Planetary Computer mirror of the NASA archive (no account
-needed); MOD13A3 tiles are downloaded from the LP DAAC cloud. The NASA downloads need an Earthdata
+needed), and from the archive's own HDF tiles where the mirror has gaps (2022 and 2024-2025 at the time of
+writing); MOD13A3 tiles are downloaded from the LP DAAC cloud. The NASA downloads need an Earthdata
 Login bearer token in ``EARTHDATA_TOKEN``. Quality rules, seasons and cell sizes follow
 ``trend_detective.modis``; see docs/MODIS_TRENDS.md.
 """
@@ -14,6 +15,7 @@ import calendar
 import json
 import math
 import os
+import re
 import tempfile
 import time
 import urllib.error
@@ -408,11 +410,46 @@ def cmg_snow_month_raw(year: int, month: int, grid: dict, workdir: Path, threads
 
 # ---------------------------------------------------------------------------- boxes: tiles
 
-def box_lst_year(pc: PlanetaryComputer, region: dict, grid: dict, year: int, threads=8) -> dict[str, np.ndarray]:
-    """Monthly means of the QA-passing 8-day composites (>= 2 per month) at each cell's pixel; {"Day", "Night"}: (months, ny, nx)."""
+def acq_key(name: str) -> str:
+    """'A2020009.h25v04' from a granule title or a STAC item id such as MOD11A2.A2020009.h25v04.061.2021005132618[.hdf]."""
+    parts = name.split(".")
+    return parts[1] + "." + parts[2]
+
+
+def tile_of_title(name: str) -> tuple[int, int]:
+    m = re.search(r"\.h(\d\d)v(\d\d)\.", name)
+    return int(m.group(1)), int(m.group(2))
+
+
+def hdf_windows(path: Path, fields, window) -> dict[str, np.ndarray]:
+    """Window slices of the named science data sets of an HDF-EOS tile (HDF4 is read on one thread)."""
+    from pyhdf.SD import SD, SDC
+    r0, r1, c0, c1 = window
+    sd = SD(str(path), SDC.READ)
+    try:
+        return {f: np.asarray(sd.select(f)[r0:r1, c0:c1]) for f in fields}
+    finally:
+        sd.end()
+
+
+def _split_sources(pc: PlanetaryComputer, short_name: str, version: str, collection: str, bbox, t0: date, t1: date, maps: dict):
+    """The archive's granule list for the tiles of a box, split into the mirror's items and the ones to download.
+    The archive (CMR) is authoritative; the mirror serves a granule when it holds the same acquisition and tile."""
+    granules = [g for g in cmr_granules(short_name, version, t0, t1, bbox=bbox) if g["data"] and tile_of_title(g["title"]) in maps]
+    on_mirror = {acq_key(it["id"]): it for it in pc.items(collection, bbox, t0, t1) if _item_tile(it) in maps}
+    mirror = [on_mirror[acq_key(g["title"])] for g in granules if acq_key(g["title"]) in on_mirror]
+    rest = [g for g in granules if acq_key(g["title"]) not in on_mirror]
+    return mirror, rest
+
+
+LST_TILE_FIELDS = ("LST_Day_1km", "QC_Day", "LST_Night_1km", "QC_Night")
+
+
+def box_lst_year(pc: PlanetaryComputer, region: dict, grid: dict, year: int, threads=8, workdir: Path | None = None) -> dict[str, np.ndarray]:
+    """Monthly means of the QA-passing 8-day composites (>= 2 per month) at each cell's pixel; {"Day", "Night"}: (months, ny, nx).
+    Composites come from the mirror's cloud-optimised tiles, or from the archive's HDF tiles when the mirror lacks them."""
     bbox = bbox_of(region)
     months = [m for m in range(1, 13) if (year, m) >= (START_YEAR, 3)]
-    items = pc.items(PC_COLLECTIONS["lst"], bbox, date(year, 1, 1), date(year, 12, 31))
     maps = {}
     for h, v in tiles_for(bbox):
         win = tile_window(bbox, h, v, 1200)
@@ -421,11 +458,16 @@ def box_lst_year(pc: PlanetaryComputer, region: dict, grid: dict, year: int, thr
     shape = (grid["ny"], grid["nx"])
     acc = {key: {m: [np.zeros(shape), np.zeros(shape)] for m in months} for key in ("Day", "Night")}
 
-    def read(it):
-        tile = _item_tile(it)
-        if tile not in maps:
-            return None
-        win, mapping = maps[tile]
+    def add(m, out):
+        for key, vals in out.items():
+            good = np.isfinite(vals)
+            acc[key][m][0] += np.where(good, vals, 0.0)
+            acc[key][m][1] += good
+
+    mirror, rest = _split_sources(pc, "MOD11A2", "061", PC_COLLECTIONS["lst"], bbox, date(year, 1, 1), date(year, 12, 31), maps)
+
+    def read_mirror(it):
+        win, mapping = maps[_item_tile(it)]
         m = int(it["properties"]["start_datetime"][5:7])
         if m not in months:
             return None
@@ -436,15 +478,26 @@ def box_lst_year(pc: PlanetaryComputer, region: dict, grid: dict, year: int, thr
             out[key] = _sample(lst_celsius(raw, qc), mapping, grid)
         return m, out
 
+    def download(g):
+        p = (workdir or Path(tempfile.gettempdir())) / g["title"]
+        p.write_bytes(http_get(g["data"], auth=True))
+        return g, p
+
     with ThreadPoolExecutor(threads) as ex:
-        for res in ex.map(read, items):
-            if res is None:
-                continue
-            m, out = res
-            for key, vals in out.items():
-                good = np.isfinite(vals)
-                acc[key][m][0] += np.where(good, vals, 0.0)
-                acc[key][m][1] += good
+        for res in ex.map(read_mirror, mirror):
+            if res:
+                add(*res)
+    if rest:
+        with ThreadPoolExecutor(min(4, threads)) as ex:
+            for g, p in ex.map(download, rest):                  # downloads in threads; HDF4 read on this thread
+                try:
+                    win, mapping = maps[tile_of_title(g["title"])]
+                    sub = hdf_windows(p, LST_TILE_FIELDS, win)
+                finally:
+                    p.unlink(missing_ok=True)
+                m = int(g["start"][5:7])
+                if m in months:
+                    add(m, {key: _sample(lst_celsius(sub[f"LST_{key}_1km"], sub[f"QC_{key}"]), mapping, grid) for key in ("Day", "Night")})
     result = {}
     for key in ("Day", "Night"):
         bands = []
@@ -466,25 +519,42 @@ def box_maps(region: dict, grid: dict) -> dict:
     return maps
 
 
-def box_snow_month_raw(pc: PlanetaryComputer, region: dict, y: int, m: int, maps: dict, threads=8) -> dict:
-    """One month of daily MOD10A1 per 500 m pixel of each tile window: snow-covered days and clear days (uint8)."""
+def box_snow_month_raw(pc: PlanetaryComputer, region: dict, y: int, m: int, maps: dict, threads=8, workdir: Path | None = None) -> dict:
+    """One month of daily MOD10A1 per 500 m pixel of each tile window: snow-covered days and clear days (uint8).
+    Days come from the mirror, or from the archive's HDF tiles when the mirror lacks them."""
     days = calendar.monthrange(y, m)[1]
-    items = pc.items(PC_COLLECTIONS["snow"], bbox_of(region), date(y, m, 1), date(y, m, days))
+    bbox = bbox_of(region)
     psum = {t: np.zeros((w[1] - w[0], w[3] - w[2]), np.uint16) for t, (w, _) in maps.items()}
     pcnt = {t: np.zeros_like(a) for t, a in psum.items()}
 
-    def read(it):
+    def add(tile, arr):
+        valid = arr <= 100
+        psum[tile] += (valid & (arr >= NDSI_SNOW)).astype(np.uint16)
+        pcnt[tile] += valid.astype(np.uint16)
+
+    mirror, rest = _split_sources(pc, "MOD10A1", "61", PC_COLLECTIONS["snow"], bbox, date(y, m, 1), date(y, m, days), maps)
+
+    def read_mirror(it):
         tile = _item_tile(it)
-        return (tile, pc.window(it["assets"]["NDSI_Snow_Cover"]["href"], maps[tile][0])) if tile in maps else None
+        return tile, pc.window(it["assets"]["NDSI_Snow_Cover"]["href"], maps[tile][0])
+
+    def download(g):
+        p = (workdir or Path(tempfile.gettempdir())) / g["title"]
+        p.write_bytes(http_get(g["data"], auth=True))
+        return g, p
 
     with ThreadPoolExecutor(threads) as ex:
-        for res in ex.map(read, items):
-            if res is None:
-                continue
-            tile, arr = res
-            valid = arr <= 100
-            psum[tile] += (valid & (arr >= NDSI_SNOW)).astype(np.uint16)
-            pcnt[tile] += valid.astype(np.uint16)
+        for tile, arr in ex.map(read_mirror, mirror):
+            add(tile, arr)
+    if rest:
+        with ThreadPoolExecutor(min(4, threads)) as ex:
+            for g, p in ex.map(download, rest):
+                tile = tile_of_title(g["title"])
+                try:
+                    arr = hdf_windows(p, ["NDSI_Snow_Cover"], maps[tile][0])["NDSI_Snow_Cover"]
+                finally:
+                    p.unlink(missing_ok=True)
+                add(tile, arr)
     return {t: (psum[t].astype(np.uint8), pcnt[t].astype(np.uint8)) for t in maps}
 
 
@@ -595,7 +665,7 @@ class Source:
                 both = {k: block_mean(np.stack([g[k] if g else np.full((rs - rn, c1 - c0), np.nan) for g in got]), grid["block"])
                         for k in ("Day", "Night")}
             else:
-                both = box_lst_year(self.pc, region, grid, year, self.threads)
+                both = box_lst_year(self.pc, region, grid, year, self.threads, self.work)
             twin = "lstn" if key == "Day" else "lstd"
             self._save_twin(region, twin, year, both[VARS[twin]["band"]])
             return both[key]
@@ -629,7 +699,7 @@ class Source:
             if maps is None:
                 raw[month_key(y, m) + "-sum"], raw[month_key(y, m) + "-cnt"] = cmg_snow_month_raw(y, m, grid, self.work, self.threads)
             else:
-                for tile, (s, c) in box_snow_month_raw(self.pc, region, y, m, maps, self.threads).items():
+                for tile, (s, c) in box_snow_month_raw(self.pc, region, y, m, maps, self.threads, self.work).items():
                     raw[month_key(y, m, tile) + "-sum"], raw[month_key(y, m, tile) + "-cnt"] = s, c
         if path:
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -177,3 +177,19 @@ def test_the_token_is_required_for_nasa_downloads(monkeypatch):
     monkeypatch.delenv("EARTHDATA_TOKEN", raising=False)
     with pytest.raises(RuntimeError, match="EARTHDATA_TOKEN"):
         mc.http_get("https://data.lpdaac.earthdatacloud.nasa.gov/x.hdf", auth=True)
+
+
+def test_archive_is_authoritative_and_the_mirror_serves_what_it_has():
+    assert mc.acq_key("MOD11A2.A2020009.h25v04.061.2021005132618.hdf") == "A2020009.h25v04"
+    assert mc.acq_key("MOD10A1.A2021001.h24v03.061.2021003131846") == "A2021001.h24v03"
+    assert mc.tile_of_title("MOD10A1.A2021001.h24v03.061.2021003131846.hdf") == (24, 3)
+    granules = [{"title": f"MOD11A2.A2024{d:03d}.h25v04.061.2024999.hdf", "data": "https://x/a.hdf", "start": "2024-01-01"} for d in (1, 9, 17)]
+    granules.append({"title": "MOD11A2.A2024001.h26v04.061.2024999.hdf", "data": "https://x/b.hdf", "start": "2024-01-01"})   # another tile
+    items = [{"id": "MOD11A2.A2024001.h25v04.061.2024001000000", "properties": {"modis:horizontal-tile": 25, "modis:vertical-tile": 4}},
+             {"id": "MOD11A2.A2024009.h25v04.061.2024001000000", "properties": {"modis:horizontal-tile": 25, "modis:vertical-tile": 4}}]
+    pc = mc.PlanetaryComputer()
+    with patch.object(mc, "cmr_granules", return_value=granules), patch.object(pc, "items", return_value=items):
+        mirror, rest = mc._split_sources(pc, "MOD11A2", "061", "modis-11A2-061", UB, __import__("datetime").date(2024, 1, 1),
+                                         __import__("datetime").date(2024, 1, 31), {(25, 4): None})
+    assert [i["id"][8:16] for i in mirror] == ["A2024001", "A2024009"]            # served by the mirror
+    assert [g["title"][8:16] for g in rest] == ["A2024017"]                        # downloaded from the archive; h26v04 ignored
