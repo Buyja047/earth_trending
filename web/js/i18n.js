@@ -191,7 +191,9 @@
     about: "A prototype for the NASA Space Apps 2026 challenge “Be an Earth System Trend Detective”. Data: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) and the NSIDC Sea Ice Index. Places: GeoNames. Coastlines: Natural Earth via world-atlas. Background imagery: NASA GIBS. Everything runs in your browser; no data leaves your computer.",
     close: "Close", units_label: "Units",
     groups: { "Risk zones": "Risk zones", "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
-      "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)" },
+      "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Mongolia MODIS 2000–2025 (5 km)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Ulaanbaatar MODIS 2000–2025 (1 km)",
+      "South Gobi MODIS 2000-2025 (1 km)": "South Gobi MODIS 2000–2025 (1 km)", "Khövsgöl MODIS 2000-2025 (1 km)": "Khövsgöl MODIS 2000–2025 (1 km)" },
   };
 
   const MN = {
@@ -384,7 +386,9 @@
     about: "NASA Space Apps 2026-ийн “Be an Earth System Trend Detective” даалгаварт зориулсан прототип. Өгөгдөл: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) ба NSIDC Sea Ice Index. Газрын нэр: GeoNames. Эргийн шугам: Natural Earth (world-atlas). Суурь зураг: NASA GIBS. Бүх тооцоо таны хөтөч дээр хийгдэнэ; өгөгдөл таны компьютерээс гарахгүй.",
     close: "Хаах", units_label: "Нэгж",
     groups: { "Risk zones": "Эрсдэлийн бүсүүд", "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
-      "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)" },
+      "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Монгол MODIS 2000–2025 (5 км)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Улаанбаатар MODIS 2000–2025 (1 км)",
+      "South Gobi MODIS 2000-2025 (1 km)": "Өмнөговь MODIS 2000–2025 (1 км)", "Khövsgöl MODIS 2000-2025 (1 km)": "Хөвсгөл MODIS 2000–2025 (1 км)" },
   };
 
   const SCENE_MN = {
@@ -399,6 +403,9 @@
     "mn-dustdays10": "Тоосжих нөхцөлтэй өдөр (салхи ≥ 10 м/с)", "mn-snowdays": "Цасан бүрхүүлтэй өдөр",
     "mn-wetdays": "Нойтон өдөр (≥ 0.254 мм)", "mn-windydays": "Салхитай өдөр (≥ 8 м/с)",
     "mn-heavyrain": "Аадар борооны өдөр (≥ 10 мм)", "mn-rx1day": "Сарын хамгийн их хур тунадастай өдөр",
+    ...Object.fromEntries(["mn", "ub", "gobi", "khovsgol"].flatMap((r) => [
+      [`${r}-modis-lst-day`, "Гадаргын температур, өдөр (MODIS)"], [`${r}-modis-lst-night`, "Гадаргын температур, шөнө (MODIS)"],
+      [`${r}-modis-ndvi`, "Ногоон байдал 5–9-р сар (NDVI, MODIS)"], [`${r}-modis-snowdays`, "Цасан бүрхүүлтэй өдөр 11–3-р сар (MODIS)"]])),
   };
 
   const UNIT_MN = { "°C": "°C", "mm/day": "мм/өдөр", "m/s": "м/с", cm: "см", DU: "DU", fraction: "харьцаа",

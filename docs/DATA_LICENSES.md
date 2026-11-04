@@ -38,6 +38,15 @@ Official catalogue links, measurement limits, and which layers are implemented
 are in [FIRE_EARTH_ENGINE.md](FIRE_EARTH_ENGINE.md). Use actual acquisition years
 in credits when distributing reports or exports.
 
+The optional `modis-trend` workflow ([MODIS_TRENDS.md](MODIS_TRENDS.md)) reads
+MODIS Terra Collection 6.1 through Earth Engine (catalogue terms checked
+2026-11-04; the generated scenes are small derived products, not the source tiles):
+
+| Source | Terms / credit |
+|---|---|
+| MOD11A2.061 land surface temperature, MOD13A3.061 vegetation indices | NASA LP DAAC: "MODIS data and products acquired through the LP DAAC have no restrictions on subsequent use, sale, or redistribution"; cite per LP DAAC guidance (Wan, Hook & Hulley 2021; Didan 2021). |
+| MOD10A1.061 snow cover | NSIDC DAAC; cite Hall, D. K., G. A. Riggs and V. V. Salomonson, MODIS/Terra Snow Cover Daily L3 Global 500m SIN Grid, Version 61, doi:10.5067/MODIS/MOD10A1.061. |
+
 ## Material read but not redistributed
 
 | Source | Terms | How the project uses it |

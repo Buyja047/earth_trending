@@ -138,6 +138,22 @@ FDR and detectability as the precomputed scenes.
   holds tens of thousands of cells. The claude.ai preview of the page may not
   be allowed to reach AWS; the downloaded `TrendDetective.html` is.
 
+## MODIS scenes at 1 km and 5 km
+
+`modis-trend` (docs/MODIS_TRENDS.md) feeds MODIS Terra fields through the same
+`write_scene` pipeline: monthly clear-sky land surface temperature (MOD11A2, QA
+mandatory ≤ 1 and error ≤ 2 K, at least two composites per month), one value
+per year for growing-season NDVI (MOD13A3, May–September, SummaryQA ≤ 1) and
+for winter snow-covered days (MOD10A1, NDSI ≥ 40, clear observations on at
+least half the days, November–March). Cells are 5 km (mean of the native
+pixels) over Mongolia and 1 km (one pixel) in three 160 km boxes; nothing is
+interpolated and nothing is gap-filled. For yearly-sampled series the sampling
+interval is one year, so Weatherhead's constant scales by sqrt(12) and the
+AR(1) correction rests on 25 points, as for a single season in the viewer
+(§ One value per year). Terra's orbit drift (last manoeuvre 27 February 2020)
+is a documented transition tested as a step. The payloads carry annual series
+so the browser can re-test tens of thousands of cells when the years change.
+
 ## Step tests in live analysis
 
 The precomputed scenes test every cell for a jump at each documented

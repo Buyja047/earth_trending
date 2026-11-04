@@ -156,6 +156,10 @@ def _aggregate_masks(key, lat, lon, focus_rings):
         return "Antarctic sea-ice area (approx.)", lat2d < 0, "area_sum"
     if key == "focus":
         return "Mongolia (country mask)", points_in_rings(lon2d, lat2d, focus_rings), "mean"
+    if key == "box":
+        return "Box mean (cos-latitude weighted)", np.ones_like(lat2d, bool), "mean"
+    if key == "focus_part":
+        return "Mongolian part of the box", points_in_rings(lon2d, lat2d, focus_rings), "mean"
     raise KeyError(key)
 
 
@@ -209,8 +213,9 @@ def write_scene(spec_meta: dict, values, times, lat, lon, out_dir: Path, focus_r
     ny, nx = lat.size, lon.size
     sid = spec_meta["id"]
 
-    # per-cell series: monthly for regional scenes, annual means for the globe
-    if spec_meta["region"] == "global":
+    # per-cell series: monthly for regional scenes, annual means for the globe (and for scenes that ask
+    # for it: the MODIS grids have too many cells for the browser to re-test monthly series)
+    if spec_meta["region"] == "global" or spec_meta.get("series_kind") == "annual":
         years, ann = analysis.annual_means(res["anom"], res["t"])
         cell_series = np.full((ny * nx, years.size), np.nan)
         cell_series[res["valid"]] = ann[res["valid"]]

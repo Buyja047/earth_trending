@@ -87,6 +87,16 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   is not yet validated in this session because no Earthdata account is connected.
   Missing dates stay blank. [Setup and method](docs/DUST_MODIS.md).
 
+- **MODIS trends at 1 km and 5 km** (`modis-trend` command, Earth Engine): the
+  MERRA-2 cells are ~50 km and are never interpolated; instead separate
+  scenes from MODIS Terra (2000–2025) give daytime and night-time land
+  surface temperature, growing-season NDVI and winter snow-covered days at
+  5 km over Mongolia and at 1 km in three 160 km boxes (Ulaanbaatar, the
+  South Gobi mines, Khövsgöl), tested with the same statistics. Clear-sky
+  skin temperature over 26 years, not air temperature over 45: the scenes
+  say so, and Terra's orbit drift since 2020 is tested as a step. Setup,
+  rules and limits: [docs/MODIS_TRENDS.md](docs/MODIS_TRENDS.md).
+
 - **Earth Engine fire map** uses the existing **Risk zones** map, legend and
   details panel. The `fire-map` command reads actual Landsat / ERA5 pixels and
   creates `web/data/fire-risk.js`; no separate site or credentials in the browser.

@@ -38,7 +38,9 @@
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
     focus: "Монгол (улсын хилээр)", focus_part: "Хайрцаг доторх Монголын хэсэг",
     box: "Хайрцгийн дундаж (өргөргийн косинусаар жигнэсэн)" };
-  const SCENE_REGION_MN = { Globe: "Дэлхий", Mongolia: "Монгол", "Synthetic globe": "Синтетик бөмбөрцөг" };
+  const SCENE_REGION_MN = { Globe: "Дэлхий", Mongolia: "Монгол", "Synthetic globe": "Синтетик бөмбөрцөг",
+    "Ulaanbaatar, 160 km box": "Улаанбаатар, 160 км хайрцаг", "South Gobi mines, 160 km box": "Өмнөговийн уурхайнууд, 160 км хайрцаг",
+    "Khövsgöl, 160 km box": "Хөвсгөл, 160 км хайрцаг" };
   const NOTE_MN = {
     "Observation-corrected": "Ажиглалтаар засварласан хур тунадас: бага ба дунд өргөрөгт борооны хэмжүүрээр (CPCU), Африкт CMAP-аар засварладаг; 42.5–62.5° өргөрөгт загварын хур тунадас руу аажмаар шилжиж, 62.5°-аас хойш зөвхөн загварынх (Reichle нар 2017). Монгол (41–52°N) энэ шилжилтийн бүсэд оршдог тул энд гарах чиг хэсэгчлэн загвараас хамаарна.",
     "CERES SYN1deg merges": "CERES SYN1deg хэд хэдэн хиймэл дагуулыг нэгтгэдэг бөгөөд тэдгээрийн бүрэлдэхүүн цаг хугацааны явцад өөрчлөгддөг; эдгээр өөрчлөлтийн огноог энд шалгаагүй.",
@@ -835,7 +837,7 @@
   function placeLayout() {
     const ctx = map.ctx, sc = state.sc, z = map.view.z, list = [];
     if (state.ov.places) {
-      if (sc.region === "mongolia") list.push(...state.places.filter((p) => p.cc === "MN"));
+      if (sc.region === "mongolia" || (sc.focus && sc.region !== "box")) list.push(...state.places.filter((p) => p.cc === "MN"));
       else if (sc.region === "box") list.push(...state.places.filter((p) => p.cc === "MN" || p.kind === "capital"));
       else if (z >= 2) list.push(...state.places.filter((p) => p.kind === "capital"));
     }

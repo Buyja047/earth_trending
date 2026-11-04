@@ -58,6 +58,15 @@ PRODUCTS = {
         "record_start": "1998-01",
         "url": "https://registry.opendata.aws/nasa-power/",
     },
+    "modis": {
+        "name": "MODIS Terra (Collection 6.1, via Google Earth Engine)",
+        "kind": "mission",
+        "source": "NASA LP DAAC MOD11A2 (land surface temperature, 1 km, 8-day), MOD13A3 (NDVI, 1 km, monthly) "
+                  "and NSIDC MOD10A1 (snow cover, 500 m, daily), read through Google Earth Engine",
+        "native_res": "1 km (snow cover 500 m)",
+        "record_start": "2000-03",
+        "url": "https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD11A2",
+    },
 }
 
 LAND_VARS = {"GWETROOT", "GWETTOP", "GWETPROF", "SNODP", "FRSNO", "EVLAND", "PRECSNOLAND",
@@ -66,6 +75,22 @@ LAND_VARS = {"GWETROOT", "GWETTOP", "GWETPROF", "SNODP", "FRSNO", "EVLAND", "PRE
 AEROSOL_VARS = ["DUSMASS", "DUSMASS25", "DUCMASS", "DUEXTTAU"]
 
 TRANSITIONS = [
+    {
+        "products": ["modis"], "vars": ["LST_Day_1km", "LST_Night_1km", "NDVI", "SNOWDAYS"], "date": "2020-03",
+        "verified": True,
+        "label": "Terra orbit drift begins: last inclination manoeuvre 27 Feb 2020, 10:30 equator crossing "
+                 "moving earlier since (10:15 by autumn 2022). A gradual change tested here as a step.",
+        "source": "NASA Terra project (Terra's orbit changes; last manoeuvre 27 February 2020; 10:15 crossing by "
+                  "fall 2022); LP DAAC Terra orbit drift notice: earlier overpass means lower sun, longer "
+                  "shadows and lower daytime surface temperatures",
+    },
+    {
+        "products": ["modis"], "vars": ["LST_Day_1km", "LST_Night_1km", "NDVI", "SNOWDAYS"], "date": None,
+        "verified": False,
+        "label": "Terra crossing time moved from 10:45 to 10:30 during 2000-2002 (month not fixed); many MODIS "
+                 "climate studies omit 2000-2002",
+        "source": "NASA Terra data record page",
+    },
     {
         "products": ["merra2"], "vars": ["TO3"], "date": "2004-10", "verified": True,
         "label": "Ozone input switches from SBUV to Aura OMI + MLS",
@@ -153,6 +178,13 @@ TRANSITIONS = [
 ]
 
 NOTES = {
+    ("modis", None): (
+        "MODIS sees the surface only under clear sky, at the Terra overpass (about 10:30 and 22:30 local "
+        "time). A month's value is the mean of its clear observations, so a cloudier decade is also a "
+        "differently sampled one; months without enough clear observations are left missing and the cell "
+        "is excluded rather than gap-filled. Surface temperature is the skin temperature of the ground, "
+        "snow or canopy, not the 2 m air temperature of the reanalysis scenes."
+    ),
     ("merra2aer", None): (
         "MERRA-2 aerosols are model fields nudged by assimilated aerosol optical depth: none "
         "over land before 2000, MISR over bright deserts only from February 2000 to June "

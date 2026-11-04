@@ -146,9 +146,17 @@ def season_means(anom: np.ndarray, t: np.ndarray, m0: int, m1: int) -> tuple[np.
 
 
 def annual_means(anom: np.ndarray, t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Calendar-year means of monthly anomalies along the last axis (full years only)."""
+    """Calendar-year means along the last axis, full years only.
+
+    A full year holds as many samples as the sampling interval implies: 12 for monthly
+    series, 1 for series that already carry one value per year (the MODIS seasons).
+    """
+    t = np.asarray(t, dtype=float)
     yr = np.floor(t).astype(int)
+    per_year = int(round(1 / np.median(np.diff(t)))) if t.size > 1 else 1
     years = np.unique(yr)
-    full_years = [y for y in years if np.sum(yr == y) == 12]
+    full_years = [y for y in years if np.sum(yr == y) == per_year]
+    if not full_years:
+        return np.array([], dtype=int), np.empty(anom.shape[:-1] + (0,))
     out = np.stack([anom[..., yr == y].mean(axis=-1) for y in full_years], axis=-1)
     return np.array(full_years), out
