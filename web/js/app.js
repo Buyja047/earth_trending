@@ -1330,23 +1330,50 @@
     el.innerHTML = `<p class="eyebrow">${esc(t("d_dataset"))}</p><h3>${esc(title)}</h3>
       <p class="small muted">${esc(sc.product_name)} · ${esc(periodText())}</p>
       <p class="headline">${head}</p>
-      <div class="chips">${chips.map(([v, l]) => `<div class="chip"><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
+      <div class="chips">${chips.map(([v, l]) => `<div class="chip"${gl(l)}><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
       ${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}
       ${cmpSummary()}`;
+  }
+  // glossary entries behind the statistic labels and the chips (hover for the definition; Help → Glossary lists them)
+  const GLOSS_FOR = { c_naive: "pnaive", c_fdr: "fdr", c_robust: "pols", c_notyet: "detect", c_steps: "step", s_ci: "sen", s_pnaive: "pnaive", s_pmk: "pmk",
+    s_pols: "pols", s_phi: "phi", s_sigma: "sigma", s_mdt: "mdt", s_nstar: "detect", s_detect_year: "detect" };
+  function gl(key) { const g = (t("glossary") || {})[GLOSS_FOR[key]]; return g ? ` title="${esc(g[1])}"` : ""; }
+  const dt = (key, extra = "") => `<dt${gl(key)}>${esc(t(key))}${extra}</dt>`;
+  function showGlossary() {
+    const g = t("glossary") || {};
+    modal(`<h2>${esc(t("glossary_title"))}</h2><dl class="kv gloss">${Object.values(g).map(([term, def]) => `<dt>${esc(term)}</dt><dd>${esc(def)}</dd>`).join("")}</dl>`);
+  }
+  // what if the trend were larger or smaller: the years Weatherhead's n* needs at this selection's noise and memory
+  function whatIfBlock(st) {
+    if (!(st.sigma > 0) || !Number.isFinite(st.phi)) return "";
+    const f = unitFactor(), u = unitLabel(state.sc.units);
+    const base = Math.max(Math.abs(st.sen || 0), st.mdt || 0) * f, max = niceLim(Math.max(1e-6, base * 3));
+    state.whatIf = { sigma: st.sigma, phi: st.phi, step: st.years / st.m, first: (state.res && state.res.y0eff) || state.y0, f, u, max };
+    const x = Math.min(max, Math.abs(st.sen || 0) * f || max / 3);
+    return `<div class="whatif"><p class="eyebrow">${esc(t("wi_label"))}</p>
+      <label><input type="range" id="wi" min="0" max="${max}" step="${max / 200}" value="${x}" aria-label="${esc(t("wi_label"))}"> <b class="num" id="wi-val">±${fmt(x)}</b> <span class="muted">${esc(u)} ${esc(t("unit_decade"))}</span></label>
+      <p class="small" id="wi-out">${esc(whatIfText(x))}</p><p class="small muted">${esc(t("wi_note"))}</p></div>`;
+  }
+  function whatIfText(x) {
+    const w = state.whatIf;
+    if (!w || !(x > 0)) return t("wi_zero");
+    const n = S.yearsToDetect(w.sigma, w.phi, x / w.f / 10, w.step);
+    if (!Number.isFinite(n) || n > 1e4) return t("wi_never");
+    return t("wi_out", { x: fmt(x), u: w.u, n: fmt(n, 2), y: w.first + Math.max(1, Math.ceil(n)) - 1 });
   }
   function statsList(st, sc, extra = "") {
     const f = unitFactor();
     return `<dl class="kv">
-      <dt>${esc(t("s_ci"))}</dt><dd>[${fmt(st.lo * f)}, ${fmt(st.hi * f)}]</dd>
-      <dt>${esc(t("s_pnaive"))}</dt><dd>${fmtP(st.pNaive)}</dd>
-      <dt>${esc(t("s_pmk"))}</dt><dd>${fmtP(st.pMk)}</dd>
-      <dt>${esc(t("s_pols"))}</dt><dd>${fmtP(st.pOls)}</dd>
+      ${dt("s_ci")}<dd>[${fmt(st.lo * f)}, ${fmt(st.hi * f)}]</dd>
+      ${dt("s_pnaive")}<dd>${fmtP(st.pNaive)}</dd>
+      ${dt("s_pmk")}<dd>${fmtP(st.pMk)}</dd>
+      ${dt("s_pols")}<dd>${fmtP(st.pOls)}</dd>
       <div class="sep"></div>
-      <dt>${esc(t("s_phi"))}</dt><dd>${fmt(st.phi, 2)}</dd>
-      <dt>${esc(t("s_sigma"))} (${esc(unitLabel(sc.units))})</dt><dd>${fmt(st.sigma)}</dd>
-      <dt>${esc(t("s_mdt"))}</dt><dd>±${fmt(st.mdt * f)}</dd>
-      <dt>${esc(t("s_nstar"))}</dt><dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
-      <dt>${esc(t("s_detect_year"))}</dt><dd>${esc(detectShort(detectYear(st.nstar, st.sen, st.lo, st.hi, st.phi, st.m)))}</dd>
+      ${dt("s_phi")}<dd>${fmt(st.phi, 2)}</dd>
+      ${dt("s_sigma", ` (${esc(unitLabel(sc.units))})`)}<dd>${fmt(st.sigma)}</dd>
+      ${dt("s_mdt")}<dd>±${fmt(st.mdt * f)}</dd>
+      ${dt("s_nstar")}<dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
+      ${dt("s_detect_year")}<dd>${esc(detectShort(detectYear(st.nstar, st.sen, st.lo, st.hi, st.phi, st.m)))}</dd>
       ${extra}</dl><p class="small muted">${esc(t("s_units", { u: unitText(sc) }))}</p>`;
   }
   function stepRows(i) {
@@ -1381,7 +1408,8 @@
         ${statsList({ sen: c.sen[i], lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
           mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years, m: cellSamples() }, sc,
           `<dt>${esc(t(se ? "s_mean_all" : "s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
-          (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
+          (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}
+        ${whatIfBlock({ sigma: c.sigma[i], phi: c.phi[i], sen: c.sen[i], mdt: c.mdt[i], years: state.res.years, m: cellSamples() })}`;
       const chart = se ? { t: cube.years.map((v) => v + cube.off), y: ann.vals, annual: true }
         : { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual" };
       seriesChart($("#cellchart"), Object.assign(chart, { unit: unitLabel(sc.units),
@@ -1428,7 +1456,8 @@
       <p class="small muted">${esc(t("box_note", { n: nf(sel.cells.length), kind }))}</p>${pill(st)}
       <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
       <div id="cellchart"></div>
-      ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}`;
+      ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}
+      ${whatIfBlock({ sigma: r.sigma, phi: r.phi, sen: r.sen * 10, mdt: r.mdt * 10, years: r.years, m: r.n })}`;
     seriesChart($("#cellchart"), { t: cube.years.map((v) => v + cube.off), y: annVals, annual: true, unit: unitLabel(sc.units),
       trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
   }
@@ -1976,7 +2005,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         { label: t("cases_board"), act: () => window.TDCases.board() }, "-",
         ...(window.TDCases ? window.TDCases.list() : []).map((c) => ({ label: c.title[L()] || c.title.en, cls: ck(window.TDCases.current() === c.id), act: () => window.TDCases.open(c.id) }))] },
       { id: "help", label: t("m_help"), items: [
-        { label: t("help_guide"), act: showGuide }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
+        { label: t("help_guide"), act: showGuide }, { label: t("help_glossary"), act: showGlossary }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
     ];
   }
   let openMenu = null;
@@ -2273,7 +2302,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     }
     return [87.5, 41, 120.5, 52.5];
   }
-  async function openLive() {
+  async function openLive(forCase) {
+    live.forCase = !!forCase;
     if (!live.cat) {
       try { live.cat = await loadPayload("power-catalog"); } catch (e) { modal(`<p>${esc(t("live_fail", { e: e.message }))}</p>`); return; }
     }
@@ -2342,6 +2372,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       $("#modal").hidden = true;
       await showScene(sc.id);
       setTab("map");
+      // started from the case board: present the result as a case file
+      if (live.forCase && window.TDCases) { live.forCase = false; await window.TDCases.openOwn(sc); }
     } catch (err) {
       live.busy = false;
       const code = err && err.code;
@@ -2471,6 +2503,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       }
     });
     $("#apply").addEventListener("click", applyYears);
+    $("#inspector").addEventListener("input", (e) => {
+      if (e.target.id !== "wi") return;
+      const x = +e.target.value;
+      $("#wi-val").textContent = "±" + fmt(x); $("#wi-out").textContent = whatIfText(x);
+    });
     $("#modal").addEventListener("input", (e) => { if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#modal").addEventListener("change", (e) => { if (e.target.id === "lv-prod") liveFillProduct(false); else if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
@@ -2571,7 +2608,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   // toolbar uses; the case engine only sequences it.
   window.TDApp = {
     state, map, cmp, isRisk,
-    showScene, openRisk, configure, setLayer, setTab, setView, setCompare, cmpLoad, renderAll, drawMap, resetView, zoneInfo,
+    showScene, openRisk, configure, setLayer, setTab, setView, setCompare, cmpLoad, renderAll, drawMap, resetView, zoneInfo, openLive,
     availLayers, modal, closeModal: () => { $("#modal").hidden = true; },
     zoomTo(lon, lat, z) { Object.assign(map.view, { z, lon, lat }); },
     clearSel() { state.sel = null; state.searched = null; },

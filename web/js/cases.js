@@ -316,6 +316,55 @@
       ],
     },
     {
+      id: "dzud", tag: "hazard",
+      title: B("Are the ingredients of dzud changing?", "Зудын найрлага өөрчлөгдөж байна уу?"),
+      question: B("A dry summer, deep snow, a cold winter: each ingredient tested on its own over 45 years, with no dzud index invented.",
+        "Хуурай зун, зузаан цас, хүйтэн өвөл: найрлага бүрийг 45 жилийн хугацаанд тус тусад нь шалгасан; зудын индекс зохиогоогүй."),
+      steps: [
+        { action: { scene: "mn-soil", view: "map", layer: "trend", season: "jja", years: "full", zoom: "reset", sel: null },
+          title: B("The summer before: soil moisture", "Өмнөх зун: хөрсний чийг"),
+          text: B("Dzud begins in summer. Poor pasture after a dry June–August leaves animals thin before the cold. Root-zone soil wetness (a 0–1 index from MERRA-2) in summer, 1981–2025, every cell tested.",
+            "Зуд зунаас эхэлдэг. Хуурай 6–8-р сарын дараах муу бэлчээр малыг хүйтнээс өмнө турааж орхино. Зуны үндэсний давхаргын хөрсний чийг (MERRA-2-ийн 0–1 индекс), 1981–2025, нүд бүрийг шалгасан."),
+          evidence: (c) => join(B(`Summer, Mongolia: ${meanLine(c, c.rs, c.unit).en}: ${trendWord(c, c.rs).en}`, `Зун, Монгол: ${meanLine(c, c.rs, c.unit).mn}: ${trendWord(c, c.rs).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-snowdays", season: "ndjfm", years: "full", layer: "trend", zoom: "reset", sel: null },
+          title: B("Snow-covered days, November–March", "Цасан бүрхүүлтэй өдрүүд, 11–3-р сар"),
+          text: B("Days per month with the ground under snow (MERRA-2 snow cover, calibrated against MODIS). Snow that stays locks the pasture away; more snow days is the white-dzud ingredient.",
+            "Газар цасан дор байх сарын өдрийн тоо (MODIS-той тохируулсан MERRA-2-ийн цасан бүрхүүл). Тогтсон цас бэлчээрийг хаадаг; цасан өдөр олширвол цагаан зудын найрлага."),
+          evidence: (c) => join(B(`Nov–Mar, Mongolia: ${meanLine(c, c.rs, c.unit).en}: ${trendWord(c, c.rs).en}`, `11–3-р сар, Монгол: ${meanLine(c, c.rs, c.unit).mn}: ${trendWord(c, c.rs).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-snow", season: "ndjfm", years: "full", layer: "trend", zoom: "reset", sel: null },
+          title: B("Snow depth", "Цасны зузаан"),
+          text: B("The same months, snow depth instead of cover. Depth is what buries the grass; cover is what reflects the sun and keeps the ground cold.",
+            "Ижил сарууд, бүрхүүлийн оронд цасны зузаан. Өвсийг булдаг нь зузаан; нарыг ойлгож газрыг хүйтэн байлгадаг нь бүрхүүл."),
+          evidence: (c) => join(B(`Nov–Mar, Mongolia: ${meanLine(c, c.rs, c.unit).en}: ${trendWord(c, c.rs).en}`, `11–3-р сар, Монгол: ${meanLine(c, c.rs, c.unit).mn}: ${trendWord(c, c.rs).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-t2m", season: "djf", years: "full", layer: "trend", zoom: "reset", sel: null },
+          title: B("Winter cold", "Өвлийн хүйтэн"),
+          text: B("December–February air temperature. The warming of the annual mean is not a winter story: winters have not warmed detectably, so the cold ingredient of dzud has not weakened in this record.",
+            "12–2-р сарын агаарын температур. Жилийн дундажийн дулаарал өвлийн түүх биш: өвөл илрэхүйц дулаараагүй тул зудын хүйтний найрлага энэ бүртгэлд сулраагүй."),
+          evidence: (c) => join(B(`Winter, Mongolia: ${meanLine(c, c.rs, c.unit).en}: ${trendWord(c, c.rs).en}`, `Өвөл, Монгол: ${meanLine(c, c.rs, c.unit).mn}: ${trendWord(c, c.rs).mn}`), cellsLine(c)) },
+        { action: { scene: "mn-snowdays", season: "ndjfm", years: "full", layer: "zone", zoom: "reset", sel: null },
+          title: B("Where snow days are high, and where they are rising", "Цасан өдөр хаана олон, хаана олширч байна"),
+          text: B("The risk-zone layer marks cells in the top third of this map for snow days and, separately, cells where they are rising after FDR. Count the cells that are both.",
+            "Эрсдэлийн бүсийн давхарга цасан өдрөөр энэ зургийн дээд гуравны нэгд орох нүдийг, мөн тусад нь FDR-ийн дараа олширч буй нүдийг тэмдэглэнэ. Хоёулаа байгаа нүдийг тоол."),
+          evidence: (c) => (c.zone ? B(`${c.nf(c.zone.counts[4])} cells high and rising · ${c.nf(c.zone.counts[3])} high · ${c.nf(c.zone.counts[2])} rising`,
+            `${c.nf(c.zone.counts[4])} нүд өндөр бөгөөд өсөж буй · ${c.nf(c.zone.counts[3])} өндөр · ${c.nf(c.zone.counts[2])} өсөж буй`) : NA) },
+        { action: { scene: "mn-snowdays", season: "ndjfm", years: "full", layer: "trend", zoom: "reset", sel: null }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("Ingredient by ingredient; the compound event itself is not in these data.", "Найрлага тус бүрээр; нийлмэл үзэгдэл өөрөө энэ өгөгдөлд байхгүй."),
+          verdict: (c) => ({
+            what: B(`Snow-covered days in November–March over Mongolia: ${trendWord(c, c.rs).en}. See steps 1, 3 and 4 for summer soil, snow depth and winter cold.`,
+              `Монголын 11–3-р сарын цасан бүрхүүлтэй өдөр: ${trendWord(c, c.rs).mn}. Зуны хөрс, цасны зузаан, өвлийн хүйтнийг 1, 3, 4-р алхамд үз.`),
+            where: B(`${c.nf(c.k.fdr_up)} cells with more snow days, ${c.nf(c.k.fdr_down)} with fewer, of ${c.nf(c.k.valid)} after FDR.`, `${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_up)} нь цасан өдөр олширч, ${c.nf(c.k.fdr_down)} нь цөөрч байна (FDR-ийн дараа).`),
+            howmuch: B(`Country mean ${meanLine(c, c.rs, c.unit).en}.`, `Улсын дундаж ${meanLine(c, c.rs, c.unit).mn}.`),
+            significant: B(`Corrected p ${c.fmtP(c.rs.p_mk)} for snow days; the other ingredients carry their own p in their steps.`, `Цасан өдрийн засварласан p ${c.fmtP(c.rs.p_mk)}; бусад найрлага өөрсдийн алхамд өөрийн p-тэй.`),
+            when: whenLine(c, c.rs),
+            caveats: [B("Dzud is a compound event: summer drought, snow, cold and herd size together. No index of it is computed here, and livestock numbers are not in these data.",
+              "Зуд бол нийлмэл үзэгдэл: зуны ган, цас, хүйтэн, малын тоо хамтдаа. Энд түүний индексийг тооцоогүй бөгөөд малын тоо энэ өгөгдөлд байхгүй."),
+              B("MERRA-2 snow cover was calibrated against MODIS over Mongolia (docs/METHODS.md); a 50 km cell cannot show one valley's ice crust (black dzud).",
+                "MERRA-2-ийн цасан бүрхүүлийг Монгол дээр MODIS-той тохируулсан (docs/METHODS.md); 50 км-ийн нүд нэг хөндийн мөсөн царцдасыг (хар зуд) харуулж чадахгүй.")],
+          }) },
+      ],
+    },
+    {
       id: "fire-today", tag: "hazard",
       title: B("How fire-prone is the land around Ulaanbaatar on a given day?", "Улаанбаатар орчмын газар тухайн өдөр түймэрт хэр өртөмтгий вэ?"),
       question: B("Landsat and ERA5-Land pixels through Google Earth Engine, on dates you choose; a relative map, not a probability.",
@@ -423,9 +472,74 @@
     },
   ];
 
+  // ------------------------------------------------------------ "your own case": a live NASA POWER scene as a case
+  // Built at run time from a scene the live analysis produced; the same step vocabulary, so the engine needs nothing new.
+  const dynamic = new Map();
+  function template(sc) {
+    const where = sc.region_name || "", name = `${sc.long_name || sc.var} (${sc.var})`;
+    const srcEn = sc.kind === "mission" ? "CERES satellites" : "the MERRA-2 reanalysis", srcMn = sc.kind === "mission" ? "CERES хиймэл дагуул" : "MERRA-2 дахин шинжилгээ";
+    const rmName = (c) => (c.sc.region_means && c.sc.region_means[0] ? c.A.regionName(c.sc.region_means[0]) : where);
+    return {
+      id: `own-${sc.id}`, tag: "global", own: true,
+      title: B(`${name} · ${where}`, `${name} · ${where}`),
+      question: B(`Your own case: ${sc.product_name || ""} read live from NASA POWER on AWS, every cell tested in your browser.`,
+        `Таны өөрийн хэрэг: ${sc.product_name || ""} NASA POWER-оос AWS дээр шууд уншиж, нүд бүрийг таны хөтөч дээр шалгасан.`),
+      steps: [
+        { action: { scene: sc.id, view: "map", layer: "trend", zoom: "reset", sel: null },
+          title: B("What the map shows", "Газрын зураг юу харуулж байна"),
+          text: B(`Monthly values of ${name} from ${srcEn} for your box, read just now. Red or blue by the sign of the Sen slope; full colour where the cell's trend survives the false discovery rate test across the box; faded where it does not.`,
+            `${srcMn}-ийн ${name}-ийн сарын утга, таны хайрцагт, дөнгөж уншсан. Sen-ий налуугийн тэмдгээр улаан эсвэл цэнхэр; нүдний чиг хайрцаг даяарх хуурамч нээлтийн хувийн тестийг давсан газарт тод, даваагүй газарт бүдэг.`),
+          evidence: (c) => join(cellsLine(c), B(`${rmName(c)}: ${meanLine(c, c.rs, c.unit).en}`, `${rmName(c)}: ${meanLine(c, c.rs, c.unit).mn}`)) },
+        { action: { layer: "verdict" },
+          title: B("A verdict for every cell", "Нүд бүрт дүгнэлт"),
+          text: B("Detected and confirmed by a second, parametric test; detected by one test only; not yet detectable with a record this short; excluded for missing months. “Not yet” is not “no change”.",
+            "Илэрсэн бөгөөд хоёр дахь, параметрт тест баталсан; зөвхөн нэг тест илрүүлсэн; ийм богино бүртгэлээр хараахан илрэхгүй; сар дутуу тул хассан. «Хараахан биш» гэдэг нь «өөрчлөлтгүй» гэсэн үг биш."),
+          evidence: (c) => B(`${c.nf(c.k.robust)} confirmed by both tests · ${c.nf(c.k.not_yet)} not yet detectable · ${c.nf(c.k.gappy || 0)} excluded`,
+            `${c.nf(c.k.robust)} нүдийг хоёр тест баталсан · ${c.nf(c.k.not_yet)} хараахан илрэхгүй · ${c.nf(c.k.gappy || 0)} хассан`) },
+        { action: { layer: "detect" },
+          title: B("The smallest trend this record could detect", "Энэ бүртгэлийн илрүүлж чадах хамгийн бага чиг"),
+          text: B("Given each cell's noise and month-to-month memory φ: the smallest trend detectable with 90 % power. Where the measured trend is below it, “not detected” is the expected outcome even if the trend is real.",
+            "Нүд бүрийн шуугиан ба сар хоорондын санах ой φ-г тооцоход 90 %-ийн хүчээр илрүүлж чадах хамгийн бага чиг. Хэмжсэн чиг үүнээс бага газарт чиг бодит байсан ч «илрээгүй» гэсэн үр дүн хүлээгдэнэ."),
+          evidence: (c) => B(`${rmName(c)}: measured ${c.signed(c.rs.sen)} vs smallest detectable ±${c.fmt(c.rs.mdt)} ${c.unit} per decade; φ = ${c.fmt(c.rs.phi, 2)}`,
+            `${rmName(c)}: хэмжсэн ${c.signed(c.rs.sen)}, илрүүлж чадах хамгийн бага ±${c.fmt(c.rs.mdt)} ${c.unit} арван жилд; φ = ${c.fmt(c.rs.phi, 2)}`) },
+        { action: { layer: "emerge" },
+          title: B("The year it would show", "Харагдах он"),
+          text: B("If the measured trend continues, the year it reaches 90 % detection probability (Weatherhead et al. 1998), with a range from the Sen confidence interval.",
+            "Хэмжсэн чиг үргэлжилбэл 90 %-ийн илрэх магадлалд хүрэх он (Weatherhead нар, 1998), муж нь Sen-ий итгэлийн завсраас."),
+          evidence: (c) => B(`${rmName(c)}: ${c.detectSentence(c.det(c.rs))}`, `${rmName(c)}: ${c.detectSentence(c.det(c.rs))}`) },
+        { action: { layer: "trend" }, verdict: true,
+          title: B("Verdict", "Дүгнэлт"),
+          text: B("The four questions, answered for your variable and your box.", "Дөрвөн асуултад таны хувьсагч, таны хайрцгийн хувьд хариулав."),
+          verdict: (c) => {
+            const li = c.sc.live_info || {}, tr = c.sc.transitions || [];
+            return {
+              what: B(`${name} over ${where}: ${trendWord(c, c.rs).en}.`, `${where} дээрх ${name}: ${trendWord(c, c.rs).mn}.`),
+              where: B(`${c.nf(c.k.fdr_up)} cells up and ${c.nf(c.k.fdr_down)} down after FDR, of ${c.nf(c.k.valid)}.`, `${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_up)} нь өсөж, ${c.nf(c.k.fdr_down)} нь буурч байна (FDR-ийн дараа).`),
+              howmuch: B(`${rmName(c)} ${meanLine(c, c.rs, c.unit).en}.`, `${rmName(c)} ${meanLine(c, c.rs, c.unit).mn}.`),
+              significant: B(`Corrected p ${c.fmtP(c.rs.p_mk)}; ${c.res.pstar > 0 ? `FDR threshold p* = ${c.fmt(c.res.pstar, 3)}` : "no cell passes the FDR test"}.`,
+                `Засварласан p ${c.fmtP(c.rs.p_mk)}; ${c.res.pstar > 0 ? `FDR босго p* = ${c.fmt(c.res.pstar, 3)}` : "FDR тестийг нэг ч нүд давахгүй"}.`),
+              when: whenLine(c, c.rs),
+              caveats: [B(`Read live from NASA POWER on AWS (${li.mb || "?"} MB, ${li.chunks || "?"} chunks); nothing was uploaded.`, `NASA POWER-оос AWS дээр шууд уншсан (${li.mb || "?"} МБ, ${li.chunks || "?"} хэсэг); юу ч илгээгээгүй.`),
+                ...tr.filter((x) => x.date && +x.date.slice(0, 4) >= c.st.y0 && +x.date.slice(0, 4) <= c.st.y1).map((x) => B(`Documented source change ${x.date || "?"}: ${x.label}${c.sc.steps && c.sc.steps.length ? " (tested as a step)" : " (not tested as a step in live mode; look at the series around that date)"}.`,
+                  `Баримтжуулсан эх сурвалжийн шилжилт ${x.date || "?"}: ${x.label}${c.sc.steps && c.sc.steps.length ? " (алхам байдлаар шалгасан)" : " (шууд горимд алхамаар шалгаагүй; тэр огнооны орчим цувааг харна уу)"}.`)),
+                sc.kind === "mission"
+                  ? B("CERES satellite products merge several instruments whose make-up changes over time.", "CERES хиймэл дагуулын бүтээгдэхүүн бүрэлдэхүүн нь цаг хугацааны явцад өөрчлөгддөг хэд хэдэн багажийг нэгтгэдэг.")
+                  : B("MERRA-2 is a reanalysis: a model constrained by observations, not a station network.", "MERRA-2 бол дахин шинжилгээ: ажиглалтаар хязгаарласан загвар, станцын сүлжээ биш.")],
+            };
+          } },
+      ],
+    };
+  }
+  // open a live scene as a case (called by the workbench when the live analysis was started from the case board)
+  function openOwn(sc) {
+    const c = template(sc);
+    dynamic.set(c.id, c);
+    return open(c.id);
+  }
+
   // ------------------------------------------------------------ pure API (node-testable)
   const list = () => CASES.map((c) => ({ id: c.id, tag: c.tag, title: c.title, question: c.question, steps: c.steps.length }));
-  const get = (id) => CASES.find((c) => c.id === id) || null;
+  const get = (id) => CASES.find((c) => c.id === id) || dynamic.get(id) || null;
   // problems with the definitions against a scene index and place list: [] when all is well
   function check(sceneIds, placeNames) {
     const out = [], ids = new Set();
@@ -536,12 +650,54 @@
     try { history.replaceState(null, "", sc ? "#" + (A().isRisk() ? `risk/${sc.kind.replace("-risk", "")}/${sc.period.start}` : sc.id) : " "); } catch (e) { /* file:// */ }
   }
   function board() {
-    const l = lang(), cards = CASES.map((c) => `<button type="button" class="casecard" data-case="${c.id}"><span class="tag">${esc(t("cases_tag_" + c.tag))}</span><b>${esc(tx(c.title))}</b><span>${esc(tx(c.question))}</span><small>${esc(t("cases_steps", { n: c.steps.length }))}</small></button>`).join("");
+    const cards = CASES.map((c) => `<button type="button" class="casecard" data-case="${c.id}"><span class="tag">${esc(t("cases_tag_" + c.tag))}</span><b>${esc(tx(c.title))}</b><span>${esc(tx(c.question))}</span><small>${esc(t("cases_steps", { n: c.steps.length }))}</small></button>`).join("")
+      + `<button type="button" class="casecard own" data-case-nav="own"><span class="tag">${esc(t("cases_tag_own"))}</span><b>${esc(t("cases_own"))}</b><span>${esc(t("cases_own_q"))}</span><small>${esc(t("cases_steps", { n: 5 }))}</small></button>`;
     A().modal(`<h2>${esc(t("cases_title"))}</h2><p class="muted">${esc(t("cases_intro"))}</p><div class="caseboard">${cards}</div>
       <p class="small muted">${esc(t("cases_or"))} <button type="button" class="linkbtn" data-case-nav="guide">${esc(t("cases_guide"))}</button></p>`);
     $("#modalbox").classList.add("wide");
     $("#modalclose").textContent = t("cases_workbench");
-    void l;
+  }
+  // ---- the verdict as a 1200 × 630 image (for the project page, a post, a slide)
+  function cardPng() {
+    const c = get(cur.id), s = c.steps[cur.step], a = A();
+    if (!s.verdict || !a.state.res) return;
+    const v = safe(s.verdict, context()) || {}, W = 1200, H = 630, cv = document.createElement("canvas");
+    cv.width = W * 2; cv.height = H * 2;
+    const g = cv.getContext("2d"); g.scale(2, 2);
+    g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.fillStyle = "#000"; g.fillRect(0, 0, W, 8);
+    const sans = '"IBM Plex Sans", system-ui, sans-serif', disp = '"Archivo", "Arial Narrow", system-ui, sans-serif', mono = '"IBM Plex Mono", ui-monospace, monospace';
+    const wrap = (text, x, y, maxW, lh, font, color = "#000", maxLines = 99) => {
+      g.font = font; g.fillStyle = color;
+      const words = String(text).split(/\s+/); let line = "", yy = y, lines = 0;
+      for (const w of words) {
+        const test = line ? line + " " + w : w;
+        if (g.measureText(test).width > maxW && line) { g.fillText(line, x, yy); line = w; yy += lh; if (++lines >= maxLines) { line = ""; break; } } else line = test;
+      }
+      if (line) { g.fillText(line, x, yy); yy += lh; }
+      return yy;
+    };
+    g.font = `600 13px ${sans}`; g.fillStyle = "#6a6a6a"; g.fillText(`TREND DETECTIVE · ${t("cases_title").toUpperCase()} · ${t("cases_verdict").toUpperCase()}`, 48, 44);
+    let y = wrap(tx(c.title), 48, 84, W - 96, 36, `800 30px ${disp}`, "#000", 2);
+    y = wrap(tx(c.question), 48, y + 4, W - 96, 21, `400 15px ${sans}`, "#333", 2) + 10;
+    g.fillStyle = "#000"; g.fillRect(48, y, W - 96, 1); y += 18;
+    for (const [k, val] of [["what", v.what], ["where", v.where], ["howmuch", v.howmuch], ["sig", v.significant], ["when", v.when]]) {
+      if (!val || y > H - 110) continue;
+      g.font = `600 14px ${sans}`; g.fillStyle = "#000"; g.fillText(t("cases_" + k), 48, y);
+      y = Math.max(y + 19, wrap(tx(val), 230, y, W - 278, 19, `400 14px ${sans}`, "#000", 3)) + 6;
+    }
+    if (v.caveats && v.caveats.length && y < H - 90) {
+      g.font = `600 11px ${sans}`; g.fillStyle = "#6a6a6a"; g.fillText(t("cases_caveats").toUpperCase(), 48, y + 6); y += 24;
+      for (const x of v.caveats.slice(0, 2)) { if (y > H - 70) break; y = wrap("· " + tx(x), 48, y, W - 96, 16, `400 12px ${sans}`, "#333", 2) + 2; }
+    }
+    const sc = a.state.sc, foot = `${a.sceneTitle(sc)}${a.isRisk() ? "" : " · " + a.yrsText()} · ${location.href.split("#")[0]}#case/${c.id}/${cur.step + 1}`;
+    g.fillStyle = "#000"; g.fillRect(48, H - 44, W - 96, 1);
+    g.font = `400 11px ${mono}`; g.fillStyle = "#6a6a6a"; g.fillText(foot.slice(0, 150), 48, H - 24);
+    cv.toBlob((blob) => {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob); link.download = `trend-detective-${c.id}.png`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }, "image/png");
   }
   function render() {
     const el = $("#casebar"); if (!el) return;
@@ -562,16 +718,18 @@
       const ev = ctx && s.evidence ? safe(s.evidence, ctx) : null;
       body = `<p>${esc(tx(s.text))}</p>${ev && tx(ev) ? `<p class="evidence"><b>${esc(t("cases_evidence"))}:</b> ${esc(tx(ev))}</p>` : ""}`;
     }
-    const k = CASES.indexOf(c), nextCase = CASES[(k + 1) % CASES.length];
+    const k = CASES.indexOf(c), nextCase = CASES[(k + 1) % CASES.length], url = location.href.split("#")[0] + `#case/${cur.id}/${cur.step + 1}`;
+    const qr = qrOpen && !c.own && root.TDQR ? `<div class="qr">${root.TDQR.svg(url, 3, 2)}<span class="small muted">${esc(t("cases_qr_hint"))}</span></div>` : "";
     el.innerHTML = `<div class="casehead"><span class="eyebrow">${esc(t("cases_step", { n: cur.step + 1, m: n }))}</span><b>${esc(tx(c.title))}</b><span class="dots" aria-hidden="true">${dots}</span>
         <button type="button" class="btn" data-case-nav="exit" aria-label="${esc(t("cases_exit"))}">✕ ${esc(t("cases_exit"))}</button></div>
       <div class="casebody"><h3>${esc(tx(s.title))}</h3>${away ? `<p class="warn"><span class="icon" aria-hidden="true">!</span><span>${esc(t("cases_left"))} <button type="button" class="linkbtn" data-case-nav="resume">${esc(t("cases_resume"))}</button></span></p>` : ""}${body}</div>
       <div class="casenav"><button type="button" class="btn" data-case-nav="prev" ${cur.step === 0 || busy ? "disabled" : ""}>‹ ${esc(t("cases_prev"))}</button>
-        ${last ? `<button type="button" class="btn primary" data-case="${nextCase.id}" ${busy ? "disabled" : ""}>${esc(t("cases_nextcase"))}: ${esc(tx(nextCase.title))} ›</button><button type="button" class="btn" data-case-nav="board">${esc(t("cases_done"))}</button>`
+        ${last ? `<button type="button" class="btn primary" data-case="${nextCase.id}" ${busy ? "disabled" : ""}>${esc(t("cases_nextcase"))}: ${esc(tx(nextCase.title))} ›</button><button type="button" class="btn" data-case-nav="board">${esc(t("cases_done"))}</button><button type="button" class="btn" data-case-nav="png" ${busy ? "disabled" : ""}>${esc(t("cases_png"))}</button>`
           : `<button type="button" class="btn primary" data-case-nav="next" ${busy ? "disabled" : ""}>${esc(t("cases_next"))} ›</button>`}
-        <button type="button" class="btn" data-case-nav="link">${esc(t("cases_link"))}</button><span class="small muted" id="caselinknote"></span></div>`;
+        ${c.own ? "" : `<button type="button" class="btn" data-case-nav="link">${esc(t("cases_link"))}</button><button type="button" class="btn" data-case-nav="qr" aria-pressed="${qrOpen}">${esc(t("cases_qr"))}</button>`}<span class="small muted" id="caselinknote"></span></div>${qr}`;
     el.hidden = false;
   }
+  let qrOpen = false;
   // re-render against the current state (called by the workbench after every renderAll)
   const sync = () => { if (cur) render(); };
   async function copyLink() {
@@ -589,10 +747,13 @@
       const what = nav.dataset.caseNav;
       if (what === "next") next(); else if (what === "prev") prev(); else if (what === "exit") close();
       else if (what === "resume" && cur) open(cur.id, cur.step); else if (what === "link") copyLink();
+      else if (what === "qr") { qrOpen = !qrOpen; render(); }
+      else if (what === "png") cardPng();
+      else if (what === "own") { A().closeModal(); A().openLive(true); }
       else if (what === "board") { close(); board(); }
       else if (what === "guide") { A().closeModal(); A().modal(`<h2>${esc(t("guide_title"))}</h2><ol>${t("guide").map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`); }
     });
   }
 
-  root.TDCases = { list, get, check, current, open, openHash, next, prev, close, board, sync, ACTION_KEYS, LAYERS, SEASONS, TAGS };
+  root.TDCases = { list, get, check, template, openOwn, current, open, openHash, next, prev, close, board, sync, ACTION_KEYS, LAYERS, SEASONS, TAGS };
 })(typeof window === "undefined" ? globalThis : window);

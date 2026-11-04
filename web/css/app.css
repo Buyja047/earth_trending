@@ -325,6 +325,25 @@ pre { font-family: var(--font-data); font-size: 12px; background: var(--panel); 
 .casecard span:not(.tag) { font-size: 12px; opacity: 0.85; }
 .casecard small { font-size: 11px; opacity: 0.7; }
 .modal .box.wide { max-width: 900px; }
+.casecard.own { border-style: dashed; }
+.casebar .qr { display: flex; align-items: center; gap: 10px; }
+.casebar .qr svg { width: 132px; height: 132px; border: 1px solid var(--line); background: #fff; }
+.whatif { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+.whatif label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.whatif input[type="range"] { flex: 1 1 120px; min-width: 0; accent-color: var(--ink); }
+.gloss dd { text-align: left; font-family: var(--font-ui); color: var(--ink-2); }
+.gloss dt { font-weight: 600; color: var(--ink); }
+[title] { cursor: help; }
+.btn[title], .menubtn[title] { cursor: pointer; }
+@media print {
+  .titlebar, .toolbar, .pane.left, .statusbar, .casenav, .zoomctl, .timeline, .csvbtn, .docbar, .casebar .qr, .modal { display: none !important; }
+  .app { height: auto; display: block; }
+  .workspace { display: block; }
+  .pane.right { border: 0; }
+  .casebar { max-height: none; overflow: visible; border-bottom: 1px solid #000; }
+  .mapwrap { min-height: 420px; }
+  body { color: #000; background: #fff; }
+}
 
 /* mines: downwind roses and settlement tables (daily hazard scenes) */
 .minecard { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; }

@@ -42,12 +42,41 @@ def test_the_checker_catches_bad_references():
     assert any("unknown scene" in p for p in problems) and any("unknown place" in p for p in problems)
 
 
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_a_live_scene_becomes_a_five_step_case():
+    out = _node("""
+      require('./web/js/cases.js'); const C = globalThis.TDCases;
+      const sc = {id: 'live-1', live: true, long_name: 'Temperature at 2 Meters', var: 'T2M', kind: 'model', product_name: 'MERRA-2',
+        region_name: '106°E–108°E, 47°N–48°N', units: 'C', region_means: [{key: 'box', name: 'Box mean'}],
+        transitions: [{date: '2001-01', label: 'New MERRA-2 production stream'}], notes: [], live_info: {mb: 1.2, chunks: 2}};
+      const c = C.template(sc);
+      console.log(JSON.stringify({id: c.id, own: c.own, n: c.steps.length, first: c.steps[0].action, last: typeof c.steps[4].verdict,
+        ev: c.steps.slice(0, 4).every((s) => typeof s.evidence === 'function'), en: c.title.en, mn: c.steps[0].text.mn.length > 20,
+        found: C.get('own-live-1') === null}));""")
+    r = json.loads(out)
+    assert r["id"] == "own-live-1" and r["own"] and r["n"] == 5 and r["first"]["scene"] == "live-1"
+    assert r["last"] == "function" and r["ev"] and "T2M" in r["en"] and r["mn"]
+    assert r["found"], "a template is not registered until openOwn runs"
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_glossary_has_the_same_entries_in_both_languages():
+    out = _node("""
+      require('./web/js/i18n.js'); const I = globalThis.TDI18N;
+      I.setLang('en'); const en = I.t('glossary'); I.setLang('mn'); const mn = I.t('glossary');
+      console.log(JSON.stringify({en: Object.keys(en), mn: Object.keys(mn),
+        ok: Object.keys(en).every((k) => en[k].length === 2 && mn[k] && mn[k].length === 2 && en[k][1] !== mn[k][1])}));""")
+    r = json.loads(out)
+    assert r["en"] == r["mn"] and r["ok"] and {"fdr", "sen", "pmk", "phi", "mdt", "detect", "step"} <= set(r["en"])
+
+
 def test_interface_strings_exist_in_both_languages():
     src = (ROOT / "web/js/i18n.js").read_text(encoding="utf-8")
     en, mn = src.split("const MN = {")
     for key in ["m_cases", "cases_btn", "cases_title", "cases_intro", "cases_step", "cases_next", "cases_prev", "cases_exit", "cases_evidence",
                 "cases_what", "cases_where", "cases_howmuch", "cases_sig", "cases_when", "cases_caveats", "cases_link", "cases_nextcase",
-                "cases_tag_global", "cases_tag_mongolia", "cases_tag_trap", "cases_tag_hazard", "cases_tag_method"]:
+                "cases_tag_global", "cases_tag_mongolia", "cases_tag_trap", "cases_tag_hazard", "cases_tag_method",
+                "cases_own", "cases_own_q", "cases_png", "cases_qr", "wi_label", "wi_out", "wi_never", "help_glossary"]:
         assert f"{key}:" in en and f"{key}:" in mn, key
 
 
@@ -55,4 +84,5 @@ def test_single_file_build_includes_the_case_files():
     assert '"cases.js"' in (ROOT / "scripts/make_artifact.py").read_text()
     html = (ROOT / "web/index.html").read_text(encoding="utf-8")
     assert 'src="js/cases.js"' in html and 'id="casebar"' in html and 'id="casesbtn"' in html
-    assert html.index('src="js/cases.js"') < html.index('src="js/app.js"')
+    assert html.index('src="js/qr.js"') < html.index('src="js/cases.js"') < html.index('src="js/app.js"')
+    assert '"qr.js"' in (ROOT / "scripts/make_artifact.py").read_text()
