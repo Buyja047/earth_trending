@@ -192,7 +192,7 @@
     close: "Close", units_label: "Units",
     groups: { "Risk zones": "Risk zones", "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
       "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)",
-      "Mongolia MODIS 2000-2025 (5 km)": "Mongolia MODIS 2000–2025 (5 km)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Ulaanbaatar MODIS 2000–2025 (1 km)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Mongolia MODIS 2000–2025 (5 km)", "Mongolia MODIS 2000-2025 (0.1°)": "Mongolia MODIS 2000–2025 (0.1°, about 10 km)", "Mongolia MODIS 2000-2025 (0.05°)": "Mongolia MODIS 2000–2025 (0.05°, about 5 km)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Ulaanbaatar MODIS 2000–2025 (1 km)",
       "South Gobi MODIS 2000-2025 (1 km)": "South Gobi MODIS 2000–2025 (1 km)", "Khövsgöl MODIS 2000-2025 (1 km)": "Khövsgöl MODIS 2000–2025 (1 km)" },
   };
 
@@ -387,7 +387,7 @@
     close: "Хаах", units_label: "Нэгж",
     groups: { "Risk zones": "Эрсдэлийн бүсүүд", "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
       "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)",
-      "Mongolia MODIS 2000-2025 (5 km)": "Монгол MODIS 2000–2025 (5 км)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Улаанбаатар MODIS 2000–2025 (1 км)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Монгол MODIS 2000–2025 (5 км)", "Mongolia MODIS 2000-2025 (0.1°)": "Монгол MODIS 2000–2025 (0.1°, ~10 км)", "Mongolia MODIS 2000-2025 (0.05°)": "Монгол MODIS 2000–2025 (0.05°, ~5 км)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Улаанбаатар MODIS 2000–2025 (1 км)",
       "South Gobi MODIS 2000-2025 (1 km)": "Өмнөговь MODIS 2000–2025 (1 км)", "Khövsgöl MODIS 2000-2025 (1 km)": "Хөвсгөл MODIS 2000–2025 (1 км)" },
   };
 

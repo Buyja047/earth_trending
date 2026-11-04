@@ -59,7 +59,9 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   card**. Cases are plain bilingual data in `web/js/cases.js`; a new case
   needs no new code. Four more cases at 1 km (*Ulaanbaatar's surface, the
   South Gobi mines, Khövsgöl's snow days, surface against air*) open on
-  their own once the MODIS scenes are built (`docs/MODIS_TRENDS.md`).
+  their own once the MODIS scenes are built (`docs/MODIS_TRENDS.md`); the
+  published ones were read from the NASA archives without Earth Engine
+  (`modis-trend --source earthdata`): Mongolia on a 0.1° grid, three boxes at 1 km.
   - **Your own case**: the last card on the board starts the live analysis;
     pick any of the 1,320 NASA POWER variables and a box anywhere on Earth,
     and the result is presented as a five-step case with the same verdict.
@@ -89,11 +91,13 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   is not yet validated in this session because no Earthdata account is connected.
   Missing dates stay blank. [Setup and method](docs/DUST_MODIS.md).
 
-- **MODIS trends at 1 km and 5 km** (`modis-trend` command, Earth Engine): the
-  MERRA-2 cells are ~50 km and are never interpolated; instead separate
-  scenes from MODIS Terra (2000–2025) give daytime and night-time land
-  surface temperature, growing-season NDVI and winter snow-covered days at
-  5 km over Mongolia and at 1 km in three 160 km boxes (Ulaanbaatar, the
+- **MODIS trends at 1 km and ~10 km** (`modis-trend` command, from the NASA
+  archives with `--source earthdata`, or through Earth Engine): the MERRA-2
+  cells are ~50 km and are never interpolated; instead separate scenes from
+  MODIS Terra (2000–2025) give daytime and night-time land surface
+  temperature, growing-season NDVI and winter snow-covered days on a 0.1°
+  grid over Mongolia (2 × 2 cells of the 0.05° climate modelling grid; 5 km
+  through Earth Engine) and at 1 km in three 160 km boxes (Ulaanbaatar, the
   South Gobi mines, Khövsgöl), tested with the same statistics. Clear-sky
   skin temperature over 26 years, not air temperature over 45: the scenes
   say so, and Terra's orbit drift since 2020 is tested as a step. Setup,

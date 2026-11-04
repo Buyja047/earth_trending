@@ -90,9 +90,10 @@ def test_single_file_build_includes_the_case_files():
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 def test_cases_that_need_the_modis_scenes_wait_for_them():
-    scenes = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"]] + ["fire-risk", "dust-risk"]
-    places = [p["en"] for p in read_payload(ROOT / "web/data/places.js")["places"]]
     modis = [f"{r}-modis-{v}" for r in ("mn", "ub", "gobi", "khovsgol") for v in ("lst-day", "lst-night", "ndvi", "snowdays")]
+    # the index without the MODIS scenes, whether or not they have been built
+    scenes = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"] if s["id"] not in modis] + ["fire-risk", "dust-risk"]
+    places = [p["en"] for p in read_payload(ROOT / "web/data/places.js")["places"]]
     out = _node(f"""
       require('./web/js/cases.js'); const C = globalThis.TDCases;
       const all = C.list(), now = C.list({json.dumps(scenes)}), later = C.list({json.dumps(scenes + modis)});

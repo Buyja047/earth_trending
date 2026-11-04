@@ -54,7 +54,11 @@ def main(argv=None):
     sub.add_parser("dust-check", help="check GES DISC access and the server-side subset")
 
     mt = sub.add_parser("modis-trend", help="MODIS 1 km / 5 km trend scenes through Earth Engine (2000-2025)")
-    mt.add_argument("--project", required=True, help="registered Earth Engine Google Cloud project ID")
+    mt.add_argument("--source", choices=["earthengine", "earthdata"], default="earthengine",
+                    help="earthengine (needs --project) or earthdata (NASA Earthdata Cloud + Planetary Computer; needs EARTHDATA_TOKEN)")
+    mt.add_argument("--project", help="registered Earth Engine Google Cloud project ID (source earthengine)")
+    mt.add_argument("--country-deg", type=float, choices=[0.05, 0.1], default=0.1,
+                    help="source earthdata: country cells in degrees (0.1 = 2 x 2 CMG cells, about 11 x 8 km; 0.05 makes 22 MB scenes)")
     mt.add_argument("--regions", nargs="*", default=["country", "ub", "gobi", "khovsgol"],
                     help="country (5 km) and/or the 1 km boxes: ub gobi khovsgol")
     mt.add_argument("--vars", nargs="*", default=["lstd", "lstn", "ndvi", "snowdays"],
@@ -63,7 +67,7 @@ def main(argv=None):
     mt.add_argument("--end", type=int, default=2025)
     mt.add_argument("--out", type=Path, default=ROOT / "web" / "data")
     mt.add_argument("--geo", type=Path, default=ROOT / "web" / "data" / "geo.js")
-    mt.add_argument("--cache", type=Path, default=ROOT / "cache" / "modis", help="per-year pixel cache; a rerun resumes")
+    mt.add_argument("--cache", type=Path, default=None, help="per-year pixel cache; a rerun resumes (default cache/modis or cache/modis-earthdata)")
 
     fire = sub.add_parser("fire-context", help="Landsat 8/9 and Earth Engine fire-weather observations")
     fire.add_argument("--project", required=True, help="registered Earth Engine Google Cloud project ID")
@@ -122,8 +126,11 @@ def main(argv=None):
         bad = [r for r in a.regions if r not in modis.REGIONS] + [v for v in a.vars if v not in modis.VARS]
         if bad:
             ap.exit(2, f"modis-trend: unknown {', '.join(bad)}; regions {list(modis.REGIONS)}, vars {list(modis.VARS)}\n")
+        if a.source == "earthengine" and not a.project:
+            ap.exit(2, "modis-trend: --project is required with --source earthengine\n")
+        cache = a.cache or ROOT / "cache" / ("modis" if a.source == "earthengine" else "modis-earthdata")
         try:
-            built = modis.run(a.project, a.regions, a.vars, a.out, a.geo, a.cache, a.start, a.end)
+            built = modis.run(a.project, a.regions, a.vars, a.out, a.geo, cache, a.start, a.end, source=a.source, country_deg=a.country_deg)
         except (ValueError, RuntimeError) as exc:
             ap.exit(2, f"modis-trend: {exc}\n")
         print(f"Wrote {len(built)} scene(s) and updated {a.out / 'index.js'}; open Trend Detective → Datasets")

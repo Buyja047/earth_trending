@@ -47,6 +47,14 @@ MODIS Terra Collection 6.1 through Earth Engine (catalogue terms checked
 | MOD11A2.061 land surface temperature, MOD13A3.061 vegetation indices | NASA LP DAAC: "MODIS data and products acquired through the LP DAAC have no restrictions on subsequent use, sale, or redistribution"; cite per LP DAAC guidance (Wan, Hook & Hulley 2021; Didan 2021). |
 | MOD10A1.061 snow cover | NSIDC DAAC; cite Hall, D. K., G. A. Riggs and V. V. Salomonson, MODIS/Terra Snow Cover Daily L3 Global 500m SIN Grid, Version 61, doi:10.5067/MODIS/MOD10A1.061. |
 
+The published MODIS scenes were built with `--source earthdata` instead (checked 2026-11-04):
+
+| Source | Terms / credit |
+|---|---|
+| MOD11C3.061 (LST monthly 0.05° CMG), MOD13C2.061 (NDVI monthly 0.05° CMG), MOD13A3.061 tiles: NASA LP DAAC, Earthdata Cloud (OPeNDAP subsets and HTTPS downloads with an Earthdata Login token) | NASA Earthdata open-data policy, no restrictions on use; cite Wan, Z., S. Hook, G. Hulley (2021), MOD11C3 V061, doi:10.5067/MODIS/MOD11C3.061; Didan, K. (2021), MOD13C2 V061, doi:10.5067/MODIS/MOD13C2.061 and MOD13A3 V061, doi:10.5067/MODIS/MOD13A3.061. |
+| MOD10C1.061 (daily snow cover 0.05° CMG): NSIDC DAAC, Earthdata Cloud | cite Hall, D. K. and G. A. Riggs (2021), MODIS/Terra Snow Cover Daily L3 Global 0.05Deg CMG, Version 61, doi:10.5067/MODIS/MOD10C1.061 (the citation its user guide asks for). |
+| MOD11A2.061 and MOD10A1.061 tiles read as cloud-optimised GeoTIFF windows from Microsoft's Planetary Computer (STAC collections `modis-11A2-061`, `modis-10A1-061`; licensor NASA LP DAAC / NSIDC, host Microsoft; free, no account) | The data are NASA's (open data policy; cite Wan et al. 2021, MOD11A2 V061, doi:10.5067/MODIS/MOD11A2.061, and Hall and Riggs 2021, MOD10A1 V061, doi:10.5067/MODIS/MOD10A1.061); the mirror is acknowledged as the access point: "MODIS tiles accessed through the Microsoft Planetary Computer". |
+
 ## Material read but not redistributed
 
 | Source | Terms | How the project uses it |

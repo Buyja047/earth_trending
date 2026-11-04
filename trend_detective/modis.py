@@ -32,7 +32,7 @@ MISSING = -9999.0
 COLLECTIONS = {"lst": "MODIS/061/MOD11A2", "ndvi": "MODIS/061/MOD13A3", "snow": "MODIS/061/MOD10A1"}
 NATIVE_KM = {"lst": 1.0, "ndvi": 1.0, "snow": 0.5}
 NDSI_SNOW = 40            # NDSI_Snow_Cover >= 40 counts the day as snow-covered
-MIN_VALID_DAYS = 0.5      # a month's snow-day count needs clear observations on half its days
+MIN_CLEAR_OBS = 1         # a month's snow-day count needs at least this many clear-sky observations (NASA's monthly MOD10CM uses one)
 MIN_COMPOSITES = 2        # a month's LST mean needs at least two valid 8-day composites
 START_YEAR, END_YEAR = 2000, 2025
 # Terra's last inclination manoeuvre was on 27 February 2020; its 10:30 equator crossing has
@@ -68,8 +68,8 @@ VARS = {
         "units": "days", "title": "Snow-covered days Nov-Mar (MODIS)",
         "long_name": "Snow-covered days, November-March",
         "definition": "Days with MOD10A1 NDSI_Snow_Cover >= 40 among the clear-sky days of each month, "
-                      "scaled to the month's length; a month needs clear observations on at least half its "
-                      "days. The five months are summed and labelled by the year of March. One value per year.",
+                      "scaled to the month's length; a month needs at least one clear-sky observation (the minimum of NASA's monthly product MOD10CM). "
+                      "The five months are summed and labelled by the year of March. One value per year.",
     },
 }
 
@@ -161,7 +161,7 @@ def month_image(ee, var: dict, year: int, month: int):
     col = ee.ImageCollection(COLLECTIONS["snow"]).filterDate(t0, t1).select("NDSI_Snow_Cover")
     snow = col.map(lambda i: i.gte(NDSI_SNOW))
     count = snow.count()
-    return snow.sum().divide(count).multiply(days).updateMask(count.gte(days * MIN_VALID_DAYS)).rename("v")
+    return snow.sum().divide(count).multiply(days).updateMask(count.gte(MIN_CLEAR_OBS)).rename("v")
 
 
 def year_image(ee, var: dict, year: int):
@@ -203,8 +203,9 @@ def fetch_year(ee, var: dict, region: dict, grid: dict, year: int) -> np.ndarray
     return out
 
 
-def fetch(ee, var: dict, region: dict, grid: dict, years: list[int], cache: Path | None, log=print) -> np.ndarray:
-    """All years, from the cache where present. Returns (time, ny, nx)."""
+def fetch(ee, var: dict, region: dict, grid: dict, years: list[int], cache: Path | None, log=print, fetch_year_fn=None) -> np.ndarray:
+    """All years, from the cache where present. Returns (time, ny, nx). ``fetch_year_fn(var, region, grid, year)``
+    replaces the Earth Engine request (the Earthdata source in ``modis_cloud``)."""
     blocks = []
     for y in years:
         f = cache / f"{region['region']}-{var['suffix']}-{y}.npy" if cache else None
@@ -212,7 +213,7 @@ def fetch(ee, var: dict, region: dict, grid: dict, years: list[int], cache: Path
             arr = np.load(f)
         else:
             t0 = time.time()
-            arr = fetch_year(ee, var, region, grid, y)
+            arr = fetch_year_fn(var, region, grid, y) if fetch_year_fn else fetch_year(ee, var, region, grid, y)
             if f:
                 f.parent.mkdir(parents=True, exist_ok=True)
                 np.save(f, arr.astype(np.float32))
@@ -254,7 +255,8 @@ def scene_id(region_key: str, var_key: str) -> str:
 
 
 def build_scene(var_key: str, region_key: str, values: np.ndarray, times: np.ndarray, grid: dict,
-                out_dir: Path, focus_rings) -> dict:
+                out_dir: Path, focus_rings, provenance: dict | None = None) -> dict:
+    """``provenance`` (collection, access, source, native_res, grid_note) describes a source other than Earth Engine."""
     var, region = VARS[var_key], REGIONS[region_key]
     lat, lon = grid["lat"], grid["lon"]
     lon2d, lat2d = np.meshgrid(lon, lat)
@@ -269,7 +271,7 @@ def build_scene(var_key: str, region_key: str, values: np.ndarray, times: np.nda
     t_dec = stats.decimal_year(times)
     breaks = [(tb, label) for tb, label in breaks if t_dec[0] + 1 < tb < t_dec[-1] - 1]   # a step needs data on both sides
     spec_meta = {
-        "id": scene_id(region_key, var_key), "title": var["title"], "group": region["group"], "case": None,
+        "id": scene_id(region_key, var_key), "title": var["title"], "group": (provenance or {}).get("group", region["group"]), "case": None,
         "product": "modis", "product_name": prod["name"], "kind": prod["kind"], "source": prod["source"],
         "var": var_name, "long_name": var["long_name"], "units": var["units"], "definition": var["definition"],
         "region": region["region"], "region_name": region["name"], "notes": catalog.notes_for("modis", var_name),
@@ -277,9 +279,12 @@ def build_scene(var_key: str, region_key: str, values: np.ndarray, times: np.nda
         "grid_note": (f"{region['km']} km cells, each the mean of the native pixels inside it"
                       if region["km"] > NATIVE_KM[var["collection"]] * 1.5 else f"{region['km']} km cells, one native pixel each"),
         "series_kind": "annual", "focus": bool(inside.any()) and region["region"] != "mongolia",
-        "modis": {"collection": COLLECTIONS[var["collection"]], "sampling": var["sampling"],
+        "modis": {"collection": COLLECTIONS[var["collection"]], "access": "Google Earth Engine", "sampling": var["sampling"],
                   "months": list(var.get("months", (1, 12))), "ndsi_snow": NDSI_SNOW if var_key == "snowdays" else None},
     }
+    if provenance:
+        spec_meta.update({k: provenance[k] for k in ("source", "native_res", "grid_note") if k in provenance})
+        spec_meta["modis"].update({k: provenance[k] for k in ("collection", "access") if k in provenance})
     aggregates = list(region["aggregates"])
     if region["region"] != "mongolia" and inside.any() and not inside.all():
         aggregates.append("focus_part")
@@ -302,10 +307,18 @@ def publish_index(out_dir: Path, built: list[dict]) -> dict:
     return idx
 
 
-def run(project: str, regions: list[str], var_keys: list[str], out_dir: Path, geo_path: Path, cache: Path | None,
-        start=START_YEAR, end=END_YEAR, log=print, ee_module=None) -> list[dict]:
+def run(project: str | None, regions: list[str], var_keys: list[str], out_dir: Path, geo_path: Path, cache: Path | None,
+        start=START_YEAR, end=END_YEAR, log=print, ee_module=None, source="earthengine", country_deg=None) -> list[dict]:
+    """Build the scenes. ``source`` is "earthengine" (needs a registered project) or "earthdata" (the archives
+    themselves through NASA Earthdata Cloud and the Planetary Computer mirror; see modis_cloud)."""
+    cloud = None
     ee = ee_module
-    if ee is None:
+    if source == "earthdata":
+        from . import modis_cloud
+        cloud = modis_cloud.Source(cache, log, country_deg=country_deg or modis_cloud.COUNTRY_DEG)
+    elif source != "earthengine":
+        raise ValueError(f"unknown source {source!r}; use earthengine or earthdata")
+    elif ee is None:
         import ee as ee_module  # noqa: F811
         ee = ee_module
         try:
@@ -316,16 +329,17 @@ def run(project: str, regions: list[str], var_keys: list[str], out_dir: Path, ge
     built = []
     for region_key in regions:
         region = REGIONS[region_key]
-        grid = grid_for(bbox_of(region), region["km"])
-        log(f"{region['name']}: {grid['nx']} x {grid['ny']} cells of {region['km']} km")
+        grid = cloud.grid(region) if cloud else grid_for(bbox_of(region), region["km"])
+        log(f"{region['name']}: {grid['nx']} x {grid['ny']} cells of " + (f"{grid['dlat']:g}° (CMG)" if cloud and region["region"] == "mongolia" else f"{region['km']} km"))
         for var_key in var_keys:
             var = VARS[var_key]
             years = years_for(var, start, end)
-            values = fetch(ee, var, region, grid, years, cache, log)
+            values = fetch(ee, var, region, grid, years, cache, log, fetch_year_fn=cloud.fetch_year if cloud else None)
             times = times_for(var, years)
             values, times = trim_trailing_empty(values, times, var["sampling"] == "monthly")
             t0 = time.time()
-            sc = build_scene(var_key, region_key, values, times, grid, out_dir, focus)
+            sc = build_scene(var_key, region_key, values, times, grid, out_dir, focus,
+                             provenance=cloud.provenance(var, region) if cloud else None)
             built.append(sc)
             log(f"  wrote {sc['id']}: {sc['counts']} in {time.time() - t0:.0f} s")
     publish_index(out_dir, built)

@@ -47,6 +47,7 @@
   const UB_CITY = [106.74, 47.84, 107.06, 47.98];            // the built-up capital, about 24 × 16 km
   const TAVAN_TOLGOI = [105.365, 43.54, 105.615, 43.72];     // 20 km around the pit centre 105.49°E 43.63°N (read off NASA HLS)
   const OYU_TOLGOI = [106.72, 42.92, 106.97, 43.10];         // 20 km around the mine point 106.843°E 43.008°N (GeoNames)
+  const MORON = [100.09, 49.59, 100.24, 49.68];              // 10 km around the aimag centre 100.162°E 49.634°N (GeoNames)
   // a box selection against the scene's first area mean
   function boxVsMean(c, name) {
     const s = c.sel, n = c.st.sel && c.st.sel.cells ? c.st.sel.cells.length : 0;
@@ -648,29 +649,29 @@
           text: B("MOD10A1 flags a 500 m pixel as snow-covered when its NDSI is 40 or more; cloudy and night observations are left out, each month's count is scaled to its length, and the five months November–March are summed: one number per winter, 2000/01 to 2024/25. Lake Khövsgöl is inland water in this product and carries no value.",
             "MOD10A1 500 м-ийн пикселийн NDSI 40 ба түүнээс дээш бол цастай гэж тэмдэглэнэ; үүлтэй, шөнийн ажиглалтыг орхиж, сар бүрийн тоог уртад нь тааруулж, 11–3-р сарын таван сарыг нэмнэ: нэг өвөлд нэг тоо, 2000/01-ээс 2024/25. Хөвсгөл нуур энэ бүтээгдэхүүнд дотоод ус тул утгагүй."),
           evidence: (c) => join(B(`160 km box mean: ${meanLine(c, c.rs, c.unit).en}`, `160 км хайрцгийн дундаж: ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
-        { action: { layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
-          title: B("Mörön", "Мөрөн"),
-          text: B("The 1 km cell holding the aimag centre; its 25 winters, confidence interval and the year its trend becomes detectable are in the details pane. Snow is the dzud ingredient that satellites see directly; the reanalysis only models it.",
-            "Аймгийн төвийг агуулсан 1 км-ийн нүд; түүний 25 өвөл, итгэлийн завсар, чиг нь илрэх он дэлгэрэнгүй самбарт байна. Цас бол хиймэл дагуул шууд хардаг зудын орц; дахин шинжилгээ түүнийг зөвхөн загварчилдаг."),
-          evidence: (c) => cellLine(c, B("Mörön cell", "Мөрөнгийн нүд")) },
-        { action: { scene: "khovsgol-modis-lst-night", layer: "trend", years: "full", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+        { action: { layer: "trend", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+          title: B("Around Mörön", "Мөрөнгийн орчим"),
+          text: B("A 10 km box around the aimag centre averages the 1 km cells that have all 25 winters and runs the same tests on the mean series (a single cell can be excluded by one cloudy month). Snow is the dzud ingredient that satellites see directly; the reanalysis only models it.",
+            "Аймгийн төвийн эргэн тойрны 10 км-ийн хайрцаг 25 өвөл бүгд бүрэн 1 км-ийн нүднүүдээ дундажлаад дундаж цуваанд ижил тестүүдийг ажиллуулна (ганц нүд нэг үүлэрхэг сараас болж хасагдаж болно). Цас бол хиймэл дагуул шууд хардаг зудын орц; дахин шинжилгээ түүнийг зөвхөн загварчилдаг."),
+          evidence: (c) => boxVsMean(c, B("Mörön box", "Мөрөнгийн хайрцаг")) },
+        { action: { scene: "khovsgol-modis-lst-night", layer: "trend", years: "full", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
           title: B("Nights at the surface", "Шөнийн гадаргуу"),
-          text: B("Night-time surface temperature (all months, annual mean) at the same cell. Snow insulates the ground and reflects the sun; fewer snow days and warmer night surfaces go together, and a cell showing both is harder to dismiss as a cloud-sampling artifact.",
-            "Ижил нүдний шөнийн гадаргын температур (бүх сар, жилийн дундаж). Цас газрыг дулаалж, нарыг ойлгодог; цастай өдөр цөөрөх, шөнийн гадаргуу дулаарах хоёр хамт явдаг бөгөөд хоёуланг нь үзүүлж буй нүдийг үүлний түүврийн хуурмаг гэж үгүйсгэхэд хэцүү."),
-          evidence: (c) => cellLine(c, B("Mörön cell, night surface", "Мөрөнгийн нүд, шөнийн гадаргуу")) },
+          text: B("Night-time surface temperature (all months, annual mean) in the same box. Snow insulates the ground and reflects the sun; fewer snow days and warmer night surfaces go together, and a place showing both is harder to dismiss as a cloud-sampling artifact.",
+            "Ижил хайрцгийн шөнийн гадаргын температур (бүх сар, жилийн дундаж). Цас газрыг дулаалж, нарыг ойлгодог; цастай өдөр цөөрөх, шөнийн гадаргуу дулаарах хоёр хамт явдаг бөгөөд хоёуланг нь үзүүлж буй газрыг үүлний түүврийн хуурмаг гэж үгүйсгэхэд хэцүү."),
+          evidence: (c) => boxVsMean(c, B("Mörön box, night surface", "Мөрөнгийн хайрцаг, шөнийн гадаргуу")) },
         { action: { scene: "khovsgol-modis-snowdays", layer: "emerge", years: "full", sel: null, zoom: "reset" },
           title: B("When would a snow trend show?", "Цасны чиг хэзээ харагдах вэ?"),
           text: B("Twenty-five winters is a short record for a quantity that swings by weeks from one winter to the next. The year-detectable layer gives, cell by cell, the winter by which a trend of the measured size would be detected with 90 % probability if it continues.",
             "Өвлөөс өвөлд долоо хоногоор хэлбэлздэг хэмжигдэхүүний хувьд хорин таван өвөл бол богино бүртгэл. Илрэх оны давхарга нүд бүрт хэмжсэн хэмжээтэй чиг үргэлжилбэл 90 %-ийн магадлалтайгаар илрэх өвлийг өгнө."),
           evidence: (c) => B(`160 km box mean: ${c.detectSentence(c.det(c.rs))}`, `160 км хайрцгийн дундаж: ${c.detectSentence(c.det(c.rs))}`) },
-        { action: { scene: "khovsgol-modis-snowdays", years: "full", layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } }, verdict: true,
+        { action: { scene: "khovsgol-modis-snowdays", years: "full", layer: "trend", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } }, verdict: true,
           title: B("Verdict", "Дүгнэлт"),
           text: B("The four questions for Khövsgöl's snow.", "Хөвсгөлийн цасны дөрвөн асуулт."),
           verdict: (c) => {
             const s = c.sel;
             return {
-              what: B(`Snow-covered days per winter in the 160 km box: ${trendWord(c, c.rs).en}; at Mörön's cell: ${s ? trendWord(c, s).en : "?"}.`,
-                `160 км хайрцгийн нэг өвлийн цастай өдөр: ${trendWord(c, c.rs).mn}; Мөрөнгийн нүдэнд: ${s ? trendWord(c, s).mn : "?"}.`),
+              what: B(`Snow-covered days per winter in the 160 km box: ${trendWord(c, c.rs).en}; in the 10 km box around Mörön: ${s ? trendWord(c, s).en : "?"}.`,
+                `160 км хайрцгийн нэг өвлийн цастай өдөр: ${trendWord(c, c.rs).mn}; Мөрөнгийн 10 км-ийн хайрцагт: ${s ? trendWord(c, s).mn : "?"}.`),
               where: B(`${c.nf(c.k.fdr_down)} cells losing and ${c.nf(c.k.fdr_up)} gaining snow days after FDR, of ${c.nf(c.k.valid)} at 1 km.`,
                 `1 км-ийн ${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_down)} нь цастай өдрөө алдаж, ${c.nf(c.k.fdr_up)} нь нэмж байна (FDR-ийн дараа).`),
               howmuch: B(`160 km box ${meanLine(c, c.rs, c.unit).en}; Mörön ${s ? meanLine(c, s, c.unit).en : "—"}.`,
@@ -678,8 +679,8 @@
               significant: B(`Box mean corrected p ${c.fmtP(c.rs.p_mk)}; Mörön ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).en}.`,
                 `Хайрцгийн дундажийн засварласан p ${c.fmtP(c.rs.p_mk)}; Мөрөн ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).mn}.`),
               when: whenLine(c, s || c.rs),
-              caveats: [B("NDSI ≥ 40 is the product's own threshold: thin or patchy snow below it does not count. A month with clear observations on fewer than half its days is missing, and a winter with a missing month is excluded, never filled.",
-                "NDSI ≥ 40 бол бүтээгдэхүүний өөрийн босго: түүнээс доош нимгэн, тасархай цас тоологдохгүй. Өдрийн тал хувьд нь цэлмэг ажиглалтгүй сар дутуу, дутуу сартай өвлийг нөхөхгүй, хасна."),
+              caveats: [B("NDSI ≥ 40 is the product's own threshold: thin or patchy snow below it does not count. Snow is counted on clear-sky days only, and snowfall days are cloudy, so the count leans towards snow-covered; a month with no clear observation is missing, and a winter with a missing month is excluded, never filled.",
+                "NDSI ≥ 40 бол бүтээгдэхүүний өөрийн босго: түүнээс доош нимгэн, тасархай цас тоологдохгүй. Цасыг зөвхөн цэлмэг өдрүүдэд тоолдог бөгөөд цас орох өдөр үүлтэй тул тоо цастай тал руугаа хазайна; нэг ч цэлмэг ажиглалтгүй сар дутуу, дутуу сартай өвлийг нөхөхгүй, хасна."),
                 B("Lake Khövsgöl and other inland water carry no value; a cloudier winter is a differently sampled one; Terra's orbit drift since 2020 is tested as a step in every cell.",
                   "Хөвсгөл нуур болон бусад дотоод ус утгагүй; үүлэрхэг өвөл бол өөрөөр түүвэрлэгдсэн өвөл; 2020 оноос хойших Terra-гийн тойргийн шилжилтийг нүд бүрт алхамаар шалгасан.")],
             };
@@ -690,13 +691,13 @@
       id: "skin-vs-air", tag: "method", requires: ["mn-modis-lst-day"],
       title: B("Do 1 km satellites and the 50 km model agree? Surface against air over Mongolia",
         "1 км-ийн хиймэл дагуул, 50 км-ийн загвар хоёр тохирох уу? Монгол дээрх гадаргуу ба агаар"),
-      question: B("Terra's daytime land surface temperature at 5 km against MERRA-2 air temperature at 50 km, the same 26 years, each cell against the cell that holds it.",
-        "Terra-гийн 5 км-ийн өдрийн газрын гадаргын температурыг MERRA-2-ийн 50 км-ийн агаарын температуртай ижил 26 жилд, нүд бүрийг агуулж буй нүдтэй нь тулгасан нь."),
+      question: B("Terra's daytime land surface temperature at about 10 km against MERRA-2 air temperature at 50 km, the same 26 years, each cell against the cell that holds it.",
+        "Terra-гийн ~10 км-ийн өдрийн газрын гадаргын температурыг MERRA-2-ийн 50 км-ийн агаарын температуртай ижил 26 жилд, нүд бүрийг агуулж буй нүдтэй нь тулгасан нь."),
       steps: [
         { action: { scene: "mn-modis-lst-day", view: "map", layer: "trend", years: "full", zoom: "reset", sel: null },
-          title: B("The country at 5 km", "Улс 5 км-д"),
-          text: B("Daytime clear-sky land surface temperature, 2000–2025, each 5 km cell the mean of its 1 km Terra pixels: about 62,000 cells inside the border where MERRA-2 has 1,272. One value per year, the same tests, the FDR threshold set across all cells.",
-            "Өдрийн цэлмэг тэнгэрийн газрын гадаргын температур, 2000–2025, 5 км-ийн нүд бүр өөрийн 1 км-ийн Terra пикселүүдийн дундаж: MERRA-2 1,272 нүдтэй байдаг хилийн дотор ойролцоогоор 62,000 нүд. Жилд нэг утга, ижил тестүүд, FDR босгыг бүх нүдээр тогтооно."),
+          title: B("The country at about 10 km", "Улс ~10 км-д"),
+          text: B("Daytime clear-sky land surface temperature, 2000–2025, on cells of about 10 km (each the mean of the 2 × 2 climate-modelling-grid cells of 0.05° inside it, or 5 km when built through Earth Engine): tens of thousands of cells inside the border where MERRA-2 has 1,272. One value per year, the same tests, the FDR threshold set across all cells.",
+            "Өдрийн цэлмэг тэнгэрийн газрын гадаргын температур, 2000–2025, ойролцоогоор 10 км-ийн нүдэнд (нүд бүр доторх 0.05°-ийн 2 × 2 уур амьсгалын загварын торын нүдний дундаж; Earth Engine-ээр бол 5 км): MERRA-2 1,272 нүдтэй байдаг хилийн дотор хэдэн арван мянган нүд. Жилд нэг утга, ижил тестүүд, FDR босгыг бүх нүдээр тогтооно."),
           evidence: (c) => join(B(`Mongolia (country mask): ${meanLine(c, c.rs, c.unit).en}`, `Монгол (улсын хилээр): ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
         { action: { scene: "mn-t2m", years: [2000, 2025], season: "all", layer: "trend", zoom: "reset", sel: null },
           title: B("The same years in the reanalysis", "Ижил жилүүд дахин шинжилгээнд"),
@@ -705,8 +706,8 @@
           evidence: (c) => join(B(`${c.yrs}: Mongolia mean ${meanLine(c, c.rs, c.unit).en}`, `${c.yrs}: Монголын дундаж ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
         { action: { scene: "mn-modis-lst-day", years: "full", layer: "trend", compare: { id: "mn-t2m", y0: 2000, y1: 2025 }, zoom: "reset", sel: null },
           title: B("Each cell against the cell that holds it", "Нүд бүрийг агуулж буй нүдтэй нь"),
-          text: B("Split view: surface at 5 km on the left, air at 50 km on the right. For every 5 km cell the tool finds the 50 km cell above it and compares the signs of the two Sen slopes. Skin and air are different quantities, clear sky and all sky different samples, so the sizes need not match; the signs should, over most of the country, if both records see the same climate.",
-            "Хуваасан харагдац: зүүн талд 5 км-ийн гадаргуу, баруун талд 50 км-ийн агаар. 5 км-ийн нүд бүрт хэрэгсэл түүний дээрх 50 км-ийн нүдийг олж, хоёр Sen-ий налуугийн тэмдгийг харьцуулна. Гадаргуу ба агаар өөр хэмжигдэхүүн, цэлмэг ба бүх тэнгэр өөр түүвэр тул хэмжээ тохирох албагүй; хоёр бүртгэл нэг уур амьсгалыг харж байвал тэмдэг улсын ихэнх хэсэгт тохирох ёстой."),
+          text: B("Split view: surface at about 10 km on the left, air at 50 km on the right. For every surface cell the tool finds the 50 km cell above it and compares the signs of the two Sen slopes. Skin and air are different quantities, clear sky and all sky different samples, so the sizes need not match; the signs should, over most of the country, if both records see the same climate.",
+            "Хуваасан харагдац: зүүн талд ~10 км-ийн гадаргуу, баруун талд 50 км-ийн агаар. Гадаргын нүд бүрт хэрэгсэл түүний дээрх 50 км-ийн нүдийг олж, хоёр Sen-ий налуугийн тэмдгийг харьцуулна. Гадаргуу ба агаар өөр хэмжигдэхүүн, цэлмэг ба бүх тэнгэр өөр түүвэр тул хэмжээ тохирох албагүй; хоёр бүртгэл нэг уур амьсгалыг харж байвал тэмдэг улсын ихэнх хэсэгт тохирох ёстой."),
           evidence: (c) => agreeLine(c) },
         { action: { scene: "mn-modis-lst-day", years: "full", layer: "trend", compare: { id: "mn-t2m", y0: 2000, y1: 2025 }, zoom: "reset", sel: null }, verdict: true,
           title: B("Verdict", "Дүгнэлт"),
@@ -714,10 +715,10 @@
           verdict: (c) => {
             const x = crossGrid(c), ru = x && x.rs ? c.A.unitLabel(c.A.cmp.entry.sc.units) : "";
             return {
-              what: B(`Daytime land surface temperature (5 km): ${trendWord(c, c.rs).en} over the country mean; MERRA-2 air temperature (50 km) over the same years: ${x && x.rs ? trendWord(c, x.rs).en : "open step 3"}.`,
-                `Өдрийн газрын гадаргын температур (5 км): улсын дундажид ${trendWord(c, c.rs).mn}; MERRA-2-ийн агаарын температур (50 км) ижил жилүүдэд: ${x && x.rs ? trendWord(c, x.rs).mn : "3-р алхмыг нээнэ үү"}.`),
-              where: x ? B(`${pct(x.agree)} of ${c.nf(x.n)} 5 km cells share the sign of the 50 km cell above them; ${x.both ? `${pct(x.bothAgree)} of the ${c.nf(x.both)} cells significant in both` : "no cell is significant in both records"}.`,
-                `5 км-ийн ${c.nf(x.n)} нүдний ${pct(x.agree)} нь дээрх 50 км-ийн нүдтэйгээ ижил тэмдэгтэй; ${x.both ? `хоёуланд нь ач холбогдолтой ${c.nf(x.both)} нүдний ${pct(x.bothAgree)}` : "хоёр бүртгэлд хоёуланд нь ач холбогдолтой нүд алга"}.`) : NA,
+              what: B(`Daytime land surface temperature (about 10 km): ${trendWord(c, c.rs).en} over the country mean; MERRA-2 air temperature (50 km) over the same years: ${x && x.rs ? trendWord(c, x.rs).en : "open step 3"}.`,
+                `Өдрийн газрын гадаргын температур (~10 км): улсын дундажид ${trendWord(c, c.rs).mn}; MERRA-2-ийн агаарын температур (50 км) ижил жилүүдэд: ${x && x.rs ? trendWord(c, x.rs).mn : "3-р алхмыг нээнэ үү"}.`),
+              where: x ? B(`${pct(x.agree)} of ${c.nf(x.n)} surface cells share the sign of the 50 km cell above them; ${x.both ? `${pct(x.bothAgree)} of the ${c.nf(x.both)} cells significant in both` : "no cell is significant in both records"}.`,
+                `Гадаргын ${c.nf(x.n)} нүдний ${pct(x.agree)} нь дээрх 50 км-ийн нүдтэйгээ ижил тэмдэгтэй; ${x.both ? `хоёуланд нь ач холбогдолтой ${c.nf(x.both)} нүдний ${pct(x.bothAgree)}` : "хоёр бүртгэлд хоёуланд нь ач холбогдолтой нүд алга"}.`) : NA,
               howmuch: B(`Surface ${meanLine(c, c.rs, c.unit).en}${x && x.rs ? `; air ${meanLine(c, x.rs, ru).en}` : ""}.`,
                 `Гадаргуу ${meanLine(c, c.rs, c.unit).mn}${x && x.rs ? `; агаар ${meanLine(c, x.rs, ru).mn}` : ""}.`),
               significant: B(`Surface corrected p ${c.fmtP(c.rs.p_mk)}${x && x.rs ? `; air ${c.fmtP(x.rs.p_mk)}` : ""}; ${pstarLine(c).en}.`,
@@ -725,8 +726,8 @@
               when: whenLine(c, c.rs),
               caveats: [B("Skin under clear skies at ~10:30 against air at 2 m in all weather: agreement in sign is the test, not agreement in size. Two records over the same place are not independent samples, so their difference carries no p-value.",
                 "Цэлмэг тэнгэрт ~10:30-д хэмжсэн гадаргуу ба бүх цаг агаарт 2 м-ийн агаар: тест нь хэмжээний биш, тэмдгийн тохироо. Нэг газрын хоёр бүртгэл бол хараат бус түүвэр биш тул зөрүүнд нь p-утга өгөхгүй."),
-                B(`Terra's orbit drift since 2020 is tested as a step in every 5 km cell (${c.nf(c.k.step_flagged || 0)} flagged); MERRA-2's own stream boundaries (2001, 2011) fall inside these years.`,
-                  `2020 оноос хойших Terra-гийн тойргийн шилжилтийг 5 км-ийн нүд бүрт алхамаар шалгасан (${c.nf(c.k.step_flagged || 0)} тэмдэглэгдсэн); MERRA-2-ийн өөрийн урсгалын хил (2001, 2011) эдгээр жилүүдийн дотор байна.`)],
+                B(`Terra's orbit drift since 2020 is tested as a step in every surface cell (${c.nf(c.k.step_flagged || 0)} flagged); MERRA-2's own stream boundaries (2001, 2011) fall inside these years.`,
+                  `2020 оноос хойших Terra-гийн тойргийн шилжилтийг гадаргын нүд бүрт алхамаар шалгасан (${c.nf(c.k.step_flagged || 0)} тэмдэглэгдсэн); MERRA-2-ийн өөрийн урсгалын хил (2001, 2011) эдгээр жилүүдийн дотор байна.`)],
             };
           } },
       ],
