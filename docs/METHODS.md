@@ -145,7 +145,7 @@ FDR and detectability as the precomputed scenes.
 mandatory ≤ 1 and error ≤ 2 K, at least two composites per month), one value
 per year for growing-season NDVI (MOD13A3, May–September, SummaryQA ≤ 1) and
 for winter snow-covered days (MOD10A1, NDSI ≥ 40, clear observations on at
-at least three clear-sky observations per month, November–March). Cells are
+at least one clear-sky observation per month, the minimum of NASA's monthly product, November–March). Cells are
 0.1° (the mean of 2 × 2 climate-modelling-grid cells; 5 km through Earth
 Engine) over Mongolia and 1 km (one pixel) in three 160 km boxes; nothing is
 interpolated and nothing is gap-filled. For yearly-sampled series the sampling

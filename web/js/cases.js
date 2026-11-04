@@ -678,8 +678,8 @@
               significant: B(`Box mean corrected p ${c.fmtP(c.rs.p_mk)}; Mörön ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).en}.`,
                 `Хайрцгийн дундажийн засварласан p ${c.fmtP(c.rs.p_mk)}; Мөрөн ${s ? c.fmtP(s.p_mk) : "—"}; ${pstarLine(c).mn}.`),
               when: whenLine(c, s || c.rs),
-              caveats: [B("NDSI ≥ 40 is the product's own threshold: thin or patchy snow below it does not count. Snow is counted on clear-sky days only, and snowfall days are cloudy, so the count leans towards snow-covered; a month with fewer than three clear observations is missing, and a winter with a missing month is excluded, never filled.",
-                "NDSI ≥ 40 бол бүтээгдэхүүний өөрийн босго: түүнээс доош нимгэн, тасархай цас тоологдохгүй. Цасыг зөвхөн цэлмэг өдрүүдэд тоолдог бөгөөд цас орох өдөр үүлтэй тул тоо цастай тал руугаа хазайна; гурваас цөөн цэлмэг ажиглалттай сар дутуу, дутуу сартай өвлийг нөхөхгүй, хасна."),
+              caveats: [B("NDSI ≥ 40 is the product's own threshold: thin or patchy snow below it does not count. Snow is counted on clear-sky days only, and snowfall days are cloudy, so the count leans towards snow-covered; a month with no clear observation is missing, and a winter with a missing month is excluded, never filled.",
+                "NDSI ≥ 40 бол бүтээгдэхүүний өөрийн босго: түүнээс доош нимгэн, тасархай цас тоологдохгүй. Цасыг зөвхөн цэлмэг өдрүүдэд тоолдог бөгөөд цас орох өдөр үүлтэй тул тоо цастай тал руугаа хазайна; нэг ч цэлмэг ажиглалтгүй сар дутуу, дутуу сартай өвлийг нөхөхгүй, хасна."),
                 B("Lake Khövsgöl and other inland water carry no value; a cloudier winter is a differently sampled one; Terra's orbit drift since 2020 is tested as a step in every cell.",
                   "Хөвсгөл нуур болон бусад дотоод ус утгагүй; үүлэрхэг өвөл бол өөрөөр түүвэрлэгдсэн өвөл; 2020 оноос хойших Terra-гийн тойргийн шилжилтийг нүд бүрт алхамаар шалгасан.")],
             };

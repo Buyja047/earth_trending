@@ -47,12 +47,15 @@ for MODIS scenes; the seasons are built into the variables instead.
   error flag is ≤ 2 K; a month needs at least two valid 8-day composites, else it is missing.
 - NDVI: `SummaryQA` good or marginal only; a year needs all five months May–September.
 - Snow days: `NDSI_Snow_Cover ≥ 40` counts a day as snow-covered; clouds, night and missing
-  days do not count as either; a month needs at least three clear-sky observations
-  (`MIN_CLEAR_OBS`); a winter needs all five months. Why three and not half the days: in a
-  Mongolian winter MODIS sees a 500 m pixel clearly on a median of 8 days per month (January
-  2021 at Khövsgöl; the cloud mask is conservative over cold, snow-covered ground), so a
-  half-the-days rule left 0.1 % of the box's pixels with a complete winter. With three, about
-  90 % of the box and 75–90 % of the country have a value in a given winter; the raw monthly
+  days do not count as either; a month needs at least one clear-sky observation
+  (`MIN_CLEAR_OBS`, the minimum NASA's own monthly product MOD10CM uses); a winter needs all
+  five months, and a cell needs all 25 winters. Why not half the days: in a Mongolian winter
+  MODIS sees a 500 m pixel clearly on a median of 8 days per month (January 2021 at Khövsgöl;
+  the cloud mask is conservative over cold, snow-covered ground), so a half-the-days rule left
+  0.1 % of the box's pixels with a complete winter. Sensitivity over Mongolia at 0.1°, all 25
+  winters: a minimum of 1, 2, 3 or 4 clear observations per month keeps 86, 67, 48 or 32 % of
+  the cells, while the mean winter snow-cover days move only from 74.2 to 72.6; the threshold
+  decides exclusion, not the estimate, so the product's own minimum is used. The raw monthly
   ingredients are cached, so the rule can be re-applied without downloading again.
 - A cell with any missing month (or season) is **excluded and listed as such**, the same
   rule as the MERRA-2 scenes. Nothing is filled from neighbours or from other years.
@@ -208,9 +211,11 @@ MOD11A2), ургалтын улирлын NDVI (MOD13A3), өвлийн цаса�
 даяар 1 км = 1.56 сая нүд = 80 МБ/багц, 0.05° = 22 МБ/багц тул хөтөчид тохирохгүй.
 
 **Чанарын дүрэм, нөхөлтгүй.** LST: QA «сайн/бусад», алдаа ≤ 2 K, сард ≥ 2 композит; NDVI:
-SummaryQA сайн/дунд, 5–9-р сар бүгд; цас: NDSI ≥ 40, сард дор хаяж 3 цэлмэг ажиглалт (Монголын
-өвөлд MODIS нэг пикселийг сард дунджаар 8 өдөр л цэлмэг хардаг тул «өдрийн хагас» дүрэм бараг
-бүх нүдийг хасдаг байсан), 11–3-р сар бүгд. Нэг ч сар дутуу нүдийг **хасаж, тэмдэглэнэ**; хөршөөс,
+SummaryQA сайн/дунд, 5–9-р сар бүгд; цас: NDSI ≥ 40, сард дор хаяж 1 цэлмэг ажиглалт (NASA-гийн
+сарын бүтээгдэхүүн MOD10CM-ийн доод хэмжээ; Монголын өвөлд MODIS нэг пикселийг сард дунджаар 8
+өдөр л цэлмэг хардаг тул «өдрийн хагас» дүрэм бараг бүх нүдийг хасдаг байсан; босгыг 1/2/3/4
+болгоход улсын нүдний 86/67/48/32 % нь 25 өвөл бүгд хүчинтэй үлдэж, дундаж цастай өдөр 74.2–72.6
+хооронд л хэлбэлзэнэ), 11–3-р сар бүгд. Нэг ч сар дутуу нүдийг **хасаж, тэмдэглэнэ**; хөршөөс,
 өөр жилээс нөхөхгүй. Цасыг зөвхөн цэлмэг өдөр тоолдог, цас орох өдөр үүлтэй тул тоо цастай тал
 руугаа хазайдаг: энэ нь бүтээгдэхүүний мөн чанар, анхаарах зүйлд бичсэн.
 

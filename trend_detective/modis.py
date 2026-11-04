@@ -32,7 +32,7 @@ MISSING = -9999.0
 COLLECTIONS = {"lst": "MODIS/061/MOD11A2", "ndvi": "MODIS/061/MOD13A3", "snow": "MODIS/061/MOD10A1"}
 NATIVE_KM = {"lst": 1.0, "ndvi": 1.0, "snow": 0.5}
 NDSI_SNOW = 40            # NDSI_Snow_Cover >= 40 counts the day as snow-covered
-MIN_CLEAR_OBS = 3         # a month's snow-day count needs at least this many clear-sky observations
+MIN_CLEAR_OBS = 1         # a month's snow-day count needs at least this many clear-sky observations (NASA's monthly MOD10CM uses one)
 MIN_COMPOSITES = 2        # a month's LST mean needs at least two valid 8-day composites
 START_YEAR, END_YEAR = 2000, 2025
 # Terra's last inclination manoeuvre was on 27 February 2020; its 10:30 equator crossing has
@@ -68,7 +68,7 @@ VARS = {
         "units": "days", "title": "Snow-covered days Nov-Mar (MODIS)",
         "long_name": "Snow-covered days, November-March",
         "definition": "Days with MOD10A1 NDSI_Snow_Cover >= 40 among the clear-sky days of each month, "
-                      "scaled to the month's length; a month needs at least three clear-sky observations. "
+                      "scaled to the month's length; a month needs at least one clear-sky observation (the minimum of NASA's monthly product MOD10CM). "
                       "The five months are summed and labelled by the year of March. One value per year.",
     },
 }
