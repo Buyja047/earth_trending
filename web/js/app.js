@@ -1972,6 +1972,9 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         { label: t("an_20"), act: () => preset(20) }, { label: t("an_2001"), act: () => preset(2001) }, "-",
         ...[0.1, 0.05, 0.01].map((a) => ({ label: t("an_alpha", { a }), cls: ck(Math.abs(state.alpha - a) < 1e-9), act: () => { $("#alpha").value = a.toFixed(2); setAlpha(a); } })), "-",
         ...(sc ? availLayers() : []).map((l) => ({ label: t(LAYER_KEY[l]), cls: ck(state.layer === l), act: () => setLayer(l) }))] },
+      { id: "cases", label: t("m_cases"), items: [
+        { label: t("cases_board"), act: () => window.TDCases.board() }, "-",
+        ...(window.TDCases ? window.TDCases.list() : []).map((c) => ({ label: c.title[L()] || c.title.en, cls: ck(window.TDCases.current() === c.id), act: () => window.TDCases.open(c.id) }))] },
       { id: "help", label: t("m_help"), items: [
         { label: t("help_guide"), act: showGuide }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
     ];
@@ -2034,6 +2037,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAnalysis(); renderScreen(); renderMethod(); status();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
     $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
+    if (window.TDCases) window.TDCases.sync();
   }
   async function showScene(id, keepYears) {
     stopPlay();
@@ -2190,6 +2194,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   }
   function setLang(l) { I.setLang(l); store.set("lang", l); applyStatic(); renderAll(); }
   function modal(html) {
+    $("#modalbox").className = "box";
     $("#modalbox").innerHTML = html + `<div><button type="button" class="btn primary" id="modalclose">${esc(t("close"))}</button></div>`;
     $("#modal").hidden = false;
     $("#modalclose").focus();
@@ -2203,21 +2208,58 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (!q || !state.sc) return;
     const p = state.places.find((x) => x.en.toLowerCase() === q || x.mn.toLowerCase() === q) ||
       state.places.find((x) => x.en.toLowerCase().startsWith(q) || x.mn.toLowerCase().startsWith(q));
-    if (!p) return;
+    if (p) focusPlace(p);
+  }
+  // select the cell under a place and zoom to it; false when the place is outside the map or its cell has no data
+  function focusPlace(p, z) {
     state.searched = p;
     const g = state.sc.grid, i = Math.floor((p.lon - (g.lon[0] - g.dlon / 2)) / g.dlon), j = Math.floor((p.lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
     if (i >= 0 && j >= 0 && i < g.nx && j < g.ny && state.res.status[j * g.nx + i] !== 0) {
       state.sel = { type: "cell", i: j * g.nx + i };
-      Object.assign(map.view, { z: Math.max(map.view.z, state.sc.region === "global" ? 4 : 2), lon: p.lon, lat: p.lat });
+      Object.assign(map.view, { z: z || Math.max(map.view.z, state.sc.region === "global" ? 4 : 2), lon: p.lon, lat: p.lat });
       setTab("map"); renderInspector(); renderAnalysis(); drawMap();
       status({ cursor: ll(p.lat, p.lon), value: placeName(p) });
-    } else {
-      drawMap();
-      const note = $("#mapnote");
-      note.textContent = t("outside", { place: placeName(p) });
-      note.hidden = false;
-      setTimeout(() => { note.hidden = true; }, 3500);
+      return true;
     }
+    drawMap();
+    const note = $("#mapnote");
+    note.textContent = t("outside", { place: placeName(p) });
+    note.hidden = false;
+    setTimeout(() => { note.hidden = true; }, 3500);
+    return false;
+  }
+  // a box selection given in degrees [west, south, east, north] (the pointer path goes through selectBox)
+  function selectBoxDeg([lonA, latA, lonB, latB]) {
+    const g = state.sc.grid, st = state.res.status, cells = [];
+    for (let j = 0; j < g.ny; j++) {
+      if (g.lat[j] < latA || g.lat[j] > latB) continue;
+      for (let i = 0; i < g.nx; i++) {
+        if (g.lon[i] < lonA || g.lon[i] > lonB) continue;
+        const k = j * g.nx + i;
+        if (st[k] >= 1 && st[k] <= 5) cells.push(k);
+      }
+    }
+    state.sel = { type: "box", cells, bounds: [lonA, latA, lonB, latB] };
+  }
+  // years, months and α in one go, with a single recomputation (the toolbar paths recompute per control)
+  async function configure(o) {
+    if (isRisk() || !state.sc) return;
+    let changed = false;
+    if (o.years) {
+      const [a, b] = fullRange();
+      let [y0, y1] = o.years === "full" ? [a, b] : o.years;
+      y0 = Math.max(a, Math.min(y0, b - 9)); y1 = Math.min(b, Math.max(y1, y0 + 9));
+      if (y0 !== state.y0 || y1 !== state.y1) { state.y0 = y0; state.y1 = y1; changed = true; }
+    }
+    if (o.season !== undefined) {
+      const id = SEA.byId(o.season).id;
+      if (id !== state.season) { state.season = id; state.year = null; changed = true; }
+    }
+    if (o.alpha !== undefined && Math.abs(o.alpha - state.alpha) > 1e-9) { state.alpha = o.alpha; $("#alpha").value = o.alpha.toFixed(2); changed = true; }
+    if (!changed) return;
+    stopPlay();
+    await computeResults();
+    if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
   }
 
   // ------------------------------------------------------------ live analysis of any NASA POWER variable
@@ -2355,10 +2397,12 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       const entry=await loadScene(config.id).catch(()=>null);if(entry)registerRisk(entry.sc);
     }
     await loadScene("synthetic-truth").catch(() => null);
-    const first = location.hash.slice(1);
+    const first = location.hash.slice(1), C = window.TDCases;
     if (first === "risk"||first.startsWith("risk/")) { const [,type,date]=first.split('/'); await showScene("mn-t2m"); await openRisk(type,date); }   // #risk: a shareable link straight to the risk zones
+    else if (C && first.startsWith("case/")) { await showScene("mn-t2m"); await C.openHash(first); }   // #case/<id>/<step>: a shareable link into a case file
     else await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
-    if (!store.get("seenGuide")) { store.set("seenGuide", "1"); showGuide(); }
+    // first visit: the case board (the quick guide stays under Help)
+    if (!store.get("seenGuide")) { store.set("seenGuide", "1"); if (C && !C.current()) C.board(); else if (!C) showGuide(); }
 
     $("#risk-type").addEventListener("change",e=>openRisk(e.target.value));
     $("#fire-date").addEventListener("change",e=>loadRiskDate(e.target.value));
@@ -2510,6 +2554,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     window.addEventListener("hashchange", () => {
       const id = location.hash.slice(1);
       if (id === "risk"||id.startsWith("risk/")) { const [,type,date]=id.split("/");openRisk(type,date); }
+      else if (window.TDCases && id.startsWith("case/")) window.TDCases.openHash(id);
       else if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
     });
     let rz;
@@ -2520,5 +2565,23 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
     new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
+
+  // ------------------------------------------------------------ public API
+  // Used by the case files (js/cases.js) and by tests. Everything here is the same code path the
+  // toolbar uses; the case engine only sequences it.
+  window.TDApp = {
+    state, map, cmp, isRisk,
+    showScene, openRisk, configure, setLayer, setTab, setView, setCompare, cmpLoad, renderAll, drawMap, resetView, zoneInfo,
+    availLayers, modal, closeModal: () => { $("#modal").hidden = true; },
+    zoomTo(lon, lat, z) { Object.assign(map.view, { z, lon, lat }); },
+    clearSel() { state.sel = null; state.searched = null; },
+    selectPlace(name, z) { const p = state.places.find((x) => x.en === name); return p ? focusPlace(p, z) : false; },
+    selectBox: selectBoxDeg,
+    // statistics of the current selection (cell or box), as the details pane shows them
+    selStats: () => (state.sel && state.exportSeries ? state.exportSeries.stats : null),
+    regionStats: (k = 0) => (state.res && state.res.regionStats ? state.res.regionStats[k] : null),
+    places: () => state.places,
+    fmt, signed, fmtP, nf, esc, unitLabel, t, mn, L, sceneTitle, regionName, detectYear, detectShort, detectSentence, seasonText, yrsText, rmStat, stepOf, placeName,
+  };
   boot();
 })();

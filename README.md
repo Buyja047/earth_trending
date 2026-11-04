@@ -41,6 +41,21 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 
 ## What you can do in the viewer
 
+- **Case files** (the first screen, the *Case files* button in the layer
+  manager, or the *Cases* menu): nine guided investigations, each a question
+  answered step by step: *Is the planet warming, and where fastest? Is
+  Mongolia warming, and in which season? Is Antarctic sea ice growing? (a
+  model and a satellite disagree) Where did the ozone hole go? Is the Gobi
+  getting dustier? Is Ulaanbaatar's heaviest rain getting heavier? How
+  fire-prone is the land around Ulaanbaatar today? When will we know? Can
+  the detective be fooled?* Each step sets the workbench (dataset, years,
+  months, layer, selection) and shows an **evidence** line computed live from
+  the results on screen; the last step is a **verdict**: what is changing,
+  where, how much, is it significant, when will we know, and caveats. Every
+  step has a link (`#case/<id>/<step>`), e.g.
+  <https://buyja047.github.io/earth_trending/#case/antarctic-ice/2>. Cases
+  are plain bilingual data in `web/js/cases.js`; a new case needs no new code.
+
 - **Daily yellow dust maps**: **Risk zones → Yellow dust storm → Date (UTC)**.
   `modis-dust` downloads matched NASA MOD021KM/MOD03/MOD35_L2 channels,
   calibrates native radiances/reflectances and applies the thesis's IDI/Otsu
@@ -215,6 +230,7 @@ web/                  viewer (index.html, css/, js/, data/*.js)
   js/zarr.js, live.js live reading of NASA POWER Zarr chunks (Blosc/zstd) in the browser
   js/basemap.js       NASA GIBS imagery tiles (WMTS, EPSG:4326)
   js/season.js        season / single-month means (mirrors analysis.season_means)
+  js/cases.js         case files: bilingual step definitions with live evidence, and the engine that drives the workbench
 trend_detective/
   stats.py            per-cell statistics (MK, Hamed-Rao AR(1), Sen, OLS-AR(1), FDR, Weatherhead, step test)
   analysis.py         field analysis, verdicts, region means, annual and season means
@@ -245,10 +261,16 @@ docs/METHODS.md       methods, validation, data traps, limits
 
 ## Before submitting to Space Apps
 
-This prototype was written before the hackathon. Some secondary sources say
-2026 projects must be created during the event; the official 2026 Project
-Submission Guide (due 13 Nov 2026) decides. Check it, and if prior work is
-allowed, list this repository under References.
+The 2026 hackathon is on **14–15 November 2026**; the challenge resources and
+the Project Submission Guide appear on 13 November. The official participant
+FAQ says teams may not begin working on the challenges before the hackathon,
+and the submission form asks teams to confirm original work and to list every
+external resource under References. This repository is public and dated
+before the event, so it must be disclosed as a pre-existing resource and the
+hackathon project described as the increment built on the weekend.
+[docs/SPACEAPPS.md](docs/SPACEAPPS.md) has the verified dates, the five
+judging criteria, the compliance plan, a 48-hour plan, a video storyboard and
+draft project-page text, in English and Mongolian.
 
 ## Data and licences
 
