@@ -42,19 +42,40 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
 ## What you can do in the viewer
 
 - **Case files** (the first screen, the *Case files* button in the layer
-  manager, or the *Cases* menu): nine guided investigations, each a question
+  manager, or the *Cases* menu): ten guided investigations, each a question
   answered step by step: *Is the planet warming, and where fastest? Is
   Mongolia warming, and in which season? Is Antarctic sea ice growing? (a
   model and a satellite disagree) Where did the ozone hole go? Is the Gobi
-  getting dustier? Is Ulaanbaatar's heaviest rain getting heavier? How
-  fire-prone is the land around Ulaanbaatar today? When will we know? Can
-  the detective be fooled?* Each step sets the workbench (dataset, years,
-  months, layer, selection) and shows an **evidence** line computed live from
-  the results on screen; the last step is a **verdict**: what is changing,
-  where, how much, is it significant, when will we know, and caveats. Every
-  step has a link (`#case/<id>/<step>`), e.g.
-  <https://buyja047.github.io/earth_trending/#case/antarctic-ice/2>. Cases
-  are plain bilingual data in `web/js/cases.js`; a new case needs no new code.
+  getting dustier? Is Ulaanbaatar's heaviest rain getting heavier? Are the
+  ingredients of dzud changing? How fire-prone is the land around
+  Ulaanbaatar today? When will we know? Can the detective be fooled?* Each
+  step sets the workbench (dataset, years, months, layer, selection) and
+  shows an **evidence** line computed live from the results on screen; the
+  last step is a **verdict**: what is changing, where, how much, is it
+  significant, when will we know, and caveats. Every step has a link
+  (`#case/<id>/<step>`, e.g.
+  <https://buyja047.github.io/earth_trending/#case/antarctic-ice/2>) and a
+  **QR code** for a phone; a verdict can be saved as a **1200 × 630 PNG
+  card**. Cases are plain bilingual data in `web/js/cases.js`; a new case
+  needs no new code.
+  - **Your own case**: the last card on the board starts the live analysis;
+    pick any of the 1,320 NASA POWER variables and a box anywhere on Earth,
+    and the result is presented as a five-step case with the same verdict.
+- **Regime shift** layer (*Layer ▾*, windows of 20 years or more): every cell
+  tested twice, on the first and the second half of the chosen years; colour
+  where the two halves disagree in sign (strong: both significant; faded: one;
+  faint: neither), grey where they agree. A reversal is a reason to distrust
+  one straight line, not a trend in itself.
+- **What if the trend were…** (details pane, after clicking a cell or a box):
+  a slider gives the year a hypothetical trend would become detectable at
+  that selection's noise and memory.
+- **Glossary** (Help menu, and hover on the chips and statistic labels):
+  FDR, Sen slope, corrected p, φ, σ, smallest detectable trend, year
+  detectable, step test, in both languages.
+- **Offline after one visit**: on the hosted site a service worker keeps a
+  copy of the pages and of every dataset you opened (network first, cache
+  when offline; NASA POWER, GIBS and Earth Engine are never cached). The
+  ZIP copy works offline without it.
 
 - **Daily yellow dust maps**: **Risk zones → Yellow dust storm → Date (UTC)**.
   `modis-dust` downloads matched NASA MOD021KM/MOD03/MOD35_L2 channels,
@@ -84,6 +105,9 @@ your computer. Keep the `web/` folder next to `TrendDetective.html`.
   from NASA POWER on AWS (needs internet; about 0.6 MB per 30 × 30-cell
   tile) and runs every test in the browser. Over Mongolia it reproduces the
   precomputed Python results (country-mean T2M +0.1942 °C/decade, p 0.00239).
+  Documented data-source changes that fall inside the chosen years are tested
+  as steps in every cell, as in the precomputed scenes, so the *Source steps*
+  layer and the step warnings work for live scenes too.
 - **Layers** (the *Layer ▾* button at the end of the tab row, so nothing
   covers the map): FDR-tested trend, naive trend, verdict, smallest detectable
   trend, year-by-year anomaly, data-source steps, each with a one-line

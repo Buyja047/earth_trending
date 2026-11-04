@@ -266,8 +266,52 @@
     return n % 2 ? s[(n - 1) / 2] : 0.5 * (s[n / 2 - 1] + s[n / 2]);
   }
 
+  // Trend + step regression at a documented transition (mirrors trend_detective.stats.step_test_rows):
+  // x = a + b (t - mean t) + c H(t >= tBreak), c tested with the AR(1) effective sample size of the
+  // residuals. A significant c at a known instrument or data-source change means the plain trend
+  // mixes a real change with an artificial one. NaN when the step is not inside the record.
+  function stepTest(x, t, tBreak) {
+    const n = x.length;
+    let tm = 0;
+    for (let i = 0; i < n; i++) tm += t[i];
+    tm /= n;
+    const h = t.map((v) => (v >= tBreak ? 1 : 0)), nh = h.reduce((a, b) => a + b, 0);
+    if (nh === 0 || nh === n) return { step: NaN, p: NaN, trend: NaN };
+    // X'X for columns [1, tc, h] and its inverse (symmetric 3x3)
+    let s11 = 0, s12 = 0, s22 = 0, s02 = 0, s01 = 0, b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < n; i++) {
+      const tc = t[i] - tm;
+      s11 += tc * tc; s12 += tc * h[i]; s22 += h[i]; s02 += h[i]; s01 += tc;
+      b0 += x[i]; b1 += x[i] * tc; b2 += x[i] * h[i];
+    }
+    const m = [[n, s01, s02], [s01, s11, s12], [s02, s12, s22]];
+    const det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    if (!(Math.abs(det) > 0)) return { step: NaN, p: NaN, trend: NaN };
+    const inv = [
+      [(m[1][1] * m[2][2] - m[1][2] * m[2][1]) / det, (m[0][2] * m[2][1] - m[0][1] * m[2][2]) / det, (m[0][1] * m[1][2] - m[0][2] * m[1][1]) / det],
+      [(m[1][2] * m[2][0] - m[1][0] * m[2][2]) / det, (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / det, (m[0][2] * m[1][0] - m[0][0] * m[1][2]) / det],
+      [(m[1][0] * m[2][1] - m[1][1] * m[2][0]) / det, (m[0][1] * m[2][0] - m[0][0] * m[2][1]) / det, (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / det],
+    ];
+    const coef = [0, 1, 2].map((r) => inv[r][0] * b0 + inv[r][1] * b1 + inv[r][2] * b2);
+    let sse = 0, cross = 0, prev = 0;
+    for (let i = 0; i < n; i++) {
+      const e = x[i] - coef[0] - coef[1] * (t[i] - tm) - coef[2] * h[i];
+      sse += e * e; if (i > 0) cross += e * prev; prev = e;
+    }
+    const r1 = Math.min(0.99, Math.max(0, sse > 0 ? cross / sse : 0)), ne = n * (1 - r1) / (1 + r1);
+    const se = Math.sqrt(sse / (ne - 3) * inv[2][2]);
+    return { step: coef[2], p: ne > 4 ? pTwoSidedT(coef[2] / se, ne - 3) : NaN, trend: coef[1] };
+  }
+  // Benjamini-Hochberg: the largest p among the sorted p-values that lies under its k/m * alpha line (0 when none)
+  function fdrThreshold(ps, alphaFdr) {
+    const s = ps.filter((p) => Number.isFinite(p)).sort((a, b) => a - b), m = s.length;
+    let star = 0;
+    for (let k = 0; k < m; k++) if (s[k] <= (k + 1) / m * alphaFdr) star = s[k];
+    return star;
+  }
+
   const api = { mkScore, mkVariance, mkZ, pTwoSidedNormal, pTwoSidedT, ranks, lag1,
-    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, detectionB, detectionRange, analyze, median };
+    ar1VarianceFactor, senSlope, olsAr1, kth, minDetectableTrend, yearsToDetect, detectionB, detectionRange, analyze, median, stepTest, fdrThreshold };
   root.TDStats = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

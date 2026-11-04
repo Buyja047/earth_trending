@@ -19,7 +19,7 @@
   const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO",
     "WETDAYS", "SNOWDAYS", "R10MM", "RX1DAY"]);
   const REPO = "https://github.com/Buyja047/earth_trending";
-  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "anom", "steps", "truth"];
+  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "shift", "anom", "steps", "truth"];
   const CAP_YEAR = 2100;
   const ICONS = {
     trend: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 4h3v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
@@ -31,8 +31,9 @@
     steps: '<path d="M2 12h4V7h4V3h4" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     truth: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/>',
     zone: '<rect x="2" y="9" width="4" height="5" fill="currentColor" opacity=".35"/><rect x="6" y="6" width="4" height="8" fill="currentColor" opacity=".65"/><rect x="10" y="2" width="4" height="12" fill="currentColor"/>',
+    shift: '<path d="M2 4 L8 10" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2 2"/><path d="M8 1.5v13" stroke="currentColor" stroke-width="1"/>',
   };
-  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", zone: "L_zone", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
+  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", zone: "L_zone", shift: "L_shift", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
   const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
     focus: "Монгол (улсын хилээр)", focus_part: "Хайрцаг доторх Монголын хэсэг",
@@ -552,7 +553,7 @@
     if (isRisk()) return 1;
     const sc = state.sc, c = state.res.cells, st = state.res.status;
     if (state.layer === "anom") return annualCube(state.entry).lim;
-    if (state.layer === "emerge" || state.layer === "zone") return 1;
+    if (state.layer === "emerge" || state.layer === "zone" || state.layer === "shift") return 1;
     let arr;
     if (state.layer === "detect") arr = c.mdt;
     else if (state.layer === "steps") arr = sc.steps[state.step] ? sc.steps[state.step].step : [];
@@ -591,6 +592,15 @@
       case "zone": {
         const z = zoneInfo(), c5 = z.cls[k];
         return c5 < 0 ? null : { col: pal.seq[ZONE_SHADE[c5]], h: c5 / 4 };
+      }
+      case "shift": {
+        const sh = state.res.shift;
+        if (!sh || !sh.key) { ensureShift(); return null; }
+        const c5 = sh.cls[k];
+        if (c5 === 0) return null;
+        if (c5 === 1) return { col: pal.grid, h: 0 };
+        const col = divColor(sh.b[k], Math.abs(sh.b[k]) || 1, invert);
+        return { col: fade(col, SHIFT_FADE[c5]), h: c5 / 4 };
       }
       case "steps": {
         const s = sc.steps[state.step];
@@ -1042,8 +1052,51 @@
   function availLayers() {
     if (isRisk()) return ["zone"];
     const sc = state.sc;
-    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12));
+    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12) && (l !== "shift" || state.y1 - state.y0 + 1 >= 20));
   }
+  // ------------------------------------------------------------ regime shift
+  // The chosen years cut in two halves, each tested on its own in every cell. 4 = the halves disagree in
+  // sign and both are significant (corrected p < α); 3 = disagree, one significant; 2 = disagree, neither;
+  // 1 = same sign; 0 = too short or flat. Colour follows the second half's sign.
+  function shiftHalves() {
+    const mid = state.y0 + Math.floor((state.y1 - state.y0 + 1) / 2);
+    return [[state.y0, mid - 1], [mid, state.y1]];
+  }
+  async function ensureShift() {
+    const r = state.res, sc = state.sc;
+    if (!r || isRisk()) return null;
+    const key = `${state.y0}-${state.y1}-${state.season}-${state.alpha}`;
+    if (r.shift && r.shift.key === key) return r.shift;
+    if (r.shiftBusy) return null;
+    r.shiftBusy = true;
+    const [[a0, a1], [b0, b1]] = shiftHalves(), ncell = sc.grid.nx * sc.grid.ny, st = r.status;
+    const se = seasonOf(sc), monthly = sc.series.kind === "monthly" && !se, n = sc.series.n, cube = monthly ? null : annualCube(state.entry);
+    const cls = new Int8Array(ncell), a = new Float32Array(ncell).fill(NaN), b = new Float32Array(ncell).fill(NaN), counts = [0, 0, 0, 0, 0];
+    const busy = $("#busy"); busy.hidden = false; state.busy = true;
+    let tick = performance.now();
+    const fit = (c, y0, y1) => {
+      if (monthly) { const w = monthlyWindow(cellSeries(c), sc.series.start, y0, y1); return S.analyze(w.x, w.t); }
+      const sub = subsetAnnual(cube.years, Array.from(cube.data.subarray(c * cube.ny, (c + 1) * cube.ny)), y0, y1, cube.off);
+      return S.analyze(sub.vs, sub.ys);
+    };
+    for (let c = 0; c < ncell; c++) {
+      if (st[c] >= 1 && st[c] <= 5) {
+        const ra = fit(c, a0, a1), rb = fit(c, b0, b1);
+        if (ra && rb && ra.varS > 0 && rb.varS > 0 && ra.sen !== 0 && rb.sen !== 0) {
+          a[c] = ra.sen * 10; b[c] = rb.sen * 10;
+          const sa = ra.pMk < state.alpha, sb = rb.pMk < state.alpha;
+          cls[c] = Math.sign(ra.sen) !== Math.sign(rb.sen) ? (sa && sb ? 4 : sa || sb ? 3 : 2) : 1;
+        }
+      }
+      counts[cls[c]]++;
+      if (performance.now() - tick > 60) { busy.textContent = t("computing", { p: Math.round(100 * c / ncell) }); await new Promise((res) => setTimeout(res, 0)); tick = performance.now(); }
+    }
+    busy.hidden = true; state.busy = false; r.shiftBusy = false;
+    r.shift = { key, cls, a, b, counts, halves: [[a0, a1], [b0, b1]] };
+    if (state.layer === "shift") { renderLegend(layerLimit()); drawMap(); }
+    return r.shift;
+  }
+  const SHIFT_FADE = { 4: 0, 3: 0.4, 2: 0.72 };
   const layerIcon = (l) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>`;
   function renderPicker() {
     const avail = availLayers();
@@ -1086,6 +1139,16 @@
       const z = zoneInfo(), se = seasonOf(sc), u = `${unitLabel(sc.units)} ${t("per_month")}`;
       el.innerHTML = [4, 3, 2, 1, 0].map((k) => `<span><i class="sw" style="background:${rgb(pal.seq[ZONE_SHADE[k]])}"></i>${esc(t("z" + k))} <span class="num muted">${nf(z.counts[k])}</span></span>`).join("")
         + `<span class="muted">${esc(t("lg_zone", { s: se ? seasonText(se) : t("se_all"), a: fmt(z.q1), b: fmt(z.q2), u, fdr: fmt(2 * state.alpha) }))}</span>${csvBtn("cells")}`;
+      return;
+    }
+    if (state.layer === "shift") {
+      const sh = state.res.shift, [[a0, a1], [b0, b1]] = shiftHalves(), invert = WATER_VARS.has(sc.var);
+      const up = divColor(1, 1, invert), down = divColor(-1, 1, invert);
+      const sw = (c5, col) => `<i class="sw" style="background:${rgb(fade(col, SHIFT_FADE[c5] || 0))}"></i>`;
+      el.innerHTML = sh && sh.key ? [4, 3, 2].map((c5) => `<span>${sw(c5, up)}${sw(c5, down)}${esc(t("sh" + c5))} <span class="num muted">${nf(sh.counts[c5])}</span></span>`).join("")
+        + `<span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("sh1"))} <span class="num muted">${nf(sh.counts[1])}</span></span>`
+        + `<span class="muted">${esc(t("lg_shift", { a: a0, b: a1, c: b0, d: b1, al: state.alpha }))}</span>${csvBtn("cells")}`
+        : `<span class="muted">${esc(t("computing", { p: 0 }))}</span>`;
       return;
     }
     if (state.layer === "detect") {
@@ -1313,7 +1376,10 @@
       warns.push({ sev: "", w: t("live_read", { mb: li.mb, n: li.chunks, when: li.read.slice(0, 16).replace("T", " ") }) });
       if (li.trimmed) warns.push({ sev: "", w: t("live_trim", { a: li.trimmed.from, b: li.trimmed.to }) });
       if (sc.counts.gappy) warns.push({ sev: "critical", w: t("live_gappy", { n: nf(sc.counts.gappy) }) });
-      sc.transitions.forEach((tr) => warns.push({ sev: "", w: t("live_tr", { d: tr.date || "?", l: tr.label }) }));
+      sc.transitions.forEach((tr) => {
+        const st = (sc.steps || []).find((s) => s.label.startsWith(tr.date || "?"));
+        warns.push({ sev: "", w: st ? t("live_tr_tested", { d: tr.date, l: tr.label, n: nf(st.flagged), v: nf(k.valid) }) : t("live_tr", { d: tr.date || "?", l: tr.label }) });
+      });
     } else if (sc.counts.gappy) {
       warns.push({ sev: "critical", w: mn()
         ? `${nf(sc.counts.gappy)} нүдэнд зарим сар дутуу тул нөхөж тооцолгүй хассан. Нийлүүлэгч [${sc.valid_min}, ${sc.valid_max}] мужаас гадуурх утгыг хасдаг тул дутуу сарууд нь бодит туйлын утга байж болно; тэдгээрийг хасаад тооцсон чиг цензурдсан болно.`
@@ -2127,7 +2193,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
     renderAll();
   }
-  function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); if (state.layer === "shift") ensureShift(); drawMap(); }
   let dustService;
   async function dustEndpoint() {
     if(dustService===undefined) {
@@ -2411,6 +2477,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (state.theme !== "system") document.documentElement.dataset.theme = state.theme;
     map.canvas = $("#map"); map.ctx = map.canvas.getContext("2d");
     surface = new window.TDSurface($("#surf"));
+    // served over HTTPS (GitHub Pages) or from localhost: keep a copy of what was opened, so the viewer
+    // reopens without a connection; the file:// ZIP needs no such copy. Only same-origin files are kept.
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
+      navigator.serviceWorker.register("sw.js").catch(() => { /* no offline copy; the page works as before */ });
+    }
     buildPalette();
     applyStatic();
     renderMenus();

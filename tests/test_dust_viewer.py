@@ -34,7 +34,7 @@ def test_daily_dust_selection_archive_dates_language_and_return(tmp_path):
     try:
         with playwright.sync_playwright() as p:
             browser=p.chromium.launch(executable_path=shutil.which('chromium'),args=['--no-sandbox'])
-            page=browser.new_page(viewport=dict(width=1440,height=1000))
+            page=browser.new_page(viewport=dict(width=1440,height=1000),service_workers='block')   # page.route mocks bypass a service worker otherwise
             page.add_init_script("localStorage.setItem('td.seenGuide','1'); localStorage.setItem('td.lang','mn')")
             errors=[];page.on('pageerror',lambda e:errors.append(e.stack))
             fixture=fixture_map()
@@ -90,7 +90,7 @@ def test_direct_channel_api_and_selected_overpass(tmp_path):
     try:
         with playwright.sync_playwright() as p:
             browser=p.chromium.launch(executable_path=shutil.which('chromium'),args=['--no-sandbox'])
-            page=browser.new_page(viewport=dict(width=1440,height=1000))
+            page=browser.new_page(viewport=dict(width=1440,height=1000),service_workers='block')   # page.route mocks bypass a service worker otherwise
             page.add_init_script("localStorage.setItem('td.seenGuide','1');localStorage.setItem('td.lang','en');localStorage.setItem('td.base','day')")
             errors=[];page.on('pageerror',lambda e:errors.append(e.stack))
             fixture=fixture_map()

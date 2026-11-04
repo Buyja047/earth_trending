@@ -166,6 +166,11 @@ def test_live_analysis_becomes_a_case_when_nasa_power_is_reachable(server):
             settled(page)
         body = page.locator("#casebar .casebody").inner_text()
         assert "What is changing" in body and "Read live from NASA POWER" in body and "1982" not in body, body
+        # documented source changes inside 2001-2025 (Jan 2005, Apr 2006) were tested as steps in every cell
+        steps = page.evaluate("TDApp.state.sc.steps.map(s => [s.label.slice(0, 7), s.flagged, s.p_step.filter(p => p !== null).length])")
+        assert [s[0] for s in steps] == ["2005-01", "2006-04"] and all(s[2] == 9 for s in steps), steps
+        assert "tested as a step" in body and "Tested as a step in every cell" in page.locator("#summary").inner_text()
+        assert "steps" in page.evaluate("TDApp.availLayers()")
         assert not errors, errors
         browser.close()
 

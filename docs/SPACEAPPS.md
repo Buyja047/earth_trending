@@ -56,10 +56,21 @@ The honest and, we believe, compliant path:
 | Creativity | "Not yet detectable" instead of "no trend"; data traps found and explained; the detective framing made literal in the case files | | Keep the detective voice in the video and page |
 | Presentation | Was the weakest: a 10-step guide and a dense workbench | | Case files (done), the 30-second video, a short project page (§ 6) |
 
+## 3b. Built before the weekend (disclosed as prior work)
+
+Besides the case files: a "your own case" generator on top of the live
+analysis (any NASA POWER variable, any box, presented as a five-step case),
+the dzud-ingredients case, verdict cards as PNG, a what-if detectability
+slider, a bilingual glossary, QR codes for every step, a regime-shift layer,
+step tests at documented transitions in live scenes, and an offline copy of
+the hosted site (service worker). All of it is dated in the repository
+history and listed in README; it goes under References with the tag.
+
 ## 4. The hackathon weekend: what to build in 48 hours
 
 Priorities in order. Stop when the clock says so; everything below the first
-three is optional.
+three is optional. With the tooling above in place, the weekend is about
+NASA's own resources, new cases, and the presentation.
 
 1. **Read the 13 Nov resources and the full challenge statement first** (1 h).
    If NASA names datasets, add at least one of them as a live or precomputed
