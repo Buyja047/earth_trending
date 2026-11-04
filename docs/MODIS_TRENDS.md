@@ -27,10 +27,10 @@ map is not a sharper MERRA-2 map.
 
 | Region | Cells | Cell count | Scene file |
 |---|---|---|---|
-| Mongolia (`country`) | 5 km, each the mean of the native pixels inside it | ~62,000 inside the border | ~8 MB |
-| Ulaanbaatar (`ub`), 160 km box | 1 km, one pixel each | 25,600 | ~3.5 MB |
-| South Gobi mines (`gobi`), 160 km box around Tavan Tolgoi and Oyu Tolgoi | 1 km | 25,600 | ~3.5 MB |
-| Khövsgöl (`khovsgol`), 160 km box | 1 km | 25,600 | ~3.5 MB |
+| Mongolia (`country`) | Earthdata source (the published scenes): 0.1° cells, each the mean of the 2 × 2 climate-modelling-grid cells (0.05°) inside it, about 11 km north-south and 7.6 km east-west at 47°N. Earth Engine source: 5 km, each the mean of the native pixels | ~18,500 inside the border (0.1°); ~74,000 at 0.05° (`--country-deg 0.05`, 22 MB per scene) | ~6 MB |
+| Ulaanbaatar (`ub`), 160 km box | 1 km, one pixel each | 25,440 | ~4.5 MB |
+| South Gobi mines (`gobi`), 160 km box around Tavan Tolgoi and Oyu Tolgoi | 1 km | 25,281 | ~4.5 MB |
+| Khövsgöl (`khovsgol`), 160 km box | 1 km | 25,440 | ~4.5 MB |
 
 Why not the whole country at 1 km: 1.56 million cells would be 80 MB of annual series per
 scene, which no browser tab should load; at 5 km the country fits in the budget of the
@@ -47,8 +47,13 @@ for MODIS scenes; the seasons are built into the variables instead.
   error flag is ≤ 2 K; a month needs at least two valid 8-day composites, else it is missing.
 - NDVI: `SummaryQA` good or marginal only; a year needs all five months May–September.
 - Snow days: `NDSI_Snow_Cover ≥ 40` counts a day as snow-covered; clouds, night and missing
-  days do not count as either; a month needs clear observations on at least half its days;
-  a winter needs all five months.
+  days do not count as either; a month needs at least three clear-sky observations
+  (`MIN_CLEAR_OBS`); a winter needs all five months. Why three and not half the days: in a
+  Mongolian winter MODIS sees a 500 m pixel clearly on a median of 8 days per month (January
+  2021 at Khövsgöl; the cloud mask is conservative over cold, snow-covered ground), so a
+  half-the-days rule left 0.1 % of the box's pixels with a complete winter. With three, about
+  90 % of the box and 75–90 % of the country have a value in a given winter; the raw monthly
+  ingredients are cached, so the rule can be re-applied without downloading again.
 - A cell with any missing month (or season) is **excluded and listed as such**, the same
   rule as the MERRA-2 scenes. Nothing is filled from neighbours or from other years.
 
@@ -65,7 +70,45 @@ for MODIS scenes; the seasons are built into the variables instead.
 - **Clear sky only.** A cloudier decade is also a differently sampled one; the clear-sky
   mean is not the all-sky mean.
 
-## Running it
+## Two ways to read the archive
+
+`--source earthdata` (the default for the published scenes) reads the archives themselves and
+needs no Earth Engine project, only an Earthdata Login bearer token in `EARTHDATA_TOKEN`
+(https://urs.earthdata.nasa.gov, *Generate Token*); `trend_detective/modis_cloud.py`:
+
+| Scene | Read from | How |
+|---|---|---|
+| Country LST day / night | MOD11C3.061 (monthly, 0.05° CMG), LP DAAC Earthdata Cloud | OPeNDAP subsets of Mongolia's rows and columns (four fields, about 0.5 MB per month); QC rule as above; 2 × 2 cells averaged |
+| Country NDVI | MOD13C2.061 (monthly, 0.05° CMG), LP DAAC | OPeNDAP subsets; `pixel reliability` good or marginal; the five months averaged, then 2 × 2 |
+| Country snow days | MOD10C1.061 (daily, 0.05° CMG), NSIDC Earthdata Cloud | whole files (4 MB a day); a day counts when the cell's *Clear Index* is above 70 % (the MOD10CM rule) and the snow share of the clearly seen land is `Day_CMG_Snow_Cover / Clear_Index`; then the rule above and 2 × 2 |
+| Box LST day / night | MOD11A2.061 tiles as cloud-optimised GeoTIFFs on Microsoft's Planetary Computer mirror of the NASA archive | window reads of the box (STAC search, Terra only, a free SAS token, no account); one pixel per cell (the pixel holding the cell centre); monthly mean of the QA-passing composites, at least two |
+| Box NDVI | MOD13A3.061 tiles, LP DAAC Earthdata Cloud | whole tiles (21 MB a month), cut into the boxes that share them and cached as windows |
+| Box snow days | MOD10A1.061 tiles on the Planetary Computer | window reads at 500 m; the rule per pixel, then the mean of the pixels whose centres fall in each 1 km cell |
+
+Measured here through a proxy at 2–10 MB/s: country LST 9 s per year, NDVI 17 s, snow 50 s per
+winter; a box 25 s per year for LST (both day and night), 30 s per winter for snow, 20 s per
+month-tile for NDVI. The whole set takes about two hours. Everything is cached under
+`cache/modis-earthdata/` (per-year arrays, the raw snow ingredients as `raw/*.npz`, the NDVI
+windows), so an interrupted run resumes and the snow rule can be changed without downloading.
+
+```bash
+export EARTHDATA_TOKEN=...   # never commit it
+```
+
+```bash
+python -m trend_detective modis-trend --source earthdata --regions ub --vars lstd ndvi
+```
+
+```bash
+python -m trend_detective modis-trend --source earthdata
+```
+
+The MODIS sinusoidal grid is sheared at 107°E (one pixel row north shifts x by about 1.4 km),
+so "one pixel per cell" means the pixel holding the cell centre, and a tile window is a bounding
+box of a parallelogram; `tests/test_modis_cloud.py` checks both mappings in the projection's own
+metres and in degrees.
+
+## Running it through Earth Engine
 
 Needs a Google Cloud project registered for Earth Engine (non-commercial use is free; see
 [docs/FIRE_EARTH_ENGINE.md](FIRE_EARTH_ENGINE.md) for registration) and
@@ -134,6 +177,15 @@ and walks the four cases to their verdicts in Chromium.
 - Terra orbit: NASA Terra project pages on the orbit change (last manoeuvre 27 February
   2020; 10:15 crossing by fall 2022) and the LP DAAC Terra orbit drift notice.
 - `computePixels` limits (48 MB, 32K pixels per side, 1024 bands): Earth Engine REST reference.
+- MOD11C3.061 (Wan, Hook and Hulley 2021, doi:10.5067/MODIS/MOD11C3.061), MOD13C2.061 (Didan 2021,
+  doi:10.5067/MODIS/MOD13C2.061): LP DAAC, read by OPeNDAP from `opendap.earthdata.nasa.gov`.
+- MOD10C1.061 (Hall and Riggs 2021, doi:10.5067/MODIS/MOD10C1.061) and its user guide (the
+  Clear Index, the special values 107 lake ice, 237 inland water, 250 cloud); MOD10CM's user
+  guide for the Clear Index > 70 rule: NSIDC.
+- Microsoft Planetary Computer: STAC collections `modis-11A2-061` and `modis-10A1-061`
+  (licensor NASA LP DAAC / NSIDC, host Microsoft), read as cloud-optimised GeoTIFF windows.
+- Mine dates in the Gobi case: Ukhaa Khudag (Mongolian Mining Corporation) mining from 2009,
+  exports from 2011; Oyu Tolgoi's first concentrate shipment 9 July 2013 (Oyu Tolgoi LLC).
 
 ---
 
@@ -150,13 +202,24 @@ MOD11A2), ургалтын улирлын NDVI (MOD13A3), өвлийн цаса�
 нь агаарын биш **гадаргын** температур, зөвхөн цэлмэг тэнгэрт. Тиймээс MODIS зураг бол MERRA-2-ийн
 нарийн хувилбар биш, өөр зүйлийн зураг.
 
-**Нүд ба бүс.** Улс даяар 5 км (нүд бүр доторх пикселүүдийн дундаж, ~62,000 нүд, ~8 МБ/багц);
-Улаанбаатар, Өмнөговийн уурхайнууд, Хөвсгөл 160×160 км-ийн хайрцаг 1 км-д (25,600 нүд, ~3.5
-МБ/багц). Улс даяар 1 км = 1.56 сая нүд = 80 МБ/багц тул хөтөчид тохирохгүй.
+**Нүд ба бүс.** Улс даяар 0.1° (нийтлэгдсэн багцууд: нүд бүр доторх 0.05°-ийн 2 × 2 CMG нүдний
+дундаж, 47°N-д ~11 × 7.6 км, ~18,500 нүд, ~6 МБ/багц; Earth Engine-ээр 5 км); Улаанбаатар,
+Өмнөговийн уурхайнууд, Хөвсгөл 160×160 км-ийн хайрцаг 1 км-д (~25,400 нүд, ~4.5 МБ/багц). Улс
+даяар 1 км = 1.56 сая нүд = 80 МБ/багц, 0.05° = 22 МБ/багц тул хөтөчид тохирохгүй.
 
 **Чанарын дүрэм, нөхөлтгүй.** LST: QA «сайн/бусад», алдаа ≤ 2 K, сард ≥ 2 композит; NDVI:
-SummaryQA сайн/дунд, 5–9-р сар бүгд; цас: NDSI ≥ 40, сарын өдрийн хагасаас дээш цэлмэг, 11–3-р
-сар бүгд. Нэг ч сар дутуу нүдийг **хасаж, тэмдэглэнэ**; хөршөөс, өөр жилээс нөхөхгүй.
+SummaryQA сайн/дунд, 5–9-р сар бүгд; цас: NDSI ≥ 40, сард дор хаяж 3 цэлмэг ажиглалт (Монголын
+өвөлд MODIS нэг пикселийг сард дунджаар 8 өдөр л цэлмэг хардаг тул «өдрийн хагас» дүрэм бараг
+бүх нүдийг хасдаг байсан), 11–3-р сар бүгд. Нэг ч сар дутуу нүдийг **хасаж, тэмдэглэнэ**; хөршөөс,
+өөр жилээс нөхөхгүй. Цасыг зөвхөн цэлмэг өдөр тоолдог, цас орох өдөр үүлтэй тул тоо цастай тал
+руугаа хазайдаг: энэ нь бүтээгдэхүүний мөн чанар, анхаарах зүйлд бичсэн.
+
+**Earth Engine-гүйгээр (`--source earthdata`).** Нийтлэгдсэн багцуудыг архиваас шууд уншсан:
+улсыг LP DAAC-ийн MOD11C3/MOD13C2 (сарын 0.05° CMG, OPeNDAP-аар Монголын хэсгийг л татна) ба
+NSIDC-ийн MOD10C1 (өдөр тутмын 0.05°, бүтэн файл) -аас; хайрцгуудыг Microsoft Planetary
+Computer дээрх NASA-гийн MOD11A2, MOD10A1 tile-уудын COG цонхоор (бүртгэлгүй, үнэгүй) ба LP
+DAAC-ийн MOD13A3 tile-аас. Зөвхөн `EARTHDATA_TOKEN` (Earthdata Login-ийн token) хэрэгтэй.
+Бүхэлдээ ~2 цаг; `cache/modis-earthdata/`-д хадгалагддаг тул тасарсан ажил үргэлжилнэ.
 
 **Занга.** Terra-гийн тойрог 2020-02-27-ны сүүлчийн маневрын дараа шилжиж, 10:30-ийн
 өнгөрөлт эрт болж байна (2022 оны намар 10:15): нар намхан, сүүдэр урт, өдрийн гадаргын

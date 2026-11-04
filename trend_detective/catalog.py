@@ -59,10 +59,11 @@ PRODUCTS = {
         "url": "https://registry.opendata.aws/nasa-power/",
     },
     "modis": {
-        "name": "MODIS Terra (Collection 6.1, via Google Earth Engine)",
+        "name": "MODIS Terra (Collection 6.1)",
         "kind": "mission",
         "source": "NASA LP DAAC MOD11A2 (land surface temperature, 1 km, 8-day), MOD13A3 (NDVI, 1 km, monthly) "
-                  "and NSIDC MOD10A1 (snow cover, 500 m, daily), read through Google Earth Engine",
+                  "and NSIDC MOD10A1 (snow cover, 500 m, daily), or their 0.05° climate-modelling-grid versions MOD11C3, "
+                  "MOD13C2 and MOD10C1; read through Google Earth Engine or from NASA Earthdata Cloud and the Planetary Computer mirror",
         "native_res": "1 km (snow cover 500 m)",
         "record_start": "2000-03",
         "url": "https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD11A2",

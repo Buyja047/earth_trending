@@ -145,8 +145,9 @@ FDR and detectability as the precomputed scenes.
 mandatory ≤ 1 and error ≤ 2 K, at least two composites per month), one value
 per year for growing-season NDVI (MOD13A3, May–September, SummaryQA ≤ 1) and
 for winter snow-covered days (MOD10A1, NDSI ≥ 40, clear observations on at
-least half the days, November–March). Cells are 5 km (mean of the native
-pixels) over Mongolia and 1 km (one pixel) in three 160 km boxes; nothing is
+at least three clear-sky observations per month, November–March). Cells are
+0.1° (the mean of 2 × 2 climate-modelling-grid cells; 5 km through Earth
+Engine) over Mongolia and 1 km (one pixel) in three 160 km boxes; nothing is
 interpolated and nothing is gap-filled. For yearly-sampled series the sampling
 interval is one year, so Weatherhead's constant scales by sqrt(12) and the
 AR(1) correction rests on 25 points, as for a single season in the viewer
