@@ -62,9 +62,10 @@ Besides the case files: a "your own case" generator on top of the live
 analysis (any NASA POWER variable, any box, presented as a five-step case),
 the dzud-ingredients case, verdict cards as PNG, a what-if detectability
 slider, a bilingual glossary, QR codes for every step, a regime-shift layer,
-step tests at documented transitions in live scenes, and an offline copy of
-the hosted site (service worker). All of it is dated in the repository
-history and listed in README; it goes under References with the tag.
+step tests at documented transitions in live scenes, an offline copy of
+the hosted site (service worker), and the `modis-trend` pipeline for 1 km /
+5 km MODIS scenes (docs/MODIS_TRENDS.md). All of it is dated in the
+repository history and listed in README; it goes under References with the tag.
 
 ## 4. The hackathon weekend: what to build in 48 hours
 
@@ -121,8 +122,9 @@ challenge into case files: guided investigations where every number is
 computed live from NASA data in the browser. It tests every grid cell with an
 autocorrelation-corrected Mann-Kendall test, controls false discoveries across
 the map, says "not yet detectable" instead of "no trend", and checks each
-dataset against an independent record. Nine cases ship today, from global
-warming and a sea-ice data artifact to Mongolia's dust, rain and fire hazards;
+dataset against an independent record. Ten cases ship today, from global
+warming and a sea-ice data artifact to Mongolia's dust, rain and fire hazards,
+and four more at 1 km open with the MODIS scenes;
 a new case is a page of text, not new code. It works offline, on phones, in
 English and Mongolian.
 

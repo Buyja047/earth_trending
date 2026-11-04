@@ -15,7 +15,7 @@
     cases_tag_global: "Global", cases_tag_mongolia: "Mongolia", cases_tag_trap: "Data trap", cases_tag_hazard: "Hazard", cases_tag_method: "Method",
     cases_tag_own: "Your own", cases_own: "Your own case: any variable, any place",
     cases_own_q: "Pick one of 1,320 NASA POWER variables and a box anywhere on Earth; the data are read live and the four questions answered for it.",
-    cases_png: "Save verdict card (PNG)", cases_qr: "QR", cases_qr_hint: "Scan to open this step on a phone.", cases_verdict: "Verdict",
+    cases_png: "Save verdict card (PNG)", cases_qr: "QR", cases_qr_hint: "Scan to open this step on a phone.", cases_verdict: "Verdict", cases_more: "{n} more case files open once the MODIS 1 km scenes are built (docs/MODIS_TRENDS.md).",
     wi_label: "What if the trend were…", wi_zero: "Choose a trend size.",
     wi_out: "A trend of ±{x} {u} per decade would be detected with 90 % probability after {n} years of data, i.e. by {y}, at this selection's noise and memory.",
     wi_never: "A trend this small is not detectable at this noise level within any practical record.",
@@ -191,7 +191,9 @@
     about: "A prototype for the NASA Space Apps 2026 challenge “Be an Earth System Trend Detective”. Data: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) and the NSIDC Sea Ice Index. Places: GeoNames. Coastlines: Natural Earth via world-atlas. Background imagery: NASA GIBS. Everything runs in your browser; no data leaves your computer.",
     close: "Close", units_label: "Units",
     groups: { "Risk zones": "Risk zones", "Globe 1981-2025": "Globe 1981–2025", "Mongolia 1981-2025": "Mongolia 1981–2025", "Mongolia 2001-2025": "Mongolia 2001–2025", "Validation": "Validation", "Live analysis": "Live analysis",
-      "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)" },
+      "Mongolia hazards 1981-2025 (daily)": "Mongolia hazards 1981–2025 (daily)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Mongolia MODIS 2000–2025 (5 km)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Ulaanbaatar MODIS 2000–2025 (1 km)",
+      "South Gobi MODIS 2000-2025 (1 km)": "South Gobi MODIS 2000–2025 (1 km)", "Khövsgöl MODIS 2000-2025 (1 km)": "Khövsgöl MODIS 2000–2025 (1 km)" },
   };
 
   const MN = {
@@ -208,7 +210,7 @@
     cases_tag_global: "Дэлхий", cases_tag_mongolia: "Монгол", cases_tag_trap: "Өгөгдлийн занга", cases_tag_hazard: "Аюул", cases_tag_method: "Арга зүй",
     cases_tag_own: "Таны өөрийн", cases_own: "Таны өөрийн хэрэг: дурын хувьсагч, дурын газар",
     cases_own_q: "NASA POWER-ийн 1,320 хувьсагчаас нэгийг, дэлхийн дурын хайрцгийг сонго; өгөгдлийг шууд уншиж, дөрвөн асуултад хариулна.",
-    cases_png: "Дүгнэлтийн карт хадгалах (PNG)", cases_qr: "QR", cases_qr_hint: "Утсаараа уншуулж энэ алхмыг нээнэ.", cases_verdict: "Дүгнэлт",
+    cases_png: "Дүгнэлтийн карт хадгалах (PNG)", cases_qr: "QR", cases_qr_hint: "Утсаараа уншуулж энэ алхмыг нээнэ.", cases_verdict: "Дүгнэлт", cases_more: "MODIS-ийн 1 км-ийн багцуудыг үүсгэсний дараа {n} хэргийн хавтас нэмж нээгдэнэ (docs/MODIS_TRENDS.md).",
     wi_label: "Хэрэв чиг … байсан бол", wi_zero: "Чигийн хэмжээг сонгоно уу.",
     wi_out: "Арван жилд ±{x} {u} чиг энэ сонголтын шуугиан, санах ойд {n} жилийн өгөгдлийн дараа, өөрөөр хэлбэл {y} он гэхэд 90 %-ийн магадлалтайгаар илэрнэ.",
     wi_never: "Ийм жижиг чиг энэ шуугианы түвшинд бодит хугацааны бүртгэлээр илрэхгүй.",
@@ -384,7 +386,9 @@
     about: "NASA Space Apps 2026-ийн “Be an Earth System Trend Detective” даалгаварт зориулсан прототип. Өгөгдөл: NASA POWER v10 (MERRA-2, CERES SYN1deg, GPM IMERG) ба NSIDC Sea Ice Index. Газрын нэр: GeoNames. Эргийн шугам: Natural Earth (world-atlas). Суурь зураг: NASA GIBS. Бүх тооцоо таны хөтөч дээр хийгдэнэ; өгөгдөл таны компьютерээс гарахгүй.",
     close: "Хаах", units_label: "Нэгж",
     groups: { "Risk zones": "Эрсдэлийн бүсүүд", "Globe 1981-2025": "Дэлхий 1981–2025", "Mongolia 1981-2025": "Монгол 1981–2025", "Mongolia 2001-2025": "Монгол 2001–2025", "Validation": "Баталгаажуулалт", "Live analysis": "Шууд шинжилгээ",
-      "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)" },
+      "Mongolia hazards 1981-2025 (daily)": "Монгол: аюулын индекс 1981–2025 (өдрийн)",
+      "Mongolia MODIS 2000-2025 (5 km)": "Монгол MODIS 2000–2025 (5 км)", "Ulaanbaatar MODIS 2000-2025 (1 km)": "Улаанбаатар MODIS 2000–2025 (1 км)",
+      "South Gobi MODIS 2000-2025 (1 km)": "Өмнөговь MODIS 2000–2025 (1 км)", "Khövsgöl MODIS 2000-2025 (1 km)": "Хөвсгөл MODIS 2000–2025 (1 км)" },
   };
 
   const SCENE_MN = {
@@ -399,6 +403,9 @@
     "mn-dustdays10": "Тоосжих нөхцөлтэй өдөр (салхи ≥ 10 м/с)", "mn-snowdays": "Цасан бүрхүүлтэй өдөр",
     "mn-wetdays": "Нойтон өдөр (≥ 0.254 мм)", "mn-windydays": "Салхитай өдөр (≥ 8 м/с)",
     "mn-heavyrain": "Аадар борооны өдөр (≥ 10 мм)", "mn-rx1day": "Сарын хамгийн их хур тунадастай өдөр",
+    ...Object.fromEntries(["mn", "ub", "gobi", "khovsgol"].flatMap((r) => [
+      [`${r}-modis-lst-day`, "Гадаргын температур, өдөр (MODIS)"], [`${r}-modis-lst-night`, "Гадаргын температур, шөнө (MODIS)"],
+      [`${r}-modis-ndvi`, "Ногоон байдал 5–9-р сар (NDVI, MODIS)"], [`${r}-modis-snowdays`, "Цасан бүрхүүлтэй өдөр 11–3-р сар (MODIS)"]])),
   };
 
   const UNIT_MN = { "°C": "°C", "mm/day": "мм/өдөр", "m/s": "м/с", cm: "см", DU: "DU", fraction: "харьцаа",

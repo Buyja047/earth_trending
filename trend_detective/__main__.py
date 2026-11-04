@@ -53,6 +53,18 @@ def main(argv=None):
     sub.add_parser("catalog", help="rebuild web/data/power-catalog.js (live analysis)")
     sub.add_parser("dust-check", help="check GES DISC access and the server-side subset")
 
+    mt = sub.add_parser("modis-trend", help="MODIS 1 km / 5 km trend scenes through Earth Engine (2000-2025)")
+    mt.add_argument("--project", required=True, help="registered Earth Engine Google Cloud project ID")
+    mt.add_argument("--regions", nargs="*", default=["country", "ub", "gobi", "khovsgol"],
+                    help="country (5 km) and/or the 1 km boxes: ub gobi khovsgol")
+    mt.add_argument("--vars", nargs="*", default=["lstd", "lstn", "ndvi", "snowdays"],
+                    help="lstd lstn ndvi snowdays")
+    mt.add_argument("--start", type=int, default=2000)
+    mt.add_argument("--end", type=int, default=2025)
+    mt.add_argument("--out", type=Path, default=ROOT / "web" / "data")
+    mt.add_argument("--geo", type=Path, default=ROOT / "web" / "data" / "geo.js")
+    mt.add_argument("--cache", type=Path, default=ROOT / "cache" / "modis", help="per-year pixel cache; a rerun resumes")
+
     fire = sub.add_parser("fire-context", help="Landsat 8/9 and Earth Engine fire-weather observations")
     fire.add_argument("--project", required=True, help="registered Earth Engine Google Cloud project ID")
     fire.add_argument("--bbox", required=True, type=float, nargs=4, metavar=("WEST", "SOUTH", "EAST", "NORTH"))
@@ -105,6 +117,17 @@ def main(argv=None):
     md.add_argument("--out", type=Path, default=ROOT/"web/data/dust-risk.js")
 
     a = ap.parse_args(argv)
+    if a.cmd == "modis-trend":
+        from . import modis
+        bad = [r for r in a.regions if r not in modis.REGIONS] + [v for v in a.vars if v not in modis.VARS]
+        if bad:
+            ap.exit(2, f"modis-trend: unknown {', '.join(bad)}; regions {list(modis.REGIONS)}, vars {list(modis.VARS)}\n")
+        try:
+            built = modis.run(a.project, a.regions, a.vars, a.out, a.geo, a.cache, a.start, a.end)
+        except (ValueError, RuntimeError) as exc:
+            ap.exit(2, f"modis-trend: {exc}\n")
+        print(f"Wrote {len(built)} scene(s) and updated {a.out / 'index.js'}; open Trend Detective → Datasets")
+        return
     if a.cmd == "modis-dust":
         from datetime import datetime, timedelta, timezone
         from .modis_source import discover
