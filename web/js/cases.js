@@ -47,6 +47,7 @@
   const UB_CITY = [106.74, 47.84, 107.06, 47.98];            // the built-up capital, about 24 × 16 km
   const TAVAN_TOLGOI = [105.365, 43.54, 105.615, 43.72];     // 20 km around the pit centre 105.49°E 43.63°N (read off NASA HLS)
   const OYU_TOLGOI = [106.72, 42.92, 106.97, 43.10];         // 20 km around the mine point 106.843°E 43.008°N (GeoNames)
+  const MORON = [100.09, 49.59, 100.24, 49.68];              // 10 km around the aimag centre 100.162°E 49.634°N (GeoNames)
   // a box selection against the scene's first area mean
   function boxVsMean(c, name) {
     const s = c.sel, n = c.st.sel && c.st.sel.cells ? c.st.sel.cells.length : 0;
@@ -648,29 +649,29 @@
           text: B("MOD10A1 flags a 500 m pixel as snow-covered when its NDSI is 40 or more; cloudy and night observations are left out, each month's count is scaled to its length, and the five months November–March are summed: one number per winter, 2000/01 to 2024/25. Lake Khövsgöl is inland water in this product and carries no value.",
             "MOD10A1 500 м-ийн пикселийн NDSI 40 ба түүнээс дээш бол цастай гэж тэмдэглэнэ; үүлтэй, шөнийн ажиглалтыг орхиж, сар бүрийн тоог уртад нь тааруулж, 11–3-р сарын таван сарыг нэмнэ: нэг өвөлд нэг тоо, 2000/01-ээс 2024/25. Хөвсгөл нуур энэ бүтээгдэхүүнд дотоод ус тул утгагүй."),
           evidence: (c) => join(B(`160 km box mean: ${meanLine(c, c.rs, c.unit).en}`, `160 км хайрцгийн дундаж: ${meanLine(c, c.rs, c.unit).mn}`), cellsLine(c)) },
-        { action: { layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
-          title: B("Mörön", "Мөрөн"),
-          text: B("The 1 km cell holding the aimag centre; its 25 winters, confidence interval and the year its trend becomes detectable are in the details pane. Snow is the dzud ingredient that satellites see directly; the reanalysis only models it.",
-            "Аймгийн төвийг агуулсан 1 км-ийн нүд; түүний 25 өвөл, итгэлийн завсар, чиг нь илрэх он дэлгэрэнгүй самбарт байна. Цас бол хиймэл дагуул шууд хардаг зудын орц; дахин шинжилгээ түүнийг зөвхөн загварчилдаг."),
-          evidence: (c) => cellLine(c, B("Mörön cell", "Мөрөнгийн нүд")) },
-        { action: { scene: "khovsgol-modis-lst-night", layer: "trend", years: "full", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+        { action: { layer: "trend", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
+          title: B("Around Mörön", "Мөрөнгийн орчим"),
+          text: B("A 10 km box around the aimag centre averages the 1 km cells that have all 25 winters and runs the same tests on the mean series (a single cell can be excluded by one cloudy month). Snow is the dzud ingredient that satellites see directly; the reanalysis only models it.",
+            "Аймгийн төвийн эргэн тойрны 10 км-ийн хайрцаг 25 өвөл бүгд бүрэн 1 км-ийн нүднүүдээ дундажлаад дундаж цуваанд ижил тестүүдийг ажиллуулна (ганц нүд нэг үүлэрхэг сараас болж хасагдаж болно). Цас бол хиймэл дагуул шууд хардаг зудын орц; дахин шинжилгээ түүнийг зөвхөн загварчилдаг."),
+          evidence: (c) => boxVsMean(c, B("Mörön box", "Мөрөнгийн хайрцаг")) },
+        { action: { scene: "khovsgol-modis-lst-night", layer: "trend", years: "full", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } },
           title: B("Nights at the surface", "Шөнийн гадаргуу"),
-          text: B("Night-time surface temperature (all months, annual mean) at the same cell. Snow insulates the ground and reflects the sun; fewer snow days and warmer night surfaces go together, and a cell showing both is harder to dismiss as a cloud-sampling artifact.",
-            "Ижил нүдний шөнийн гадаргын температур (бүх сар, жилийн дундаж). Цас газрыг дулаалж, нарыг ойлгодог; цастай өдөр цөөрөх, шөнийн гадаргуу дулаарах хоёр хамт явдаг бөгөөд хоёуланг нь үзүүлж буй нүдийг үүлний түүврийн хуурмаг гэж үгүйсгэхэд хэцүү."),
-          evidence: (c) => cellLine(c, B("Mörön cell, night surface", "Мөрөнгийн нүд, шөнийн гадаргуу")) },
+          text: B("Night-time surface temperature (all months, annual mean) in the same box. Snow insulates the ground and reflects the sun; fewer snow days and warmer night surfaces go together, and a place showing both is harder to dismiss as a cloud-sampling artifact.",
+            "Ижил хайрцгийн шөнийн гадаргын температур (бүх сар, жилийн дундаж). Цас газрыг дулаалж, нарыг ойлгодог; цастай өдөр цөөрөх, шөнийн гадаргуу дулаарах хоёр хамт явдаг бөгөөд хоёуланг нь үзүүлж буй газрыг үүлний түүврийн хуурмаг гэж үгүйсгэхэд хэцүү."),
+          evidence: (c) => boxVsMean(c, B("Mörön box, night surface", "Мөрөнгийн хайрцаг, шөнийн гадаргуу")) },
         { action: { scene: "khovsgol-modis-snowdays", layer: "emerge", years: "full", sel: null, zoom: "reset" },
           title: B("When would a snow trend show?", "Цасны чиг хэзээ харагдах вэ?"),
           text: B("Twenty-five winters is a short record for a quantity that swings by weeks from one winter to the next. The year-detectable layer gives, cell by cell, the winter by which a trend of the measured size would be detected with 90 % probability if it continues.",
             "Өвлөөс өвөлд долоо хоногоор хэлбэлздэг хэмжигдэхүүний хувьд хорин таван өвөл бол богино бүртгэл. Илрэх оны давхарга нүд бүрт хэмжсэн хэмжээтэй чиг үргэлжилбэл 90 %-ийн магадлалтайгаар илрэх өвлийг өгнө."),
           evidence: (c) => B(`160 km box mean: ${c.detectSentence(c.det(c.rs))}`, `160 км хайрцгийн дундаж: ${c.detectSentence(c.det(c.rs))}`) },
-        { action: { scene: "khovsgol-modis-snowdays", years: "full", layer: "trend", place: "Mörön", zoom: { lon: 100.162, lat: 49.634, z: 2.5 } }, verdict: true,
+        { action: { scene: "khovsgol-modis-snowdays", years: "full", layer: "trend", box: MORON, zoom: { lon: 100.162, lat: 49.634, z: 2.5 } }, verdict: true,
           title: B("Verdict", "Дүгнэлт"),
           text: B("The four questions for Khövsgöl's snow.", "Хөвсгөлийн цасны дөрвөн асуулт."),
           verdict: (c) => {
             const s = c.sel;
             return {
-              what: B(`Snow-covered days per winter in the 160 km box: ${trendWord(c, c.rs).en}; at Mörön's cell: ${s ? trendWord(c, s).en : "?"}.`,
-                `160 км хайрцгийн нэг өвлийн цастай өдөр: ${trendWord(c, c.rs).mn}; Мөрөнгийн нүдэнд: ${s ? trendWord(c, s).mn : "?"}.`),
+              what: B(`Snow-covered days per winter in the 160 km box: ${trendWord(c, c.rs).en}; in the 10 km box around Mörön: ${s ? trendWord(c, s).en : "?"}.`,
+                `160 км хайрцгийн нэг өвлийн цастай өдөр: ${trendWord(c, c.rs).mn}; Мөрөнгийн 10 км-ийн хайрцагт: ${s ? trendWord(c, s).mn : "?"}.`),
               where: B(`${c.nf(c.k.fdr_down)} cells losing and ${c.nf(c.k.fdr_up)} gaining snow days after FDR, of ${c.nf(c.k.valid)} at 1 km.`,
                 `1 км-ийн ${c.nf(c.k.valid)} нүдний ${c.nf(c.k.fdr_down)} нь цастай өдрөө алдаж, ${c.nf(c.k.fdr_up)} нь нэмж байна (FDR-ийн дараа).`),
               howmuch: B(`160 km box ${meanLine(c, c.rs, c.unit).en}; Mörön ${s ? meanLine(c, s, c.unit).en : "—"}.`,

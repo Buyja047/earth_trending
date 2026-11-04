@@ -207,7 +207,7 @@ def test_modis_case_files_walk_to_their_verdicts(tmp_path):
     ids = [s["id"] for s in built]
     assert ids == ["ub-modis-lst-day", "ub-modis-lst-night", "gobi-modis-ndvi", "gobi-modis-lst-day", "khovsgol-modis-snowdays", "khovsgol-modis-lst-night", "mn-modis-lst-day"]
     index_ids = [s["id"] for s in read_payload(out / "index.js")["scenes"]]
-    real_ids = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"]]
+    real_ids = [s["id"] for s in read_payload(ROOT / "web/data/index.js")["scenes"] if "-modis-" not in s["id"]]   # the index without MODIS scenes
     node = shutil.which("node")
     js = f"require('./web/js/cases.js');const C=globalThis.TDCases;console.log(JSON.stringify({{later: C.list({json.dumps(index_ids)}), now: C.list({json.dumps(real_ids)})}}))"
     r = json.loads(subprocess.run([node, "-e", js], cwd=ROOT, capture_output=True, text=True, check=True).stdout)
@@ -257,7 +257,7 @@ def test_modis_case_files_walk_to_their_verdicts(tmp_path):
             # the selections and the cross-grid comparison really happened
             assert "City box (" in seen[("ub-surface", 1)] and "cells)" in seen[("ub-surface", 1)]
             assert "Tavan Tolgoi box (" in seen[("gobi-mines-1km", 1)] and "Oyu Tolgoi box (" in seen[("gobi-mines-1km", 2)]
-            assert "Mörön cell:" in seen[("khovsgol-snow", 1)] and "night surface" in seen[("khovsgol-snow", 2)]
+            assert "Mörön box (" in seen[("khovsgol-snow", 1)] and "night surface" in seen[("khovsgol-snow", 2)]
             assert "share the sign" in seen[("skin-vs-air", 2)] and "%" in seen[("skin-vs-air", 2)] and "surface" in seen[("skin-vs-air", 2)]
             assert "of 5 km cells" not in seen[("skin-vs-air", 3)] and "share the sign" in seen[("skin-vs-air", 3)]
             # the last verdict keeps the split view; the next case's first step (a scene without a compare action) closes it

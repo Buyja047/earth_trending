@@ -164,7 +164,7 @@ after a real run:
 |---|---|---|
 | Ulaanbaatar at 1 km: is the city's surface warming faster than the land around it? | `ub-modis-lst-day`, `ub-modis-lst-night` | a 24 × 16 km city box against the 160 km box mean, by day and by night; Terra's drift as a step; the 2000–2019 window |
 | The South Gobi mines at 1 km | `gobi-modis-ndvi`, `gobi-modis-lst-day` | 20 km boxes around Tavan Tolgoi (105.49°E 43.63°N) and Oyu Tolgoi (106.843°E 43.008°N) in greenness and daytime surface temperature. Dates used: open-pit mining at Ukhaa Khudag from 2009, exports from 2011 (Mongolian Mining Corporation); Oyu Tolgoi's first concentrate shipment July 2013 (Oyu Tolgoi LLC) |
-| Khövsgöl at 1 km: are winters losing snow-covered days? | `khovsgol-modis-snowdays`, `khovsgol-modis-lst-night` | the Mörön cell, night-time surface temperature as the second witness, the winter a trend would show |
+| Khövsgöl at 1 km: are winters losing snow-covered days? | `khovsgol-modis-snowdays`, `khovsgol-modis-lst-night` | a 10 km box around Mörön, night-time surface temperature as the second witness, the winter a trend would show |
 | Do 1 km satellites and the 50 km model agree? | `mn-modis-lst-day` with `mn-t2m` | split view over 2000–2025; for every 5 km cell the sign of its Sen slope against the 50 km MERRA-2 cell that holds it, overall and among cells significant in both |
 
 `tests/test_modis.py` builds synthetic versions of the seven scenes (the real boxes at 4 km)
