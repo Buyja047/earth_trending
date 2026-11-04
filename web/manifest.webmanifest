@@ -1,0 +1,16 @@
+{
+  "name": "Trend Detective",
+  "short_name": "Trend Detective",
+  "description": "What is changing in NASA Earth data, where, how much, and whether it is significant. Case files, offline, English and Mongolian.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "lang": "en",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

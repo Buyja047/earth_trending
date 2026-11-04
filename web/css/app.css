@@ -122,7 +122,11 @@ p { margin: 0; }
 .tree .livebtn { padding-left: 8px; margin: 2px 0 6px; font-weight: 600; border: 1px dashed var(--line-strong); width: calc(100% - 4px); }
 .tree .item .tag { margin-left: auto; font-size: 10px; border: 1px solid currentColor; padding: 0 4px; opacity: 0.85; }
 
-.center { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--bg); }
+.center { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; background: var(--bg); }
+/* fixed rows, so a hidden case strip leaves the document its full height */
+.center > .docbar { grid-row: 1; }
+.center > .casebar { grid-row: 2; }
+.center > .doc { grid-row: 3; }
 .docbar { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--line-strong); background: var(--panel); }
 .doctabs { display: flex; flex: 1 1 auto; min-width: 0; overflow-x: auto; }
 .doctabs button { border: 0; border-right: 1px solid var(--line); background: none; padding: 6px 14px; cursor: pointer; white-space: nowrap; }
@@ -284,8 +288,62 @@ pre { font-family: var(--font-data); font-size: 12px; background: var(--panel); 
   .cmphandle { width: 38px; height: 38px; margin: -19px 0 0 -19px; }
   .search input { width: 150px; }
   .apptitle { font-size: 15px; }
+  .casebar { max-height: none; }
+  .casehead .btn { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* case files: the story strip above the document, and the board of cases in the modal */
+.tree .casesbtn { padding-left: 8px; margin: 4px 0 8px; font-weight: 600; border: 1px solid var(--line-strong); width: calc(100% - 4px);
+  background: var(--sel-bg); color: var(--sel-ink); }
+.tree .casesbtn:hover { background: var(--ink-2); color: var(--sel-ink); }
+.casebar { border-bottom: 2px solid var(--line-strong); background: var(--panel); padding: 8px 12px 10px; display: grid; gap: 6px; max-height: 42vh; overflow: auto; }
+.casehead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.casehead b { font: 700 14px/1.2 var(--font-display); }
+.casehead .dots { display: inline-flex; gap: 4px; }
+.casehead .dots i { width: 8px; height: 8px; border: 1px solid var(--line-strong); display: inline-block; }
+.casehead .dots i.done { background: var(--axis); }
+.casehead .dots i.on { background: var(--sel-bg); }
+.casehead .btn { margin-left: auto; }
+.casebody { display: grid; gap: 6px; max-width: 90ch; }
+.casebody h3 { font-size: 15px; }
+.casebody p { color: var(--ink-2); }
+.casebody .evidence { color: var(--ink); border-left: 3px solid var(--line-strong); padding-left: 8px; font-size: 12px; }
+.casebody .evidence b { font-family: var(--font-ui); }
+.casebody .warn { color: var(--ink); }
+.casebody .verdict { font-size: 13px; }
+.casebody .verdict dt { font-weight: 600; color: var(--ink); }
+.casebody .verdict dd { text-align: left; font-family: var(--font-ui); }
+.casebody ul { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; color: var(--ink-2); font-size: 12px; }
+.casenav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.linkbtn { border: 0; background: none; cursor: pointer; padding: 0; text-decoration: underline; color: var(--ink); font: inherit; }
+.caseboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 8px; }
+.casecard { display: grid; gap: 4px; text-align: left; border: 1px solid var(--line-strong); background: var(--bg); padding: 10px 12px; cursor: pointer; align-content: start; }
+.casecard:hover, .casecard:focus-visible { background: var(--sel-bg); color: var(--sel-ink); }
+.casecard .tag { justify-self: start; font-size: 10px; border: 1px solid currentColor; padding: 0 5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.casecard b { font: 700 14px/1.25 var(--font-display); }
+.casecard span:not(.tag) { font-size: 12px; opacity: 0.85; }
+.casecard small { font-size: 11px; opacity: 0.7; }
+.modal .box.wide { max-width: 900px; }
+.casecard.own { border-style: dashed; }
+.casebar .qr { display: flex; align-items: center; gap: 10px; }
+.casebar .qr svg { width: 132px; height: 132px; border: 1px solid var(--line); background: #fff; }
+.whatif { display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 8px; margin-top: 4px; }
+.whatif label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.whatif input[type="range"] { flex: 1 1 120px; min-width: 0; accent-color: var(--ink); }
+.gloss dd { text-align: left; font-family: var(--font-ui); color: var(--ink-2); }
+.gloss dt { font-weight: 600; color: var(--ink); }
+[title] { cursor: help; }
+.btn[title], .menubtn[title] { cursor: pointer; }
+@media print {
+  .titlebar, .toolbar, .pane.left, .statusbar, .casenav, .zoomctl, .timeline, .csvbtn, .docbar, .casebar .qr, .modal { display: none !important; }
+  .app { height: auto; display: block; }
+  .workspace { display: block; }
+  .pane.right { border: 0; }
+  .casebar { max-height: none; overflow: visible; border-bottom: 1px solid #000; }
+  .mapwrap { min-height: 420px; }
+  body { color: #000; background: #fff; }
+}
 
 /* mines: downwind roses and settlement tables (daily hazard scenes) */
 .minecard { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; }

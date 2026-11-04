@@ -138,6 +138,33 @@ FDR and detectability as the precomputed scenes.
   holds tens of thousands of cells. The claude.ai preview of the page may not
   be allowed to reach AWS; the downloaded `TrendDetective.html` is.
 
+## Step tests in live analysis
+
+The precomputed scenes test every cell for a jump at each documented
+data-source change (`step_test_rows`: x = a + b (t − mean t) + c H(t ≥ t_b),
+c tested with the AR(1) effective sample size of the residuals; flags by
+Benjamini–Hochberg at α_FDR = 0.1 across the cells). The browser now does the
+same for a live scene (`TDStats.stepTest`, `TDStats.fdrThreshold`): every
+transition listed for the product/variable in `data/power-catalog.js` whose
+date lies at least two years inside the chosen window is tested in every
+complete cell, the *Source steps* layer shows the jumps, and the summary says
+how many cells are flagged. `tests/test_js_step.py` checks the JavaScript
+against the Python implementation to 1e-8 in the coefficients and 2e-4 in p.
+
+## Regime-shift layer
+
+The chosen years are cut in two halves (the second half gets the extra year
+when the count is odd) and each half is analysed on its own in every cell with
+the same autocorrelation-corrected Mann-Kendall test. Cells are classed 4
+(halves disagree in sign, both significant at the chosen α), 3 (disagree, one
+significant), 2 (disagree, neither), 1 (same sign) or 0 (flat or too short);
+the colour follows the sign of the second half. No FDR is applied within the
+halves and no p-value is attached to the reversal itself: the layer is a
+screening aid that shows where a single straight line is a poor summary (the
+start/end-year triangle in the Analysis tab is the per-region version), not a
+test for change points. It needs a window of at least 20 years so that each
+half has ten.
+
 ## Dust over Mongolia (MERRA-2 aerosols, GES DISC)
 
 NASA POWER carries no dust variables (its catalog has only CERES total aerosol

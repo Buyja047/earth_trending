@@ -34,7 +34,7 @@ def test_integrated_risk_map_and_return_to_trends(tmp_path):
     try:
         with playwright.sync_playwright() as p:
             browser=p.chromium.launch(executable_path=shutil.which('chromium'),args=['--no-sandbox'])
-            page=browser.new_page(viewport=dict(width=1440,height=950))
+            page=browser.new_page(viewport=dict(width=1440,height=950),service_workers='block')   # page.route mocks bypass a service worker otherwise
             page.add_init_script("localStorage.setItem('td.seenGuide','1'); localStorage.setItem('td.lang','en')")
             errors=[];page.on('pageerror',lambda e:errors.append(e.stack))
             page.route('**/data/fire-risk.js',lambda route:route.fulfill(content_type='application/javascript',body='TD_DATA("fire-risk",'+json.dumps(fixture_map())+');'))

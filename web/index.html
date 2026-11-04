@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Trend Detective</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,600..800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
@@ -49,6 +52,7 @@
     <aside class="pane left" id="leftpane" aria-label="Layer manager">
       <div class="ptitle" data-i18n="p_layers">Layer manager</div>
       <div class="tree">
+        <button type="button" class="item casesbtn" id="casesbtn"><span aria-hidden="true">▤</span> <span data-i18n="cases_btn">Case files</span></button>
         <details open><summary data-i18n="p_datasets">Datasets</summary>
           <button type="button" class="item livebtn" id="livebtn"><span aria-hidden="true">+</span> <span data-i18n="live_btn">Analyse any variable (live)</span></button>
           <div id="tree-scenes"></div></details>
@@ -88,6 +92,8 @@
           <div class="layermenu" id="picker" role="menu" aria-label="Map layer" hidden></div>
         </div>
       </div>
+
+      <section class="casebar" id="casebar" aria-label="Case file" aria-live="polite" hidden></section>
 
       <section class="doc" id="doc-map" role="tabpanel">
         <div class="cmpbar" id="cmpbar" hidden>
@@ -182,6 +188,8 @@
 <script src="js/fire-map.js"></script>
 <script src="js/dust-map.js"></script>
 <script src="js/risk-maps.js"></script>
+<script src="js/qr.js"></script>
+<script src="js/cases.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

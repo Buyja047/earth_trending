@@ -19,7 +19,7 @@
   const WATER_VARS = new Set(["PRECTOTCORR", "IMERG_PRECTOT", "GWETROOT", "GWETTOP", "SNODP", "FRSEAICE", "FRSNO",
     "WETDAYS", "SNOWDAYS", "R10MM", "RX1DAY"]);
   const REPO = "https://github.com/Buyja047/earth_trending";
-  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "anom", "steps", "truth"];
+  const LAYERS = ["trend", "naive", "verdict", "detect", "emerge", "zone", "shift", "anom", "steps", "truth"];
   const CAP_YEAR = 2100;
   const ICONS = {
     trend: '<path d="M2 12 L6 8 L9 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 4h3v3" fill="none" stroke="currentColor" stroke-width="1.8"/>',
@@ -31,8 +31,9 @@
     steps: '<path d="M2 12h4V7h4V3h4" fill="none" stroke="currentColor" stroke-width="1.8"/>',
     truth: '<path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" stroke-width="2"/>',
     zone: '<rect x="2" y="9" width="4" height="5" fill="currentColor" opacity=".35"/><rect x="6" y="6" width="4" height="8" fill="currentColor" opacity=".65"/><rect x="10" y="2" width="4" height="12" fill="currentColor"/>',
+    shift: '<path d="M2 4 L8 10" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 10 L14 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2 2"/><path d="M8 1.5v13" stroke="currentColor" stroke-width="1"/>',
   };
-  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", zone: "L_zone", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
+  const LAYER_KEY = { trend: "L_trend", naive: "L_naive", verdict: "L_verdict", detect: "L_detect", emerge: "L_emerge", zone: "L_zone", shift: "L_shift", anom: "L_anom", steps: "L_steps", truth: "L_truth" };
   const REGION_MN = { globe: "Дэлхий (талбайгаар жигнэсэн)", nh: "Хойд хагас бөмбөрцөг", sh: "Өмнөд хагас бөмбөрцөг",
     arctic_area: "Арктикийн далайн мөсний талбай (ойролцоо)", antarctic_area: "Антарктидын далайн мөсний талбай (ойролцоо)",
     focus: "Монгол (улсын хилээр)", focus_part: "Хайрцаг доторх Монголын хэсэг",
@@ -552,7 +553,7 @@
     if (isRisk()) return 1;
     const sc = state.sc, c = state.res.cells, st = state.res.status;
     if (state.layer === "anom") return annualCube(state.entry).lim;
-    if (state.layer === "emerge" || state.layer === "zone") return 1;
+    if (state.layer === "emerge" || state.layer === "zone" || state.layer === "shift") return 1;
     let arr;
     if (state.layer === "detect") arr = c.mdt;
     else if (state.layer === "steps") arr = sc.steps[state.step] ? sc.steps[state.step].step : [];
@@ -591,6 +592,15 @@
       case "zone": {
         const z = zoneInfo(), c5 = z.cls[k];
         return c5 < 0 ? null : { col: pal.seq[ZONE_SHADE[c5]], h: c5 / 4 };
+      }
+      case "shift": {
+        const sh = state.res.shift;
+        if (!sh || !sh.key) { ensureShift(); return null; }
+        const c5 = sh.cls[k];
+        if (c5 === 0) return null;
+        if (c5 === 1) return { col: pal.grid, h: 0 };
+        const col = divColor(sh.b[k], Math.abs(sh.b[k]) || 1, invert);
+        return { col: fade(col, SHIFT_FADE[c5]), h: c5 / 4 };
       }
       case "steps": {
         const s = sc.steps[state.step];
@@ -1042,8 +1052,51 @@
   function availLayers() {
     if (isRisk()) return ["zone"];
     const sc = state.sc;
-    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12));
+    return LAYERS.filter((l) => (l !== "steps" || sc.steps.length) && (l !== "truth" || sc.truth) && (l !== "zone" || sc.clim12) && (l !== "shift" || state.y1 - state.y0 + 1 >= 20));
   }
+  // ------------------------------------------------------------ regime shift
+  // The chosen years cut in two halves, each tested on its own in every cell. 4 = the halves disagree in
+  // sign and both are significant (corrected p < α); 3 = disagree, one significant; 2 = disagree, neither;
+  // 1 = same sign; 0 = too short or flat. Colour follows the second half's sign.
+  function shiftHalves() {
+    const mid = state.y0 + Math.floor((state.y1 - state.y0 + 1) / 2);
+    return [[state.y0, mid - 1], [mid, state.y1]];
+  }
+  async function ensureShift() {
+    const r = state.res, sc = state.sc;
+    if (!r || isRisk()) return null;
+    const key = `${state.y0}-${state.y1}-${state.season}-${state.alpha}`;
+    if (r.shift && r.shift.key === key) return r.shift;
+    if (r.shiftBusy) return null;
+    r.shiftBusy = true;
+    const [[a0, a1], [b0, b1]] = shiftHalves(), ncell = sc.grid.nx * sc.grid.ny, st = r.status;
+    const se = seasonOf(sc), monthly = sc.series.kind === "monthly" && !se, n = sc.series.n, cube = monthly ? null : annualCube(state.entry);
+    const cls = new Int8Array(ncell), a = new Float32Array(ncell).fill(NaN), b = new Float32Array(ncell).fill(NaN), counts = [0, 0, 0, 0, 0];
+    const busy = $("#busy"); busy.hidden = false; state.busy = true;
+    let tick = performance.now();
+    const fit = (c, y0, y1) => {
+      if (monthly) { const w = monthlyWindow(cellSeries(c), sc.series.start, y0, y1); return S.analyze(w.x, w.t); }
+      const sub = subsetAnnual(cube.years, Array.from(cube.data.subarray(c * cube.ny, (c + 1) * cube.ny)), y0, y1, cube.off);
+      return S.analyze(sub.vs, sub.ys);
+    };
+    for (let c = 0; c < ncell; c++) {
+      if (st[c] >= 1 && st[c] <= 5) {
+        const ra = fit(c, a0, a1), rb = fit(c, b0, b1);
+        if (ra && rb && ra.varS > 0 && rb.varS > 0 && ra.sen !== 0 && rb.sen !== 0) {
+          a[c] = ra.sen * 10; b[c] = rb.sen * 10;
+          const sa = ra.pMk < state.alpha, sb = rb.pMk < state.alpha;
+          cls[c] = Math.sign(ra.sen) !== Math.sign(rb.sen) ? (sa && sb ? 4 : sa || sb ? 3 : 2) : 1;
+        }
+      }
+      counts[cls[c]]++;
+      if (performance.now() - tick > 60) { busy.textContent = t("computing", { p: Math.round(100 * c / ncell) }); await new Promise((res) => setTimeout(res, 0)); tick = performance.now(); }
+    }
+    busy.hidden = true; state.busy = false; r.shiftBusy = false;
+    r.shift = { key, cls, a, b, counts, halves: [[a0, a1], [b0, b1]] };
+    if (state.layer === "shift") { renderLegend(layerLimit()); drawMap(); }
+    return r.shift;
+  }
+  const SHIFT_FADE = { 4: 0, 3: 0.4, 2: 0.72 };
   const layerIcon = (l) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[l]}</svg>`;
   function renderPicker() {
     const avail = availLayers();
@@ -1086,6 +1139,16 @@
       const z = zoneInfo(), se = seasonOf(sc), u = `${unitLabel(sc.units)} ${t("per_month")}`;
       el.innerHTML = [4, 3, 2, 1, 0].map((k) => `<span><i class="sw" style="background:${rgb(pal.seq[ZONE_SHADE[k]])}"></i>${esc(t("z" + k))} <span class="num muted">${nf(z.counts[k])}</span></span>`).join("")
         + `<span class="muted">${esc(t("lg_zone", { s: se ? seasonText(se) : t("se_all"), a: fmt(z.q1), b: fmt(z.q2), u, fdr: fmt(2 * state.alpha) }))}</span>${csvBtn("cells")}`;
+      return;
+    }
+    if (state.layer === "shift") {
+      const sh = state.res.shift, [[a0, a1], [b0, b1]] = shiftHalves(), invert = WATER_VARS.has(sc.var);
+      const up = divColor(1, 1, invert), down = divColor(-1, 1, invert);
+      const sw = (c5, col) => `<i class="sw" style="background:${rgb(fade(col, SHIFT_FADE[c5] || 0))}"></i>`;
+      el.innerHTML = sh && sh.key ? [4, 3, 2].map((c5) => `<span>${sw(c5, up)}${sw(c5, down)}${esc(t("sh" + c5))} <span class="num muted">${nf(sh.counts[c5])}</span></span>`).join("")
+        + `<span><i class="sw" style="background:${rgb(pal.grid)}"></i>${esc(t("sh1"))} <span class="num muted">${nf(sh.counts[1])}</span></span>`
+        + `<span class="muted">${esc(t("lg_shift", { a: a0, b: a1, c: b0, d: b1, al: state.alpha }))}</span>${csvBtn("cells")}`
+        : `<span class="muted">${esc(t("computing", { p: 0 }))}</span>`;
       return;
     }
     if (state.layer === "detect") {
@@ -1313,7 +1376,10 @@
       warns.push({ sev: "", w: t("live_read", { mb: li.mb, n: li.chunks, when: li.read.slice(0, 16).replace("T", " ") }) });
       if (li.trimmed) warns.push({ sev: "", w: t("live_trim", { a: li.trimmed.from, b: li.trimmed.to }) });
       if (sc.counts.gappy) warns.push({ sev: "critical", w: t("live_gappy", { n: nf(sc.counts.gappy) }) });
-      sc.transitions.forEach((tr) => warns.push({ sev: "", w: t("live_tr", { d: tr.date || "?", l: tr.label }) }));
+      sc.transitions.forEach((tr) => {
+        const st = (sc.steps || []).find((s) => s.label.startsWith(tr.date || "?"));
+        warns.push({ sev: "", w: st ? t("live_tr_tested", { d: tr.date, l: tr.label, n: nf(st.flagged), v: nf(k.valid) }) : t("live_tr", { d: tr.date || "?", l: tr.label }) });
+      });
     } else if (sc.counts.gappy) {
       warns.push({ sev: "critical", w: mn()
         ? `${nf(sc.counts.gappy)} нүдэнд зарим сар дутуу тул нөхөж тооцолгүй хассан. Нийлүүлэгч [${sc.valid_min}, ${sc.valid_max}] мужаас гадуурх утгыг хасдаг тул дутуу сарууд нь бодит туйлын утга байж болно; тэдгээрийг хасаад тооцсон чиг цензурдсан болно.`
@@ -1330,23 +1396,50 @@
     el.innerHTML = `<p class="eyebrow">${esc(t("d_dataset"))}</p><h3>${esc(title)}</h3>
       <p class="small muted">${esc(sc.product_name)} · ${esc(periodText())}</p>
       <p class="headline">${head}</p>
-      <div class="chips">${chips.map(([v, l]) => `<div class="chip"><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
+      <div class="chips">${chips.map(([v, l]) => `<div class="chip"${gl(l)}><b>${nf(v)}</b><span>${esc(t(l))}</span></div>`).join("")}</div>
       ${warns.map(({ w, sev }) => `<div class="warn ${sev}"><span class="icon" aria-hidden="true">!</span><p>${esc(w)}</p></div>`).join("")}
       ${cmpSummary()}`;
+  }
+  // glossary entries behind the statistic labels and the chips (hover for the definition; Help → Glossary lists them)
+  const GLOSS_FOR = { c_naive: "pnaive", c_fdr: "fdr", c_robust: "pols", c_notyet: "detect", c_steps: "step", s_ci: "sen", s_pnaive: "pnaive", s_pmk: "pmk",
+    s_pols: "pols", s_phi: "phi", s_sigma: "sigma", s_mdt: "mdt", s_nstar: "detect", s_detect_year: "detect" };
+  function gl(key) { const g = (t("glossary") || {})[GLOSS_FOR[key]]; return g ? ` title="${esc(g[1])}"` : ""; }
+  const dt = (key, extra = "") => `<dt${gl(key)}>${esc(t(key))}${extra}</dt>`;
+  function showGlossary() {
+    const g = t("glossary") || {};
+    modal(`<h2>${esc(t("glossary_title"))}</h2><dl class="kv gloss">${Object.values(g).map(([term, def]) => `<dt>${esc(term)}</dt><dd>${esc(def)}</dd>`).join("")}</dl>`);
+  }
+  // what if the trend were larger or smaller: the years Weatherhead's n* needs at this selection's noise and memory
+  function whatIfBlock(st) {
+    if (!(st.sigma > 0) || !Number.isFinite(st.phi)) return "";
+    const f = unitFactor(), u = unitLabel(state.sc.units);
+    const base = Math.max(Math.abs(st.sen || 0), st.mdt || 0) * f, max = niceLim(Math.max(1e-6, base * 3));
+    state.whatIf = { sigma: st.sigma, phi: st.phi, step: st.years / st.m, first: (state.res && state.res.y0eff) || state.y0, f, u, max };
+    const x = Math.min(max, Math.abs(st.sen || 0) * f || max / 3);
+    return `<div class="whatif"><p class="eyebrow">${esc(t("wi_label"))}</p>
+      <label><input type="range" id="wi" min="0" max="${max}" step="${max / 200}" value="${x}" aria-label="${esc(t("wi_label"))}"> <b class="num" id="wi-val">±${fmt(x)}</b> <span class="muted">${esc(u)} ${esc(t("unit_decade"))}</span></label>
+      <p class="small" id="wi-out">${esc(whatIfText(x))}</p><p class="small muted">${esc(t("wi_note"))}</p></div>`;
+  }
+  function whatIfText(x) {
+    const w = state.whatIf;
+    if (!w || !(x > 0)) return t("wi_zero");
+    const n = S.yearsToDetect(w.sigma, w.phi, x / w.f / 10, w.step);
+    if (!Number.isFinite(n) || n > 1e4) return t("wi_never");
+    return t("wi_out", { x: fmt(x), u: w.u, n: fmt(n, 2), y: w.first + Math.max(1, Math.ceil(n)) - 1 });
   }
   function statsList(st, sc, extra = "") {
     const f = unitFactor();
     return `<dl class="kv">
-      <dt>${esc(t("s_ci"))}</dt><dd>[${fmt(st.lo * f)}, ${fmt(st.hi * f)}]</dd>
-      <dt>${esc(t("s_pnaive"))}</dt><dd>${fmtP(st.pNaive)}</dd>
-      <dt>${esc(t("s_pmk"))}</dt><dd>${fmtP(st.pMk)}</dd>
-      <dt>${esc(t("s_pols"))}</dt><dd>${fmtP(st.pOls)}</dd>
+      ${dt("s_ci")}<dd>[${fmt(st.lo * f)}, ${fmt(st.hi * f)}]</dd>
+      ${dt("s_pnaive")}<dd>${fmtP(st.pNaive)}</dd>
+      ${dt("s_pmk")}<dd>${fmtP(st.pMk)}</dd>
+      ${dt("s_pols")}<dd>${fmtP(st.pOls)}</dd>
       <div class="sep"></div>
-      <dt>${esc(t("s_phi"))}</dt><dd>${fmt(st.phi, 2)}</dd>
-      <dt>${esc(t("s_sigma"))} (${esc(unitLabel(sc.units))})</dt><dd>${fmt(st.sigma)}</dd>
-      <dt>${esc(t("s_mdt"))}</dt><dd>±${fmt(st.mdt * f)}</dd>
-      <dt>${esc(t("s_nstar"))}</dt><dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
-      <dt>${esc(t("s_detect_year"))}</dt><dd>${esc(detectShort(detectYear(st.nstar, st.sen, st.lo, st.hi, st.phi, st.m)))}</dd>
+      ${dt("s_phi")}<dd>${fmt(st.phi, 2)}</dd>
+      ${dt("s_sigma", ` (${esc(unitLabel(sc.units))})`)}<dd>${fmt(st.sigma)}</dd>
+      ${dt("s_mdt")}<dd>±${fmt(st.mdt * f)}</dd>
+      ${dt("s_nstar")}<dd>${st.nstar === null || st.nstar === Infinity ? "∞" : fmt(st.nstar, 2)} (${esc(t("s_have", { n: fmt(st.years, 3) }))})</dd>
+      ${dt("s_detect_year")}<dd>${esc(detectShort(detectYear(st.nstar, st.sen, st.lo, st.hi, st.phi, st.m)))}</dd>
       ${extra}</dl><p class="small muted">${esc(t("s_units", { u: unitText(sc) }))}</p>`;
   }
   function stepRows(i) {
@@ -1381,7 +1474,8 @@
         ${statsList({ sen: c.sen[i], lo: c.sen_lo[i], hi: c.sen_hi[i], pNaive: c.p_naive[i], pMk: c.p_mk[i], pOls: c.p_ols[i], phi: c.phi[i], sigma: c.sigma[i],
           mdt: c.mdt[i], nstar: c.nstar[i], years: state.res.years, m: cellSamples() }, sc,
           `<dt>${esc(t(se ? "s_mean_all" : "s_mean"))}</dt><dd>${fmt(sc.cells.clim_mean[i])} ${esc(unitLabel(sc.units))}</dd>` +
-          (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}`;
+          (state.res.custom ? "" : `<dt>${esc(t("s_hr"))}</dt><dd>${fmtP(c.p_hr_empirical[i])}</dd>`) + stepRows(i))}
+        ${whatIfBlock({ sigma: c.sigma[i], phi: c.phi[i], sen: c.sen[i], mdt: c.mdt[i], years: state.res.years, m: cellSamples() })}`;
       const chart = se ? { t: cube.years.map((v) => v + cube.off), y: ann.vals, annual: true }
         : { t: tt, y, ann: sc.series.kind === "monthly" ? ann : null, annual: sc.series.kind === "annual" };
       seriesChart($("#cellchart"), Object.assign(chart, { unit: unitLabel(sc.units),
@@ -1428,7 +1522,8 @@
       <p class="small muted">${esc(t("box_note", { n: nf(sel.cells.length), kind }))}</p>${pill(st)}
       <div><span class="big">${signed(r.sen * 10 * unitFactor())}</span> <span class="muted">${esc(unitText(sc))}</span></div>
       <div id="cellchart"></div>
-      ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}`;
+      ${statsList({ sen: r.sen * 10, lo: r.senLo * 10, hi: r.senHi * 10, pNaive: r.pNaive, pMk: r.pMk, pOls: r.pOls, phi: r.phi, sigma: r.sigma, mdt: r.mdt * 10, nstar: r.nstar, years: r.years, m: r.n }, sc)}
+      ${whatIfBlock({ sigma: r.sigma, phi: r.phi, sen: r.sen * 10, mdt: r.mdt * 10, years: r.years, m: r.n })}`;
     seriesChart($("#cellchart"), { t: cube.years.map((v) => v + cube.off), y: annVals, annual: true, unit: unitLabel(sc.units),
       trend: { sen: r.sen, lo: r.senLo, hi: r.senHi, intercept: r.intercept }, markers: markers(sc), window: chartWindow(), label: "box mean" });
   }
@@ -1972,8 +2067,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
         { label: t("an_20"), act: () => preset(20) }, { label: t("an_2001"), act: () => preset(2001) }, "-",
         ...[0.1, 0.05, 0.01].map((a) => ({ label: t("an_alpha", { a }), cls: ck(Math.abs(state.alpha - a) < 1e-9), act: () => { $("#alpha").value = a.toFixed(2); setAlpha(a); } })), "-",
         ...(sc ? availLayers() : []).map((l) => ({ label: t(LAYER_KEY[l]), cls: ck(state.layer === l), act: () => setLayer(l) }))] },
+      { id: "cases", label: t("m_cases"), items: [
+        { label: t("cases_board"), act: () => window.TDCases.board() }, "-",
+        ...(window.TDCases ? window.TDCases.list() : []).map((c) => ({ label: c.title[L()] || c.title.en, cls: ck(window.TDCases.current() === c.id), act: () => window.TDCases.open(c.id) }))] },
       { id: "help", label: t("m_help"), items: [
-        { label: t("help_guide"), act: showGuide }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
+        { label: t("help_guide"), act: showGuide }, { label: t("help_glossary"), act: showGlossary }, { label: t("help_method"), act: () => setTab("method") }, { label: t("help_about"), act: showAbout }] },
     ];
   }
   let openMenu = null;
@@ -2034,6 +2132,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     renderAnalysis(); renderScreen(); renderMethod(); status();
     $$("[data-view]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === state.view));
     $$("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === state.tab));
+    if (window.TDCases) window.TDCases.sync();
   }
   async function showScene(id, keepYears) {
     stopPlay();
@@ -2094,7 +2193,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
     renderAll();
   }
-  function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); drawMap(); }
+  function setLayer(l) { state.layer = isRisk()?"zone":l; if (l !== "anom") stopPlay(); renderPicker(); renderMenus(); renderTimeline(); if (state.layer === "shift") ensureShift(); drawMap(); }
   let dustService;
   async function dustEndpoint() {
     if(dustService===undefined) {
@@ -2190,6 +2289,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
   }
   function setLang(l) { I.setLang(l); store.set("lang", l); applyStatic(); renderAll(); }
   function modal(html) {
+    $("#modalbox").className = "box";
     $("#modalbox").innerHTML = html + `<div><button type="button" class="btn primary" id="modalclose">${esc(t("close"))}</button></div>`;
     $("#modal").hidden = false;
     $("#modalclose").focus();
@@ -2203,21 +2303,58 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (!q || !state.sc) return;
     const p = state.places.find((x) => x.en.toLowerCase() === q || x.mn.toLowerCase() === q) ||
       state.places.find((x) => x.en.toLowerCase().startsWith(q) || x.mn.toLowerCase().startsWith(q));
-    if (!p) return;
+    if (p) focusPlace(p);
+  }
+  // select the cell under a place and zoom to it; false when the place is outside the map or its cell has no data
+  function focusPlace(p, z) {
     state.searched = p;
     const g = state.sc.grid, i = Math.floor((p.lon - (g.lon[0] - g.dlon / 2)) / g.dlon), j = Math.floor((p.lat - (g.lat[0] - g.dlat / 2)) / g.dlat);
     if (i >= 0 && j >= 0 && i < g.nx && j < g.ny && state.res.status[j * g.nx + i] !== 0) {
       state.sel = { type: "cell", i: j * g.nx + i };
-      Object.assign(map.view, { z: Math.max(map.view.z, state.sc.region === "global" ? 4 : 2), lon: p.lon, lat: p.lat });
+      Object.assign(map.view, { z: z || Math.max(map.view.z, state.sc.region === "global" ? 4 : 2), lon: p.lon, lat: p.lat });
       setTab("map"); renderInspector(); renderAnalysis(); drawMap();
       status({ cursor: ll(p.lat, p.lon), value: placeName(p) });
-    } else {
-      drawMap();
-      const note = $("#mapnote");
-      note.textContent = t("outside", { place: placeName(p) });
-      note.hidden = false;
-      setTimeout(() => { note.hidden = true; }, 3500);
+      return true;
     }
+    drawMap();
+    const note = $("#mapnote");
+    note.textContent = t("outside", { place: placeName(p) });
+    note.hidden = false;
+    setTimeout(() => { note.hidden = true; }, 3500);
+    return false;
+  }
+  // a box selection given in degrees [west, south, east, north] (the pointer path goes through selectBox)
+  function selectBoxDeg([lonA, latA, lonB, latB]) {
+    const g = state.sc.grid, st = state.res.status, cells = [];
+    for (let j = 0; j < g.ny; j++) {
+      if (g.lat[j] < latA || g.lat[j] > latB) continue;
+      for (let i = 0; i < g.nx; i++) {
+        if (g.lon[i] < lonA || g.lon[i] > lonB) continue;
+        const k = j * g.nx + i;
+        if (st[k] >= 1 && st[k] <= 5) cells.push(k);
+      }
+    }
+    state.sel = { type: "box", cells, bounds: [lonA, latA, lonB, latB] };
+  }
+  // years, months and α in one go, with a single recomputation (the toolbar paths recompute per control)
+  async function configure(o) {
+    if (isRisk() || !state.sc) return;
+    let changed = false;
+    if (o.years) {
+      const [a, b] = fullRange();
+      let [y0, y1] = o.years === "full" ? [a, b] : o.years;
+      y0 = Math.max(a, Math.min(y0, b - 9)); y1 = Math.min(b, Math.max(y1, y0 + 9));
+      if (y0 !== state.y0 || y1 !== state.y1) { state.y0 = y0; state.y1 = y1; changed = true; }
+    }
+    if (o.season !== undefined) {
+      const id = SEA.byId(o.season).id;
+      if (id !== state.season) { state.season = id; state.year = null; changed = true; }
+    }
+    if (o.alpha !== undefined && Math.abs(o.alpha - state.alpha) > 1e-9) { state.alpha = o.alpha; $("#alpha").value = o.alpha.toFixed(2); changed = true; }
+    if (!changed) return;
+    stopPlay();
+    await computeResults();
+    if (cmp.on && cmp.entry) await cmpLoad(cmp.id, cmp.y0, cmp.y1);
   }
 
   // ------------------------------------------------------------ live analysis of any NASA POWER variable
@@ -2231,7 +2368,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     }
     return [87.5, 41, 120.5, 52.5];
   }
-  async function openLive() {
+  async function openLive(forCase) {
+    live.forCase = !!forCase;
     if (!live.cat) {
       try { live.cat = await loadPayload("power-catalog"); } catch (e) { modal(`<p>${esc(t("live_fail", { e: e.message }))}</p>`); return; }
     }
@@ -2300,6 +2438,8 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       $("#modal").hidden = true;
       await showScene(sc.id);
       setTab("map");
+      // started from the case board: present the result as a case file
+      if (live.forCase && window.TDCases) { live.forCase = false; await window.TDCases.openOwn(sc); }
     } catch (err) {
       live.busy = false;
       const code = err && err.code;
@@ -2337,6 +2477,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     if (state.theme !== "system") document.documentElement.dataset.theme = state.theme;
     map.canvas = $("#map"); map.ctx = map.canvas.getContext("2d");
     surface = new window.TDSurface($("#surf"));
+    // served over HTTPS (GitHub Pages) or from localhost: keep a copy of what was opened, so the viewer
+    // reopens without a connection; the file:// ZIP needs no such copy. Only same-origin files are kept.
+    if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
+      navigator.serviceWorker.register("sw.js").catch(() => { /* no offline copy; the page works as before */ });
+    }
     buildPalette();
     applyStatic();
     renderMenus();
@@ -2355,10 +2500,12 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       const entry=await loadScene(config.id).catch(()=>null);if(entry)registerRisk(entry.sc);
     }
     await loadScene("synthetic-truth").catch(() => null);
-    const first = location.hash.slice(1);
+    const first = location.hash.slice(1), C = window.TDCases;
     if (first === "risk"||first.startsWith("risk/")) { const [,type,date]=first.split('/'); await showScene("mn-t2m"); await openRisk(type,date); }   // #risk: a shareable link straight to the risk zones
+    else if (C && first.startsWith("case/")) { await showScene("mn-t2m"); await C.openHash(first); }   // #case/<id>/<step>: a shareable link into a case file
     else await showScene(state.index.scenes.find((s) => s.id === first) ? first : "mn-t2m");
-    if (!store.get("seenGuide")) { store.set("seenGuide", "1"); showGuide(); }
+    // first visit: the case board (the quick guide stays under Help)
+    if (!store.get("seenGuide")) { store.set("seenGuide", "1"); if (C && !C.current()) C.board(); else if (!C) showGuide(); }
 
     $("#risk-type").addEventListener("change",e=>openRisk(e.target.value));
     $("#fire-date").addEventListener("change",e=>loadRiskDate(e.target.value));
@@ -2427,6 +2574,11 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
       }
     });
     $("#apply").addEventListener("click", applyYears);
+    $("#inspector").addEventListener("input", (e) => {
+      if (e.target.id !== "wi") return;
+      const x = +e.target.value;
+      $("#wi-val").textContent = "±" + fmt(x); $("#wi-out").textContent = whatIfText(x);
+    });
     $("#modal").addEventListener("input", (e) => { if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#modal").addEventListener("change", (e) => { if (e.target.id === "lv-prod") liveFillProduct(false); else if (e.target.id && e.target.id.startsWith("lv-")) liveEstimate(); });
     $("#alpha").addEventListener("change", (e) => setAlpha(+e.target.value));
@@ -2510,6 +2662,7 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     window.addEventListener("hashchange", () => {
       const id = location.hash.slice(1);
       if (id === "risk"||id.startsWith("risk/")) { const [,type,date]=id.split("/");openRisk(type,date); }
+      else if (window.TDCases && id.startsWith("case/")) window.TDCases.openHash(id);
       else if (id && state.sc && id !== state.sc.id && state.index.scenes.find((s) => s.id === id)) showScene(id, true);
     });
     let rz;
@@ -2520,5 +2673,23 @@ python -m trend_detective series merra2 T2M --bbox 104 43 107 45</pre>`;
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", retheme);
     new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   }
+
+  // ------------------------------------------------------------ public API
+  // Used by the case files (js/cases.js) and by tests. Everything here is the same code path the
+  // toolbar uses; the case engine only sequences it.
+  window.TDApp = {
+    state, map, cmp, isRisk,
+    showScene, openRisk, configure, setLayer, setTab, setView, setCompare, cmpLoad, renderAll, drawMap, resetView, zoneInfo, openLive,
+    availLayers, modal, closeModal: () => { $("#modal").hidden = true; },
+    zoomTo(lon, lat, z) { Object.assign(map.view, { z, lon, lat }); },
+    clearSel() { state.sel = null; state.searched = null; },
+    selectPlace(name, z) { const p = state.places.find((x) => x.en === name); return p ? focusPlace(p, z) : false; },
+    selectBox: selectBoxDeg,
+    // statistics of the current selection (cell or box), as the details pane shows them
+    selStats: () => (state.sel && state.exportSeries ? state.exportSeries.stats : null),
+    regionStats: (k = 0) => (state.res && state.res.regionStats ? state.res.regionStats[k] : null),
+    places: () => state.places,
+    fmt, signed, fmtP, nf, esc, unitLabel, t, mn, L, sceneTitle, regionName, detectYear, detectShort, detectSentence, seasonText, yrsText, rmStat, stepOf, placeName,
+  };
   boot();
 })();

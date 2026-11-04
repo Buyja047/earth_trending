@@ -172,6 +172,25 @@
     }
     const [W, S, E, N] = [lon[0] - p.dlon / 2, lat[0] - p.dlat / 2, lon[pl.nx - 1] + p.dlon / 2, lat[pl.ny - 1] + p.dlat / 2];
     const fmtLL = (x, pos, neg) => `${Math.abs(+x.toFixed(2))}°${x >= 0 ? pos : neg}`;
+    // documented data-source changes inside the record, tested as steps in every complete cell
+    // (the same regression and FDR rule as the precomputed scenes; at least two years on each side)
+    const ST = root.TDStats || (typeof require === "function" ? require("./stats.js") : null);
+    const transitions = (cat.transitions || {})[`${pl.product}/${v.name}`] || [];
+    const tt = Array.from({ length: nm }, (_, m) => pl.y0 + 1 / 24 + m / 12), steps = [];
+    for (const tr of transitions) {
+      if (!ST || !tr.date || !/^\d{4}-\d{2}$/.test(tr.date)) continue;
+      const tb = +tr.date.slice(0, 4) + (+tr.date.slice(5, 7) - 1) / 12;
+      if (tb < pl.y0 + 2 || tb > y1 + 1 - 2) continue;
+      const step = new Array(ncell).fill(null), pStep = new Array(ncell).fill(null), trend = new Array(ncell).fill(null);
+      for (let c = 0; c < ncell; c++) {
+        if (status[c] !== 1) continue;
+        const r = ST.stepTest(Array.from(vals.subarray(c * nm, (c + 1) * nm)), tt, tb);
+        if (Number.isFinite(r.p)) { step[c] = +r.step.toPrecision(5); pStep[c] = +r.p.toPrecision(4); trend[c] = +(r.trend * 10).toPrecision(5); }
+      }
+      const pStar = ST.fdrThreshold(pStep.filter((p) => p !== null), 0.1), flag = pStep.map((p) => (p !== null && p <= pStar ? 1 : 0));
+      steps.push({ t_break: tb, label: `${tr.date}: ${tr.label}`, p_star: pStar, flagged: flag.reduce((a, b) => a + b, 0), step, p_step: pStep, flag, trend_with_step: trend });
+      await pause();
+    }
     const sc = {
       id: opt.id || `live-${Date.now()}`, live: true, title: v.long_name, group: "Live analysis", product: pl.product,
       product_name: p.name, kind: p.kind, var: v.name, long_name: v.long_name, units, region: "box", focus,
@@ -180,8 +199,8 @@
       transitions: (cat.transitions || {})[`${pl.product}/${v.name}`] || [], data_warnings: [],
       period: { start: `${pl.y0}-01`, end: `${y1}-12`, years: y1 - pl.y0 + 1, n_months: nm },
       grid, series: { kind: "monthly", start: pl.y0 + 1 / 24, n: nm },
-      cells: { status, clim_mean: climMean }, counts: { valid, gappy, step_flagged: 0 },
-      steps: [], region_means: regions, alpha_fdr: 0.1,
+      cells: { status, clim_mean: climMean }, counts: { valid, gappy, step_flagged: steps.reduce((a, s) => a + s.flagged, 0) },
+      steps, region_means: regions, alpha_fdr: 0.1,
       live_info: { read: new Date().toISOString(), chunks: pl.chunks.length, mb: +(bytes / 1e6).toFixed(1),
         trimmed: y1 < pl.y1 ? { from: pl.y1, to: y1 } : null },
     };
